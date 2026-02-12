@@ -2,7 +2,7 @@ import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const api = axios.create({
-  baseURL: 'http://192.168.1.203:4000', // IP local de tu Mac + puerto del backend
+  baseURL: 'https://api.easyfutbol.es/api', // IP local de tu Mac + puerto del backend
   timeout: 20000,
 });
 

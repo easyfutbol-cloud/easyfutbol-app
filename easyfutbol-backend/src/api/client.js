@@ -2,12 +2,8 @@ import axios from 'axios';
 import { Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-// Base URL del backend para la APP (no el backend interno)
-// Android emulador usa 10.0.2.2, iOS/dispositivos usan la IP local del Mac
-const baseURL =
-  Platform.OS === 'android'
-    ? 'http://10.0.2.2:4000'
-    : 'http://192.168.1.203:4000';
+// Base URL del backend para la APP en producción
+const baseURL = 'https://api.easyfutbol.es/api';
 
 export const api = axios.create({ baseURL, timeout: 20000 });
 

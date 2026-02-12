@@ -1,5 +1,5 @@
 // App.js
-import { useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   Platform,
   View,
@@ -8,6 +8,9 @@ import {
   Modal,
   Pressable,
   StyleSheet,
+  TextInput,
+  Keyboard,
+  TouchableWithoutFeedback,
 } from 'react-native';
 import {
   NavigationContainer,
@@ -17,6 +20,7 @@ import {
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { api } from './src/api/client';
 
 // Screens
 import HomeScreen from './src/screens/HomeScreen';
@@ -50,6 +54,179 @@ export const navigationRef = createNavigationContainerRef();
 
 // === Controlador global para abrir/cerrar el menú desde cualquier screen ===
 export const menuController = { open: () => {}, close: () => {} };
+
+function VerifyEmailScreen({ navigation, route }) {
+  const insets = useSafeAreaInsets();
+  const extraTop = 8;
+
+  const emailFromRoute = route?.params?.email || '';
+  const [email, setEmail] = useState(String(emailFromRoute));
+  const [code, setCode] = useState('');
+  const [loading, setLoading] = useState(false);
+
+  const BASE = (api?.defaults?.baseURL || '')
+    .replace(/\/+$/, '')
+    .replace(/\/api$/, '');
+
+  const submitVerify = async () => {
+    try {
+      const em = String(email || '').trim().toLowerCase();
+      const c = String(code || '').trim();
+      if (!em) throw new Error('Introduce tu email');
+      if (!c) throw new Error('Introduce el código');
+
+      setLoading(true);
+      const res = await fetch(`${BASE}/auth/email/verify`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Accept: 'application/json',
+        },
+        body: JSON.stringify({ email: em, code: c }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(json?.msg || json?.message || `Error API: ${res.status}`);
+      }
+
+      navigation.navigate('Access', { prefill: { identifier: em } });
+    } catch (e) {
+      console.log('verify email error:', e?.message);
+      // eslint-disable-next-line no-alert
+      alert(e?.message || 'No se pudo verificar');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const resend = async () => {
+    try {
+      const em = String(email || '').trim().toLowerCase();
+      if (!em) throw new Error('Introduce tu email');
+
+      setLoading(true);
+      const res = await fetch(`${BASE}/auth/email/resend`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Accept: 'application/json',
+        },
+        body: JSON.stringify({ email: em }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(json?.msg || json?.message || `Error API: ${res.status}`);
+      }
+
+      // eslint-disable-next-line no-alert
+      alert('Código reenviado. Mira tu correo.');
+    } catch (e) {
+      console.log('resend email error:', e?.message);
+      // eslint-disable-next-line no-alert
+      alert(e?.message || 'No se pudo reenviar');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
+      <View
+        style={{
+          flex: 1,
+          paddingHorizontal: 20,
+          paddingTop: (insets.top || (Platform.OS === 'android' ? 24 : 0)) + extraTop,
+          justifyContent: 'center',
+          backgroundColor: '#0b0b0d',
+        }}
+      >
+        <Text style={{ color: '#fff', fontSize: 24, fontWeight: '900', marginBottom: 8 }}>
+          Verifica tu correo
+        </Text>
+        <Text style={{ color: '#bbb', marginBottom: 18 }}>
+          Te hemos enviado un código de 6 dígitos. Introdúcelo para poder apuntarte y pagar.
+        </Text>
+
+        <Text style={{ color: '#ccc', marginBottom: 6 }}>Email</Text>
+        <TextInput
+          value={email}
+          onChangeText={setEmail}
+          placeholder="correo@ejemplo.com"
+          placeholderTextColor="#777"
+          autoCapitalize="none"
+          keyboardType="email-address"
+          editable={!loading}
+          style={{
+            backgroundColor: '#111',
+            borderRadius: 12,
+            paddingVertical: 12,
+            paddingHorizontal: 14,
+            color: '#fff',
+            marginBottom: 12,
+          }}
+        />
+
+        <Text style={{ color: '#ccc', marginBottom: 6 }}>Código</Text>
+        <TextInput
+          value={code}
+          onChangeText={setCode}
+          placeholder="123456"
+          placeholderTextColor="#777"
+          keyboardType="number-pad"
+          editable={!loading}
+          style={{
+            backgroundColor: '#111',
+            borderRadius: 12,
+            paddingVertical: 12,
+            paddingHorizontal: 14,
+            color: '#fff',
+          }}
+        />
+
+        <TouchableOpacity
+          onPress={submitVerify}
+          disabled={loading}
+          style={{
+            marginTop: 16,
+            backgroundColor: ORANGE,
+            borderRadius: 12,
+            paddingVertical: 14,
+            alignItems: 'center',
+            opacity: loading ? 0.7 : 1,
+          }}
+        >
+          <Text style={{ color: '#000', fontWeight: '900', fontSize: 16 }}>
+            {loading ? 'Verificando...' : 'Verificar'}
+          </Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          onPress={resend}
+          disabled={loading}
+          style={{
+            marginTop: 10,
+            borderRadius: 12,
+            paddingVertical: 12,
+            alignItems: 'center',
+            borderWidth: 1,
+            borderColor: 'rgba(255,255,255,0.12)',
+            opacity: loading ? 0.7 : 1,
+          }}
+        >
+          <Text style={{ color: '#fff', fontWeight: '800' }}>Reenviar código</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          onPress={() => navigation.navigate('Access', { prefill: { identifier: email } })}
+          disabled={loading}
+          style={{ marginTop: 14, alignItems: 'center' }}
+        >
+          <Text style={{ color: '#bbb' }}>Volver a iniciar sesión</Text>
+        </TouchableOpacity>
+      </View>
+    </TouchableWithoutFeedback>
+  );
+}
 
 // --- Botón + Menú hamburguesa persistente (arriba derecha) ---
 function AppMenu({ currentRouteName }) {
@@ -95,8 +272,8 @@ function AppMenu({ currentRouteName }) {
     refreshAuth();
   }, [currentRouteName]); // refresca al cambiar de ruta
 
-  // En Access no mostramos ni botón ni modal
-  if (currentRouteName === 'Access') return null;
+  // En Access y VerifyEmail no mostramos ni botón ni modal
+  if (currentRouteName === 'Access' || currentRouteName === 'VerifyEmail') return null;
 
   const baseItems = [
     { label: 'Inicio', screen: 'Home' },
@@ -205,6 +382,7 @@ function AppShell({ currentRouteName }) {
       >
         <Stack.Screen name="Home" component={HomeScreen} />
         <Stack.Screen name="Access" component={AccessScreen} />
+        <Stack.Screen name="VerifyEmail" component={VerifyEmailScreen} />
         <Stack.Screen name="Match" component={MatchScreen} />
         <Stack.Screen name="Matchs" component={MatchsScreen} />
         <Stack.Screen name="MyMatches" component={MyMatchesScreen} />

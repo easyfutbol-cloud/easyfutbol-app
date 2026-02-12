@@ -12,3 +12,4 @@ easyfutbol-backend/.env.save
 easyfutbol-backend/.env
 easyfutbol-backend/.env.*
 easyfutbol-backend/.env.save
+.expo/

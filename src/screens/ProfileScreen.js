@@ -26,6 +26,7 @@ export default function ProfileScreen({ navigation }) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [uploading, setUploading] = useState(false);
+  const [avatarNonce, setAvatarNonce] = useState(Date.now());
 
   const BASE = (api?.defaults?.baseURL || '').replace(/\/+$/, '');
 
@@ -45,7 +46,7 @@ export default function ProfileScreen({ navigation }) {
 
   const pingApi = async () => {
     try {
-      const res = await fetch(`${BASE}/api/health`, { method: 'GET' });
+      const res = await fetch(`${BASE}/health`, { method: 'GET' });
       if (!res.ok) throw new Error(`/api/health ${res.status}`);
       return true;
     } catch (e) {
@@ -69,7 +70,7 @@ export default function ProfileScreen({ navigation }) {
       if (!ok) { setLoading(false); return; }
 
       const headers = { Accept: 'application/json', ...(await getAuthHeader()) };
-      const res = await fetch(`${BASE}/api/me/profile`, { method: 'GET', headers });
+      const res = await fetch(`${BASE}/me/profile`, { method: 'GET', headers });
 
       if (res.status === 401) {
         setErrMsg('Sesión expirada. Vuelve a iniciar sesión.');
@@ -85,6 +86,7 @@ export default function ProfileScreen({ navigation }) {
       setData(payload);
       setName(payload?.user?.name || '');
       setEmail(payload?.user?.email || '');
+      setAvatarNonce(Date.now());
     } catch (e) {
       setErrMsg(e?.message?.toString?.() || 'Network Error');
       setData(null);
@@ -111,7 +113,7 @@ export default function ProfileScreen({ navigation }) {
       if (Object.keys(body).length === 0) { Alert.alert('Nada que actualizar'); return; }
 
       const headers = { 'Content-Type':'application/json', ...(await getAuthHeader()) };
-      const res = await fetch(`${BASE}/api/me/profile`, { method: 'PATCH', headers, body: JSON.stringify(body) });
+      const res = await fetch(`${BASE}/me/profile`, { method: 'PATCH', headers, body: JSON.stringify(body) });
 
       if (res.status === 401) { setErrMsg('Sesión expirada. Vuelve a iniciar sesión.'); return; }
       if (!res.ok) {
@@ -142,13 +144,14 @@ export default function ProfileScreen({ navigation }) {
       const formData = new FormData();
       formData.append('avatar', { uri: localUri, type: 'image/jpeg', name: 'avatar.jpg' });
 
-      const res = await fetch(`${BASE}/api/me/avatar`, { method: 'POST', headers, body: formData });
+      const res = await fetch(`${BASE}/me/avatar`, { method: 'POST', headers, body: formData });
       if (res.status === 401) { setErrMsg('Sesión expirada. Vuelve a iniciar sesión.'); return; }
       if (!res.ok) {
         const txt = await res.text().catch(()=> '');
         throw new Error(txt || `Error ${res.status}`);
       }
       Alert.alert('Foto actualizada');
+      setAvatarNonce(Date.now());
       await loadProfile();
     } catch (e) {
       Alert.alert('Error', e?.message || 'No se pudo subir imagen');
@@ -158,7 +161,9 @@ export default function ProfileScreen({ navigation }) {
   // ------- derivados
   const user = data?.user || null;
   const stats = data?.stats || {};
-  const avatarUrl = user?.avatar_url ? (BASE + user.avatar_url) : null;
+  const avatarUrl = user?.avatar_url
+    ? `${BASE}${user.avatar_url}${String(user.avatar_url).includes('?') ? '&' : '?'}v=${avatarNonce}`
+    : null;
 
   const s = {
     matches_played: stats.matches_played ?? 0,
@@ -226,7 +231,7 @@ export default function ProfileScreen({ navigation }) {
           <View style={styles.avatarWrapper}>
             <TouchableOpacity onPress={pickImage} disabled={uploading} activeOpacity={0.85}>
               {avatarUrl ? (
-                <Image source={{ uri: avatarUrl }} style={styles.avatarImage} />
+                <Image key={avatarUrl} source={{ uri: avatarUrl }} style={styles.avatarImage} />
               ) : (
                 <View style={styles.avatarPlaceholder}>
                   <Text style={styles.avatarInitial}>

@@ -79,7 +79,7 @@ export default function MyMatchesScreen() {
   const load = useCallback(() => {
     setLoading(true);
     api
-      .get('/api/me/inscriptions')
+      .get('/me/inscriptions')
       .then((r) => {
         const payload = r.data;
         const data = Array.isArray(payload?.data)
@@ -114,7 +114,7 @@ export default function MyMatchesScreen() {
 
   const cancel = async (matchId) => {
     try {
-      const { data } = await api.post(`/api/matches/${matchId}/cancel`);
+      const { data } = await api.post(`/matches/${matchId}/cancel`);
       if (!data?.ok) throw new Error(data?.msg || 'No se pudo cancelar');
       Alert.alert('Hecho', data.msg || 'Inscripción cancelada');
       load();

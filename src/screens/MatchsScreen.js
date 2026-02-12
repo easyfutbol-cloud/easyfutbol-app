@@ -62,7 +62,7 @@ export default function MatchsScreen({ navigation }) {
     }
 
     try {
-      const res = await api.get('/api/matches', { params: { only_open: 1 } });
+      const res = await api.get('/matches', { params: { only_open: 1 } });
       const payload = res.data;
       const data = Array.isArray(payload?.data)
         ? payload.data

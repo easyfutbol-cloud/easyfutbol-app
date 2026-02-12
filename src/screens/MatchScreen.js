@@ -30,7 +30,7 @@ export default function MatchScreen({ route, navigation }) {
     (async () => {
       try {
         setLoading(true);
-        const res = await api.get(`/api/matches/${matchId}`);
+        const res = await api.get(`/matches/${matchId}`);
         const data = res.data?.data;
         if (!cancelled) {
           setMatch(data);
@@ -62,7 +62,7 @@ export default function MatchScreen({ route, navigation }) {
 
     (async () => {
       try {
-        const res = await api.get('/api/me/inscriptions');
+        const res = await api.get('/me/inscriptions');
         const payload = res.data;
         if (cancelled || !payload?.ok) return;
 
@@ -127,7 +127,7 @@ export default function MatchScreen({ route, navigation }) {
     try {
       setPaying(true);
 
-      const res = await api.post(`/api/matches/${matchId}/pay`, {
+      const res = await api.post(`/matches/${matchId}/pay`, {
         ticketType,
         quantity,
       });

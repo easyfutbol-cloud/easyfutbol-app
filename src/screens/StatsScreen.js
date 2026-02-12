@@ -8,11 +8,17 @@ import { api } from '../api/client';
 
 const ORANGE = '#ff5a00';
 
-// Imágenes de fondo (cámbialas por las tuyas si quieres)
+// Imágenes de fondo de fútbol
 const BG_IMAGES = [
-  { uri: 'https://images.unsplash.com/photo-1521417531039-55a2d7e83d52?q=80&w=1600&auto=format&fit=crop' },
-  { uri: 'https://images.unsplash.com/photo-1502877338535-766e1452684a?q=80&w=1600&auto=format&fit=crop' },
-  { uri: 'https://images.unsplash.com/photo-1518091043644-c1d4457512c6?q=80&w=1600&auto=format&fit=crop' },
+  {
+    uri: 'https://images.unsplash.com/photo-1517927033932-b3d18e61fb3a?q=80&w=1600&auto=format&fit=crop',
+  },
+  {
+    uri: 'https://images.unsplash.com/photo-1518091043644-c1f4fa6bda4c?q=80&w=1600&auto=format&fit=crop',
+  },
+  {
+    uri: 'https://images.unsplash.com/photo-1461896836934-ffe607ba8211?q=80&w=1600&auto=format&fit=crop',
+  },
 ];
 
 const PERIODS = [
@@ -98,7 +104,7 @@ export default function StatsScreen() {
       <ImageBackground source={BG_IMAGES[bgIndex]} style={styles.bg} resizeMode="cover">
         {/* Capa oscura + blur para legibilidad */}
         <View style={styles.overlay} />
-        <BlurView intensity={30} tint="dark" style={StyleSheet.absoluteFill} />
+        <BlurView intensity={70} tint="dark" style={StyleSheet.absoluteFill} />
         <SafeAreaView style={[styles.safe, { paddingTop: insets.top || 12 }]}>
           {/* Header */}
           <View style={styles.header}>

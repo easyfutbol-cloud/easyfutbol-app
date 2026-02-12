@@ -5,6 +5,28 @@ import { api } from '../api/client';
 import { Picker } from '@react-native-picker/picker';
 import DateTimePicker from '@react-native-community/datetimepicker';
 
+// Helper: evita duplicar /api si tu api.defaults.baseURL ya termina en /api
+const apiPath = (p) => {
+  const base = String(api?.defaults?.baseURL || '');
+  let path = String(p || '');
+  if (!path.startsWith('/')) path = `/${path}`;
+  if (base.endsWith('/api') && path.startsWith('/api/')) {
+    // '/api/admin/...' -> '/admin/...'
+    path = path.replace(/^\/api/, '');
+  }
+  return path;
+};
+
+const debugHttpError = (e, context = '') => {
+  const status = e?.response?.status;
+  const baseURL = e?.config?.baseURL || api?.defaults?.baseURL;
+  const url = e?.config?.url;
+  const method = (e?.config?.method || '').toUpperCase();
+  const data = e?.response?.data;
+  console.log(`HTTP ERROR ${context}:`, { status, method, baseURL, url, data });
+  return { status, method, baseURL, url, data };
+};
+
 export default function AdminCreateMatchScreen() {
   const [cities, setCities] = useState([]);
   const [city, setCity] = useState('');
@@ -32,7 +54,7 @@ export default function AdminCreateMatchScreen() {
       try {
         setLoading(true);
 
-        const { data } = await api.get('/api/admin/cities');
+        const { data } = await api.get(apiPath('/api/admin/cities'));
 
         const fallbackCities = [
           'Valladolid',
@@ -56,10 +78,8 @@ export default function AdminCreateMatchScreen() {
         console.log('CITIES ADMIN:', list);
         setCities(list);
       } catch (e) {
-        console.log(
-          'Error cargando ciudades para admin:',
-          e?.response?.data || e.message || e
-        );
+        const info = debugHttpError(e, 'GET cities');
+        console.log('Error cargando ciudades para admin:', info?.data || e.message || e);
         // si falla la API, usamos igualmente el fallback
         setCities([
           'Valladolid',
@@ -82,9 +102,9 @@ export default function AdminCreateMatchScreen() {
   // Cargar campos al seleccionar ciudad
   useEffect(() => {
     if (!city) return;
-    api.get('/api/admin/fields', { params: { city } })
+    api.get(apiPath('/api/admin/fields'), { params: { city } })
       .then(r => setFields(r.data?.data || []))
-      .catch(() => setFields([]));
+      .catch((e) => { debugHttpError(e, 'GET fields'); setFields([]); });
   }, [city]);
 
   const dateStr = useMemo(() => {
@@ -142,7 +162,7 @@ export default function AdminCreateMatchScreen() {
         body.field_name = cleanFieldName;
       }
 
-      const { data } = await api.post('/api/admin/matches', body);
+      const { data } = await api.post(apiPath('/api/admin/matches'), body);
 
       if (!data?.ok) {
         throw new Error(data?.msg || 'No se pudo crear el partido');
@@ -158,8 +178,14 @@ export default function AdminCreateMatchScreen() {
       setCapacity('14');
       setDuration('60');
     } catch (e) {
-      console.log('Error creando partido admin', e?.response?.data || e.message || e);
-      Alert.alert('Error', e?.message || 'No se pudo crear el partido. Inténtalo de nuevo');
+      const info = debugHttpError(e, 'POST create match');
+      console.log('Error creando partido admin', info?.data || e.message || e);
+      Alert.alert(
+        'Error',
+        info?.status
+          ? `HTTP ${info.status} — ${info.method} ${String(info?.url || '')}\n\n${info?.data?.msg || e?.message || 'No se pudo crear el partido.'}`
+          : (e?.message || 'No se pudo crear el partido. Inténtalo de nuevo')
+      );
     } finally {
       setCreating(false);
     }

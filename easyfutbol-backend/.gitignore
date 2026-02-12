@@ -2,3 +2,4 @@
 .env.*
 easyfutbol-backend/.env
 easyfutbol-backend/.env.*
+easyfutbol-backend/.env.save

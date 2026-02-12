@@ -17,11 +17,21 @@ const APP_LOGO = require('../../assets/Logo.png');
 
 // Imágenes de fondo (cámbialas por las tuyas: require(...) o URLs propias)
 const BG = {
-  myMatches: { uri: 'https://images.unsplash.com/photo-1522771739844-6a9f6d5f14af?q=80&w=1200&auto=format' },
-  upcoming:  { uri: 'https://images.unsplash.com/photo-1517747614396-d21a78b850e8?q=80&w=1200&auto=format' },
-  stats:     { uri: 'https://images.unsplash.com/photo-1517649763962-0c623066013b?q=80&w=1200&auto=format' },
-  tournaments:{ uri:'https://images.unsplash.com/photo-1543322748-33df6d3db806?q=80&w=1200&auto=format' },
-  adminCreate:{ uri:'https://images.unsplash.com/photo-1517927033932-b3d18e61fb3a?q=80&w=1200&auto=format' },
+  myMatches: {
+    uri: 'https://easyfutbol.es/wp-content/uploads/2024/10/siluetas-futbol-7.jpeg',
+  },
+  upcoming: {
+    uri: 'https://easyfutbol.es/wp-content/uploads/2025/01/Imagen-eventos_1.avif',
+  },
+  stats: {
+    uri: 'https://easyfutbol.es/wp-content/uploads/2025/02/Registro-8-scaled.jpeg',
+  },
+  tournaments: {
+    uri: 'https://easyfutbol.es/wp-content/uploads/2025/02/imagen-registro-2-scaled.jpeg',
+  },
+  adminCreate: {
+    uri: 'https://easyfutbol.es/wp-content/uploads/2025/02/grass-2616911_1280.jpg',
+  },
 };
 
 export default function HomeScreen({ navigation }) {
@@ -88,7 +98,7 @@ export default function HomeScreen({ navigation }) {
     <TouchableOpacity activeOpacity={0.9} onPress={onPress} style={styles.sectionWrapper}>
       <ImageBackground source={bgSource} style={styles.bg} imageStyle={styles.bgImage}>
         {/* blur + oscurecedor para contraste */}
-        <BlurView intensity={45} tint="dark" style={StyleSheet.absoluteFillObject} />
+        <BlurView intensity={70} tint="dark" style={StyleSheet.absoluteFillObject} />
         <LinearGradient
           colors={['rgba(0,0,0,0.55)', 'rgba(0,0,0,0.25)']}
           style={StyleSheet.absoluteFillObject}
