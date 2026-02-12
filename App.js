@@ -64,9 +64,8 @@ function VerifyEmailScreen({ navigation, route }) {
   const [code, setCode] = useState('');
   const [loading, setLoading] = useState(false);
 
-  const BASE = (api?.defaults?.baseURL || '')
-    .replace(/\/+$/, '')
-    .replace(/\/api$/, '');
+  // Mantén el prefijo /api si tu backend está montado bajo /api
+  const BASE = (api?.defaults?.baseURL || '').replace(/\/+$/, '');
 
   const submitVerify = async () => {
     try {
