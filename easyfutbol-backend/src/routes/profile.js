@@ -20,7 +20,8 @@ const storage = multer.diskStorage({
   destination: (req, file, cb) => cb(null, uploadDir),
   filename: (req, file, cb) => {
     const ext = path.extname(file.originalname);
-    cb(null, `user-${req.user.id}${ext}`);
+    // Nombre único para evitar caché en la app (y en CDNs/navegadores)
+    cb(null, `user-${req.user.id}-${Date.now()}${ext}`);
   }
 });
 const upload = multer({ storage });
@@ -110,8 +111,28 @@ router.patch('/me/profile', requireAuth, async (req, res) => {
  */
 router.post('/me/avatar', requireAuth, upload.single('avatar'), async (req, res) => {
   try {
+    const userId = req.user.id;
+
+    // Leer avatar anterior para borrarlo si era local
+    const [[prev]] = await pool.query('SELECT avatar_url FROM users WHERE id=? LIMIT 1', [userId]);
+
     const fileUrl = `/uploads/avatars/${req.file.filename}`;
-    await pool.query('UPDATE users SET avatar_url=? WHERE id=?', [fileUrl, req.user.id]);
+    await pool.query('UPDATE users SET avatar_url=? WHERE id=?', [fileUrl, userId]);
+
+    // Borrar avatar anterior (si era un archivo local) para no acumular basura
+    try {
+      const prevUrl = prev?.avatar_url || '';
+      if (prevUrl && prevUrl.startsWith('/uploads/avatars/')) {
+        const prevFilename = prevUrl.replace('/uploads/avatars/', '').split('?')[0];
+        const prevPath = path.join(process.cwd(), 'uploads/avatars', prevFilename);
+        if (fs.existsSync(prevPath)) {
+          fs.unlinkSync(prevPath);
+        }
+      }
+    } catch (e) {
+      console.warn('[POST /me/avatar] No se pudo borrar avatar anterior:', e?.message || e);
+    }
+
     res.json({ ok:true, avatar_url: fileUrl });
   } catch (e) {
     console.error(e);
@@ -168,7 +189,7 @@ router.delete('/me/profile', requireAuth, async (req, res) => {
     try {
       const avatarUrl = u?.avatar_url || '';
       if (avatarUrl.startsWith('/uploads/avatars/')) {
-        const filename = avatarUrl.replace('/uploads/avatars/', '');
+        const filename = avatarUrl.replace('/uploads/avatars/', '').split('?')[0];
         const filePath = path.join(process.cwd(), 'uploads/avatars', filename);
         if (fs.existsSync(filePath)) {
           fs.unlinkSync(filePath);
