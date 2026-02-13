@@ -9,7 +9,7 @@ const MAX_TICKETS_PER_PURCHASE = 8;
 const webhookRouter = express.Router();
 
 // OJO: este router usa express.raw(), por eso se monta antes del express.json() global
-webhookRouter.post('/stripe/webhook', express.raw({ type: 'application/json' }), async (req, res) => {
+webhookRouter.post('/webhook', express.raw({ type: 'application/json' }), async (req, res) => {
   const sig = req.headers['stripe-signature'];
   let event;
 

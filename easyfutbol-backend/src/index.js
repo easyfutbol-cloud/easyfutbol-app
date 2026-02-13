@@ -18,8 +18,8 @@ import adminNotify from './routes/adminNotify.js';
 const app = express();
 const PORT = Number(process.env.PORT || 4000);
 
-// Webhook (usa express.raw)
-app.use('/api', webhookRouter);
+// Webhook de Stripe (usa express.raw dentro del router). Importante: va ANTES de express.json()
+app.use('/api/stripe', webhookRouter);
 
 // Middlewares normales
 app.use(cors({ origin: process.env.CORS_ORIGIN?.split(',') || '*' }));
