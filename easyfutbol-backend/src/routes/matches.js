@@ -59,6 +59,46 @@ router.get('/matches', async (req, res) => {
  * Detalle de un partido
  */
 router.get('/matches/:id', requireAuth, async (req, res) => {
+/**
+ * Asistentes de un partido (solo confirmados)
+ * Devuelve: [{ user_id, username, avatar_url, ticket_type }]
+ */
+router.get('/matches/:id/attendees', requireAuth, async (req, res) => {
+  try {
+    const matchId = Number(req.params.id);
+
+    if (!Number.isInteger(matchId) || matchId <= 0) {
+      return res.status(400).json({ ok: false, msg: 'ID de partido inválido' });
+    }
+
+    // Verificar que el partido existe (rápido)
+    const [[m]] = await pool.query('SELECT id FROM matches WHERE id=? LIMIT 1', [matchId]);
+    if (!m) {
+      return res.status(404).json({ ok: false, msg: 'Partido no encontrado' });
+    }
+
+    const [rows] = await pool.query(
+      `SELECT 
+          u.id AS user_id,
+          u.name AS username,
+          u.avatar_url,
+          i.ticket_type
+       FROM inscriptions i
+       JOIN users u ON u.id = i.user_id
+       WHERE i.match_id=?
+         AND i.status='confirmed'
+       ORDER BY 
+         CASE i.ticket_type WHEN 'white' THEN 0 WHEN 'black' THEN 1 ELSE 2 END,
+         u.name ASC`,
+      [matchId]
+    );
+
+    return res.json({ ok: true, data: { attendees: rows } });
+  } catch (e) {
+    console.error('Error listando asistentes', e);
+    return res.status(500).json({ ok: false, msg: 'Error listando asistentes' });
+  }
+});
   try {
     const id = Number(req.params.id);
 
