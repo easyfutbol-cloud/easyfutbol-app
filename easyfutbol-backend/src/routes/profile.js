@@ -122,6 +122,7 @@ router.post('/me/avatar', requireAuth, upload.single('avatar'), async (req, res)
 /**
  * Guardar token push
  */
+
 router.post('/me/push-token', requireAuth, async (req, res) => {
   try {
     const { token } = req.body;
@@ -133,6 +134,64 @@ router.post('/me/push-token', requireAuth, async (req, res) => {
   } catch (e) {
     console.error(e);
     res.status(500).json({ ok:false, msg:'Error guardando push token' });
+  }
+});
+
+/**
+ * Eliminar cuenta (irreversible)
+ * - Borra inscripciones del usuario
+ * - Borra el usuario
+ * - Intenta borrar el avatar local si existe
+ */
+router.delete('/me/profile', requireAuth, async (req, res) => {
+  const userId = req.user.id;
+  let conn;
+  try {
+    conn = await pool.getConnection();
+    await conn.beginTransaction();
+
+    // Leer avatar_url para intentar borrar el archivo local después
+    const [[u]] = await conn.query('SELECT avatar_url FROM users WHERE id=? LIMIT 1', [userId]);
+
+    // Borra dependencias conocidas
+    await conn.query('DELETE FROM inscriptions WHERE user_id=?', [userId]);
+
+    // Finalmente borra el usuario
+    const [delRes] = await conn.query('DELETE FROM users WHERE id=?', [userId]);
+    await conn.commit();
+
+    if (!delRes.affectedRows) {
+      return res.status(404).json({ ok: false, msg: 'Usuario no encontrado' });
+    }
+
+    // Intentar borrar avatar local (si es una ruta bajo /uploads/avatars)
+    try {
+      const avatarUrl = u?.avatar_url || '';
+      if (avatarUrl.startsWith('/uploads/avatars/')) {
+        const filename = avatarUrl.replace('/uploads/avatars/', '');
+        const filePath = path.join(process.cwd(), 'uploads/avatars', filename);
+        if (fs.existsSync(filePath)) {
+          fs.unlinkSync(filePath);
+        }
+      }
+    } catch (e) {
+      // No bloquea la eliminación de cuenta
+      console.warn('[DELETE /me/profile] No se pudo borrar avatar local:', e?.message || e);
+    }
+
+    return res.json({ ok: true, msg: 'Cuenta eliminada' });
+  } catch (e) {
+    try { if (conn) await conn.rollback(); } catch (_) {}
+    console.error('[DELETE /me/profile] error', e);
+
+    // Si hay restricciones FK, devolvemos un mensaje más claro
+    if (e?.code === 'ER_ROW_IS_REFERENCED_2' || e?.errno === 1451) {
+      return res.status(409).json({ ok: false, msg: 'No se puede eliminar la cuenta porque existen datos vinculados (restricciones de base de datos).' });
+    }
+
+    return res.status(500).json({ ok: false, msg: 'Error eliminando cuenta' });
+  } finally {
+    try { if (conn) conn.release(); } catch (_) {}
   }
 });
 
