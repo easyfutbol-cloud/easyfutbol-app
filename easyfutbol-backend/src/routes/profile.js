@@ -33,7 +33,7 @@ router.get('/me/profile', requireAuth, async (req, res) => {
   try {
     const userId = req.user.id;
     const [[user]] = await pool.query(
-      'SELECT id, name, email, role, created_at, avatar_url, push_token FROM users WHERE id=? LIMIT 1',
+      'SELECT id, name, email, role, created_at, avatar_url, push_token, easypass_balance FROM users WHERE id=? LIMIT 1',
       [userId]
     );
     if (!user) return res.status(404).json({ ok:false, msg:'Usuario no encontrado' });
@@ -52,7 +52,11 @@ router.get('/me/profile', requireAuth, async (req, res) => {
     res.json({
       ok: true,
       data: {
-        user,
+        user: {
+          ...user,
+          easyPassBalance: Number(user.easypass_balance || 0),
+          credits: Number(user.easypass_balance || 0),
+        },
         stats: {
           matches_played: stats.matches_played || 0,
           goals: stats.goals || 0,
@@ -64,6 +68,33 @@ router.get('/me/profile', requireAuth, async (req, res) => {
   } catch (e) {
     console.error(e);
     res.status(500).json({ ok:false, msg:'Error obteniendo perfil' });
+  }
+});
+
+/**
+ * Saldo de EasyPass del usuario autenticado
+ */
+router.get('/me/credits', requireAuth, async (req, res) => {
+  try {
+    const userId = req.user.id;
+
+    const [[user]] = await pool.query(
+      'SELECT easypass_balance FROM users WHERE id=? LIMIT 1',
+      [userId]
+    );
+
+    if (!user) {
+      return res.status(404).json({ ok:false, msg:'Usuario no encontrado' });
+    }
+
+    return res.json({
+      ok: true,
+      easyPassBalance: Number(user.easypass_balance || 0),
+      credits: Number(user.easypass_balance || 0),
+    });
+  } catch (e) {
+    console.error('[GET /me/credits]', e);
+    return res.status(500).json({ ok:false, msg:'Error obteniendo EasyPass' });
   }
 });
 
@@ -176,6 +207,7 @@ router.delete('/me/profile', requireAuth, async (req, res) => {
 
     // Borra dependencias conocidas
     await conn.query('DELETE FROM inscriptions WHERE user_id=?', [userId]);
+    await conn.query('DELETE FROM easypass_transactions WHERE user_id=?', [userId]);
 
     // Finalmente borra el usuario
     const [delRes] = await conn.query('DELETE FROM users WHERE id=?', [userId]);

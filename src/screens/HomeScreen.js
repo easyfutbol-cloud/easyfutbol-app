@@ -26,7 +26,7 @@ const BG = {
   stats: {
     uri: 'https://easyfutbol.es/wp-content/uploads/2025/02/Registro-8-scaled.jpeg',
   },
-  tournaments: {
+  easyPass: {
     uri: 'https://easyfutbol.es/wp-content/uploads/2025/02/imagen-registro-2-scaled.jpeg',
   },
   adminCreate: {
@@ -192,10 +192,14 @@ export default function HomeScreen({ navigation }) {
           </View>
         </SectionCard>
         <SectionCard
-          title="Torneos"
-          bgSource={BG.tournaments}
-          onPress={() => navigation.navigate('Tournaments')} // ajusta si tu ruta es distinta
-        />
+          title="EasyPass"
+          bgSource={BG.easyPass}
+          onPress={() => navigation.navigate('EasyPass')}
+        >
+          <Text style={{ color: '#fff', fontSize: 13, opacity: 0.9 }}>
+            Compra packs de EasyPass y reserva tus partidos más rápido.
+          </Text>
+        </SectionCard>
         <View style={{ height: spacing(4) }} />
       </ScrollView>
     </LinearGradient>

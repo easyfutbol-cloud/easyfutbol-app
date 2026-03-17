@@ -2,7 +2,7 @@
 import { useEffect, useState, useMemo, useCallback } from 'react';
 import {
   View, Text, StyleSheet, StatusBar, ActivityIndicator, TouchableOpacity,
-  Alert, TextInput, ScrollView, ImageBackground, Image
+  Alert, TextInput, ScrollView, ImageBackground, Image, Linking
 } from 'react-native';
 import { colors, spacing } from '../theme';
 import { api } from '../api/client';
@@ -27,8 +27,13 @@ export default function ProfileScreen({ navigation }) {
   const [password, setPassword] = useState('');
   const [uploading, setUploading] = useState(false);
   const [avatarNonce, setAvatarNonce] = useState(Date.now());
+  const [avatarPreviewUri, setAvatarPreviewUri] = useState(null);
+  const [easyPass, setEasyPass] = useState(0);
+  const [easyPassLoading, setEasyPassLoading] = useState(false);
 
   const BASE = (api?.defaults?.baseURL || '').replace(/\/+$/, '');
+  // BASE suele ser https://.../api. Para assets (/uploads/...) necesitamos el origen sin /api
+  const PUBLIC_BASE = BASE.replace(/\/api\/?$/, '');
 
   const getAuthHeader = async () => {
     const raw = await AsyncStorage.getItem('token');
@@ -62,6 +67,58 @@ export default function ProfileScreen({ navigation }) {
     return payload;
   };
 
+  const loadEasyPass = async () => {
+    setEasyPassLoading(true);
+    try {
+      const headers = { Accept: 'application/json', ...(await getAuthHeader()) };
+      const res = await fetch(`${BASE}/me/credits`, { method: 'GET', headers });
+      if (res.status === 401) return; // sesión expirada, lo gestiona loadProfile
+      const json = await res.json().catch(() => ({}));
+      const credits = Number(json?.credits ?? json?.data?.credits ?? 0);
+      if (Number.isFinite(credits)) setEasyPass(credits);
+    } catch {
+      // No rompemos el perfil si aún no existe el endpoint
+    } finally {
+      setEasyPassLoading(false);
+    }
+  };
+
+  const buyEasyPass = async () => {
+    try {
+      const headers = { Accept: 'application/json', ...(await getAuthHeader()) };
+      const res = await fetch(`${BASE}/packs`, { method: 'GET', headers });
+      if (!res.ok) throw new Error('No se pudieron cargar los packs');
+      const json = await res.json().catch(() => ({}));
+      const packs = json?.data || [];
+      if (!Array.isArray(packs) || packs.length === 0) {
+        Alert.alert('EasyPass', 'No hay packs disponibles ahora mismo');
+        return;
+      }
+
+      // Mostramos los packs en un Alert (simple y rápido)
+      const buttons = packs.slice(0, 6).map((p) => ({
+        text: `${p.name} · ${p.credits} EasyPass · ${(Number(p.price_cents || 0)/100).toFixed(2)}€`,
+        onPress: async () => {
+          try {
+            const r2 = await fetch(`${BASE}/packs/${p.id}/checkout`, { method: 'POST', headers });
+            const j2 = await r2.json().catch(() => ({}));
+            if (!r2.ok || !j2?.checkout_url) throw new Error(j2?.msg || 'No se pudo crear el pago');
+            await Linking.openURL(j2.checkout_url);
+          } catch (e) {
+            Alert.alert('Error', e?.message || 'No se pudo iniciar el pago');
+          }
+        },
+      }));
+
+      Alert.alert('Comprar EasyPass', 'Elige un pack:', [
+        ...buttons,
+        { text: 'Cancelar', style: 'cancel' },
+      ]);
+    } catch (e) {
+      Alert.alert('Error', e?.message || 'No se pudieron cargar los packs');
+    }
+  };
+
   const loadProfile = async () => {
     setLoading(true);
     setErrMsg('');
@@ -87,6 +144,8 @@ export default function ProfileScreen({ navigation }) {
       setName(payload?.user?.name || '');
       setEmail(payload?.user?.email || '');
       setAvatarNonce(Date.now());
+      // Cargar créditos (EasyPass)
+      await loadEasyPass();
     } catch (e) {
       setErrMsg(e?.message?.toString?.() || 'Network Error');
       setData(null);
@@ -96,12 +155,61 @@ export default function ProfileScreen({ navigation }) {
   };
 
   useEffect(() => { loadProfile(); }, []);
-  useFocusEffect(useCallback(() => { loadProfile(); }, []));
+  useFocusEffect(useCallback(() => {
+    loadProfile();
+    loadEasyPass();
+  }, []));
 
   const logout = async () => {
     await AsyncStorage.multiRemove(['token','user']);
     Alert.alert('Sesión cerrada');
     goToAccess();
+  };
+
+  const deleteAccount = async () => {
+    Alert.alert(
+      'Eliminar cuenta',
+      'Esta acción es irreversible. Se borrará tu cuenta y no podrás recuperarla. ¿Continuar?',
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        {
+          text: 'Eliminar',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              const headers = { ...(await getAuthHeader()) };
+
+              // Intentamos varias rutas por compatibilidad
+              const candidates = [
+                `${BASE}/me`,
+                `${BASE}/me/account`,
+                `${BASE}/me/profile`,
+              ];
+
+              let lastErr = null;
+              for (const url of candidates) {
+                const res = await fetch(url, { method: 'DELETE', headers });
+                if (res.ok) {
+                  Alert.alert('Cuenta eliminada');
+                  await AsyncStorage.multiRemove(['token', 'user']);
+                  goToAccess();
+                  return;
+                }
+                // 404 -> probamos la siguiente
+                if (res.status === 404) continue;
+                const txt = await res.text().catch(() => '');
+                lastErr = new Error(txt || `Error ${res.status}`);
+                break;
+              }
+
+              throw lastErr || new Error('No se pudo eliminar la cuenta (ruta no encontrada)');
+            } catch (e) {
+              Alert.alert('Error', e?.message || 'No se pudo eliminar la cuenta');
+            }
+          },
+        },
+      ]
+    );
   };
 
   const save = async () => {
@@ -140,6 +248,8 @@ export default function ProfileScreen({ navigation }) {
 
       setUploading(true);
       const localUri = result.assets[0].uri;
+      // Vista previa inmediata para evitar caché
+      setAvatarPreviewUri(localUri);
       const headers = { ...(await getAuthHeader()) };
       const formData = new FormData();
       formData.append('avatar', { uri: localUri, type: 'image/jpeg', name: 'avatar.jpg' });
@@ -150,8 +260,25 @@ export default function ProfileScreen({ navigation }) {
         const txt = await res.text().catch(()=> '');
         throw new Error(txt || `Error ${res.status}`);
       }
+
+      const json = await res.json().catch(() => ({}));
+      const rawAvatar = json?.avatar_url || json?.data?.avatar_url || '';
+
+      // Actualizamos el estado local inmediatamente para que no vuelva al avatar viejo
+      if (rawAvatar) {
+        setData((prev) => {
+          const p = prev || {};
+          const userPrev = p.user || {};
+          return { ...p, user: { ...userPrev, avatar_url: rawAvatar } };
+        });
+      }
+
       Alert.alert('Foto actualizada');
+      // Fuerza recarga (cache-bust) y luego quita la preview
       setAvatarNonce(Date.now());
+      setAvatarPreviewUri(null);
+
+      // Refresco desde servidor (por si hay más cambios)
       await loadProfile();
     } catch (e) {
       Alert.alert('Error', e?.message || 'No se pudo subir imagen');
@@ -162,7 +289,7 @@ export default function ProfileScreen({ navigation }) {
   const user = data?.user || null;
   const stats = data?.stats || {};
   const avatarUrl = user?.avatar_url
-    ? `${BASE}${user.avatar_url}${String(user.avatar_url).includes('?') ? '&' : '?'}v=${avatarNonce}`
+    ? `${(String(user.avatar_url).startsWith('/') ? PUBLIC_BASE : '')}${user.avatar_url}${String(user.avatar_url).includes('?') ? '&' : '?'}v=${avatarNonce}`
     : null;
 
   const s = {
@@ -230,8 +357,18 @@ export default function ProfileScreen({ navigation }) {
           {/* Avatar simple */}
           <View style={styles.avatarWrapper}>
             <TouchableOpacity onPress={pickImage} disabled={uploading} activeOpacity={0.85}>
-              {avatarUrl ? (
-                <Image key={avatarUrl} source={{ uri: avatarUrl }} style={styles.avatarImage} />
+              {avatarPreviewUri ? (
+                <Image
+                  key={`preview-${avatarNonce}`}
+                  source={{ uri: avatarPreviewUri }}
+                  style={styles.avatarImage}
+                />
+              ) : avatarUrl ? (
+                <Image
+                  key={`remote-${avatarNonce}`}
+                  source={{ uri: avatarUrl, cache: 'reload' }}
+                  style={styles.avatarImage}
+                />
               ) : (
                 <View style={styles.avatarPlaceholder}>
                   <Text style={styles.avatarInitial}>
@@ -271,6 +408,20 @@ export default function ProfileScreen({ navigation }) {
             )}
           </View>
 
+          {/* EasyPass */}
+          <View style={styles.passCard}>
+            <Text style={styles.section}>🎟️ EasyPass</Text>
+            <View style={{ flexDirection:'row', alignItems:'center', justifyContent:'space-between' }}>
+              <View>
+                <Text style={styles.passValue}>{easyPassLoading ? '...' : easyPass}</Text>
+                <Text style={styles.passHint}>Tus créditos disponibles para apuntarte a partidos</Text>
+              </View>
+              <TouchableOpacity style={styles.passBtn} onPress={buyEasyPass} activeOpacity={0.85}>
+                <Text style={styles.passBtnText}>Adquirir más</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+
           {/* Stats */}
           <View style={styles.statsCard}>
             <Text style={styles.section}>📊 Estadísticas</Text>
@@ -286,6 +437,9 @@ export default function ProfileScreen({ navigation }) {
 
           <TouchableOpacity style={styles.logoutBtn} onPress={logout}>
             <Text style={styles.logoutText}>Cerrar sesión</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.deleteBtn} onPress={deleteAccount}>
+            <Text style={styles.deleteText}>Eliminar cuenta</Text>
           </TouchableOpacity>
         </ScrollView>
       </ImageBackground>
@@ -343,6 +497,11 @@ const styles = StyleSheet.create({
 
   statsCard:{ backgroundColor:'rgba(17,17,17,0.92)', borderRadius:16, padding: spacing(2), borderWidth:1, borderColor:'rgba(255,255,255,0.06)' },
   section:{ color: ORANGE, fontWeight:'800', marginBottom:10, fontSize:14 },
+  passCard:{ backgroundColor:'rgba(17,17,17,0.92)', borderRadius:16, padding: spacing(2), borderWidth:1, borderColor:'rgba(255,255,255,0.06)', marginBottom: spacing(2) },
+  passValue:{ color:'#fff', fontSize:28, fontWeight:'900', marginBottom:4 },
+  passHint:{ color:'#9f9f9f', fontSize:12, fontWeight:'700', maxWidth:220 },
+  passBtn:{ backgroundColor: ORANGE, paddingVertical:12, paddingHorizontal:14, borderRadius:12 },
+  passBtnText:{ color:'#000', fontWeight:'900' },
   grid:{ flexDirection:'row', flexWrap:'wrap', columnGap:10, rowGap:10, justifyContent:'space-between' },
   gridItem:{ width:'48%', backgroundColor:'#121212', borderRadius:14, paddingVertical:14, paddingHorizontal:12, borderWidth:1, borderColor:'rgba(255,255,255,0.05)' },
   gridValue:{ color:'#fff', fontSize:20, fontWeight:'900', marginBottom:4 },
@@ -350,4 +509,6 @@ const styles = StyleSheet.create({
 
   logoutBtn:{ backgroundColor: ORANGE, padding: spacing(1.5), borderRadius:12, marginTop: spacing(2) },
   logoutText:{ color:'#000', fontWeight:'900', textAlign:'center' },
+  deleteBtn:{ backgroundColor: '#2b0b0b', padding: spacing(1.5), borderRadius:12, marginTop: spacing(1.2), borderWidth:1, borderColor:'rgba(255,90,0,0.35)' },
+  deleteText:{ color:'#ffb3a8', fontWeight:'900', textAlign:'center' },
 });

@@ -12,6 +12,9 @@ import {
   Alert,
   TextInput,
   Keyboard,
+  KeyboardAvoidingView,
+  Platform,
+  ScrollView,
 } from 'react-native';
 import { BlurView } from 'expo-blur';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -324,197 +327,204 @@ export default function AccessScreen({ navigation, route }) {
         <BlurView intensity={60} tint="dark" style={StyleSheet.absoluteFill} pointerEvents="none" />
         <StatusBar barStyle="light-content" translucent backgroundColor="transparent" />
 
-      <View
-        style={styles.container}
-        onStartShouldSetResponder={() => true}
-        onResponderRelease={Keyboard.dismiss}
-      >
-        <Image source={APP_LOGO} style={styles.logo} />
-        <Text style={styles.title}>EasyFutbol</Text>
-
-        <View style={styles.switchRow}>
-          <TouchableOpacity
-            style={[styles.switchBtn, showLogin && styles.switchBtnActive]}
-            onPress={() => { setMode('login'); setShowForgot(false); }}
-            disabled={loading}
+        <KeyboardAvoidingView
+          style={{ flex: 1 }}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          keyboardVerticalOffset={Platform.OS === 'ios' ? 60 : 0}
+        >
+          <ScrollView
+            contentContainerStyle={styles.container}
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={false}
           >
-            <Text style={[styles.switchText, showLogin && styles.switchTextActive]}>Iniciar sesión</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.switchBtn, !showLogin && styles.switchBtnActive]}
-            onPress={() => { setMode('register'); setShowForgot(false); }}
-            disabled={loading}
-          >
-            <Text style={[styles.switchText, !showLogin && styles.switchTextActive]}>Registrarme</Text>
-          </TouchableOpacity>
-        </View>
+            {/* Contenido existente */}
+            <Image source={APP_LOGO} style={styles.logo} />
+            <Text style={styles.title}>EasyFutbol</Text>
 
-        {showLogin ? (
-          <View style={styles.form}>
-            <Text style={styles.subtitle}>Usuario o correo (si no verificas, usa correo)</Text>
-            <TextInput
-              style={styles.input}
-              value={identifier}
-              onChangeText={setIdentifier}
-              placeholder="Usuario o correo"
-              placeholderTextColor="#777"
-              autoCapitalize="none"
-              keyboardType="default"
-              editable={!loading}
-            />
-
-            <Text style={[styles.subtitle, { marginTop: 10 }]}>Contraseña</Text>
-            <View style={styles.passwordRow}>
-              <TextInput
-                style={[styles.input, styles.passwordInput]}
-                value={password}
-                onChangeText={setPassword}
-                placeholder="Contraseña"
-                placeholderTextColor="#777"
-                secureTextEntry={!showPassword}
-                autoCapitalize="none"
-                editable={!loading}
-              />
+            <View style={styles.switchRow}>
               <TouchableOpacity
-                style={styles.eyeBtn}
-                onPress={() => setShowPassword(v => !v)}
+                style={[styles.switchBtn, showLogin && styles.switchBtnActive]}
+                onPress={() => { setMode('login'); setShowForgot(false); }}
                 disabled={loading}
-                accessibilityLabel={showPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'}
               >
-                <Text style={styles.eyeText}>{showPassword ? '🙈' : '👁️'}</Text>
+                <Text style={[styles.switchText, showLogin && styles.switchTextActive]}>Iniciar sesión</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.switchBtn, !showLogin && styles.switchBtnActive]}
+                onPress={() => { setMode('register'); setShowForgot(false); }}
+                disabled={loading}
+              >
+                <Text style={[styles.switchText, !showLogin && styles.switchTextActive]}>Registrarme</Text>
               </TouchableOpacity>
             </View>
 
-            <TouchableOpacity
-              style={[styles.primaryBtn, loading && { opacity: 0.7 }]}
-              onPress={handleLogin}
-              disabled={loading}
-            >
-              <Text style={styles.primaryText}>{loading ? 'Entrando...' : 'Entrar'}</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              onPress={() => setShowForgot(v => !v)}
-              disabled={loading}
-              style={styles.forgotBtn}
-            >
-              <Text style={styles.forgotText}>¿Has olvidado tu contraseña?</Text>
-            </TouchableOpacity>
-
-            {showForgot && (
-              <View style={styles.forgotBox}>
-                <Text style={styles.forgotTitle}>Restablecer contraseña</Text>
+            {showLogin ? (
+              <View style={styles.form}>
+                <Text style={styles.subtitle}>Usuario o correo (si no verificas, usa correo)</Text>
                 <TextInput
                   style={styles.input}
-                  value={forgotIdentifier}
-                  onChangeText={setForgotIdentifier}
-                  placeholder="Tu correo electrónico"
+                  value={identifier}
+                  onChangeText={setIdentifier}
+                  placeholder="Usuario o correo"
+                  placeholderTextColor="#777"
+                  autoCapitalize="none"
+                  keyboardType="default"
+                  editable={!loading}
+                />
+
+                <Text style={[styles.subtitle, { marginTop: 10 }]}>Contraseña</Text>
+                <View style={styles.passwordRow}>
+                  <TextInput
+                    style={[styles.input, styles.passwordInput]}
+                    value={password}
+                    onChangeText={setPassword}
+                    placeholder="Contraseña"
+                    placeholderTextColor="#777"
+                    secureTextEntry={!showPassword}
+                    autoCapitalize="none"
+                    editable={!loading}
+                  />
+                  <TouchableOpacity
+                    style={styles.eyeBtn}
+                    onPress={() => setShowPassword(v => !v)}
+                    disabled={loading}
+                    accessibilityLabel={showPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'}
+                  >
+                    <Text style={styles.eyeText}>{showPassword ? '🙈' : '👁️'}</Text>
+                  </TouchableOpacity>
+                </View>
+
+                <TouchableOpacity
+                  style={[styles.primaryBtn, loading && { opacity: 0.7 }]}
+                  onPress={handleLogin}
+                  disabled={loading}
+                >
+                  <Text style={styles.primaryText}>{loading ? 'Entrando...' : 'Entrar'}</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  onPress={() => setShowForgot(v => !v)}
+                  disabled={loading}
+                  style={styles.forgotBtn}
+                >
+                  <Text style={styles.forgotText}>¿Has olvidado tu contraseña?</Text>
+                </TouchableOpacity>
+
+                {showForgot && (
+                  <View style={styles.forgotBox}>
+                    <Text style={styles.forgotTitle}>Restablecer contraseña</Text>
+                    <TextInput
+                      style={styles.input}
+                      value={forgotIdentifier}
+                      onChangeText={setForgotIdentifier}
+                      placeholder="Tu correo electrónico"
+                      placeholderTextColor="#777"
+                      autoCapitalize="none"
+                      keyboardType="email-address"
+                      editable={!loading}
+                    />
+
+                    <TouchableOpacity
+                      style={[styles.secondaryBtn, loading && { opacity: 0.7 }]}
+                      onPress={handleForgotPassword}
+                      disabled={loading}
+                    >
+                      <Text style={styles.secondaryText}>{loading ? 'Enviando...' : 'Enviar enlace'}</Text>
+                    </TouchableOpacity>
+                  </View>
+                )}
+              </View>
+            ) : (
+              <View style={styles.form}>
+                <Text style={styles.subtitle}>Usuario</Text>
+                <TextInput
+                  style={styles.input}
+                  value={username}
+                  onChangeText={setUsername}
+                  placeholder="Nombre de usuario"
+                  placeholderTextColor="#777"
+                  autoCapitalize="none"
+                  editable={!loading}
+                />
+
+                <Text style={[styles.subtitle, { marginTop: 10 }]}>Correo electrónico</Text>
+                <TextInput
+                  style={styles.input}
+                  value={email}
+                  onChangeText={setEmail}
+                  placeholder="correo@ejemplo.com"
                   placeholderTextColor="#777"
                   autoCapitalize="none"
                   keyboardType="email-address"
                   editable={!loading}
                 />
 
+                <Text style={[styles.subtitle, { marginTop: 10 }]}>Teléfono</Text>
+                <TextInput
+                  style={styles.input}
+                  value={phone}
+                  onChangeText={setPhone}
+                  placeholder="Ej: 600123123"
+                  placeholderTextColor="#777"
+                  keyboardType="phone-pad"
+                  editable={!loading}
+                />
+
+                <Text style={[styles.subtitle, { marginTop: 10 }]}>Contraseña</Text>
+                <View style={styles.passwordRow}>
+                  <TextInput
+                    style={[styles.input, styles.passwordInput]}
+                    value={regPassword}
+                    onChangeText={setRegPassword}
+                    placeholder="Mínimo 6, 1 mayúscula y 1 símbolo"
+                    placeholderTextColor="#777"
+                    secureTextEntry={!showRegPassword}
+                    autoCapitalize="none"
+                    editable={!loading}
+                  />
+                  <TouchableOpacity
+                    style={styles.eyeBtn}
+                    onPress={() => setShowRegPassword(v => !v)}
+                    disabled={loading}
+                    accessibilityLabel={showRegPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'}
+                  >
+                    <Text style={styles.eyeText}>{showRegPassword ? '🙈' : '👁️'}</Text>
+                  </TouchableOpacity>
+                </View>
+
+                <Text style={[styles.subtitle, { marginTop: 10 }]}>Confirmar contraseña</Text>
+                <View style={styles.passwordRow}>
+                  <TextInput
+                    style={[styles.input, styles.passwordInput]}
+                    value={confirmPassword}
+                    onChangeText={setConfirmPassword}
+                    placeholder="Repite la contraseña"
+                    placeholderTextColor="#777"
+                    secureTextEntry={!showConfirmPassword}
+                    autoCapitalize="none"
+                    editable={!loading}
+                  />
+                  <TouchableOpacity
+                    style={styles.eyeBtn}
+                    onPress={() => setShowConfirmPassword(v => !v)}
+                    disabled={loading}
+                    accessibilityLabel={showConfirmPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'}
+                  >
+                    <Text style={styles.eyeText}>{showConfirmPassword ? '🙈' : '👁️'}</Text>
+                  </TouchableOpacity>
+                </View>
+
                 <TouchableOpacity
-                  style={[styles.secondaryBtn, loading && { opacity: 0.7 }]}
-                  onPress={handleForgotPassword}
+                  style={[styles.primaryBtn, loading && { opacity: 0.7 }]}
+                  onPress={handleRegister}
                   disabled={loading}
                 >
-                  <Text style={styles.secondaryText}>{loading ? 'Enviando...' : 'Enviar enlace'}</Text>
+                  <Text style={styles.primaryText}>{loading ? 'Creando...' : 'Crear cuenta'}</Text>
                 </TouchableOpacity>
               </View>
             )}
-          </View>
-        ) : (
-          <View style={styles.form}>
-            <Text style={styles.subtitle}>Usuario</Text>
-            <TextInput
-              style={styles.input}
-              value={username}
-              onChangeText={setUsername}
-              placeholder="Nombre de usuario"
-              placeholderTextColor="#777"
-              autoCapitalize="none"
-              editable={!loading}
-            />
-
-            <Text style={[styles.subtitle, { marginTop: 10 }]}>Correo electrónico</Text>
-            <TextInput
-              style={styles.input}
-              value={email}
-              onChangeText={setEmail}
-              placeholder="correo@ejemplo.com"
-              placeholderTextColor="#777"
-              autoCapitalize="none"
-              keyboardType="email-address"
-              editable={!loading}
-            />
-
-            <Text style={[styles.subtitle, { marginTop: 10 }]}>Teléfono</Text>
-            <TextInput
-              style={styles.input}
-              value={phone}
-              onChangeText={setPhone}
-              placeholder="Ej: 600123123"
-              placeholderTextColor="#777"
-              keyboardType="phone-pad"
-              editable={!loading}
-            />
-
-            <Text style={[styles.subtitle, { marginTop: 10 }]}>Contraseña</Text>
-            <View style={styles.passwordRow}>
-              <TextInput
-                style={[styles.input, styles.passwordInput]}
-                value={regPassword}
-                onChangeText={setRegPassword}
-                placeholder="Mínimo 6, 1 mayúscula y 1 símbolo"
-                placeholderTextColor="#777"
-                secureTextEntry={!showRegPassword}
-                autoCapitalize="none"
-                editable={!loading}
-              />
-              <TouchableOpacity
-                style={styles.eyeBtn}
-                onPress={() => setShowRegPassword(v => !v)}
-                disabled={loading}
-                accessibilityLabel={showRegPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'}
-              >
-                <Text style={styles.eyeText}>{showRegPassword ? '🙈' : '👁️'}</Text>
-              </TouchableOpacity>
-            </View>
-
-            <Text style={[styles.subtitle, { marginTop: 10 }]}>Confirmar contraseña</Text>
-            <View style={styles.passwordRow}>
-              <TextInput
-                style={[styles.input, styles.passwordInput]}
-                value={confirmPassword}
-                onChangeText={setConfirmPassword}
-                placeholder="Repite la contraseña"
-                placeholderTextColor="#777"
-                secureTextEntry={!showConfirmPassword}
-                autoCapitalize="none"
-                editable={!loading}
-              />
-              <TouchableOpacity
-                style={styles.eyeBtn}
-                onPress={() => setShowConfirmPassword(v => !v)}
-                disabled={loading}
-                accessibilityLabel={showConfirmPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'}
-              >
-                <Text style={styles.eyeText}>{showConfirmPassword ? '🙈' : '👁️'}</Text>
-              </TouchableOpacity>
-            </View>
-
-            <TouchableOpacity
-              style={[styles.primaryBtn, loading && { opacity: 0.7 }]}
-              onPress={handleRegister}
-              disabled={loading}
-            >
-              <Text style={styles.primaryText}>{loading ? 'Creando...' : 'Crear cuenta'}</Text>
-            </TouchableOpacity>
-          </View>
-        )}
-      </View>
+          </ScrollView>
+        </KeyboardAvoidingView>
       </ImageBackground>
     </TouchableWithoutFeedback>
   );
@@ -523,10 +533,11 @@ export default function AccessScreen({ navigation, route }) {
 const styles = StyleSheet.create({
   bg: { flex: 1 },
   container: {
-    flex: 1,
+    flexGrow: 1,
     alignItems: 'center',
     justifyContent: 'center',
     padding: 20,
+    paddingBottom: 40,
   },
   logo: { width: 80, height: 80, marginBottom: 10 },
   title: { color: '#fff', fontSize: 28, fontWeight: '800', marginBottom: 14 },

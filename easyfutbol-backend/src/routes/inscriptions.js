@@ -11,10 +11,9 @@ function refundPercent(startsAtISO) {
   const starts = new Date(startsAtISO).getTime();
   const now = Date.now();
   const diffH = (starts - now) / 36e5;
-  if (diffH > 24) return 100;
-  if (diffH > 3) return 40;
-  return 0;
+  return diffH > 6 ? 100 : 0;
 }
+
 
 // --- Mis inscripciones (para la app) ---
 router.get('/me/inscriptions', requireAuth, async (req, res) => {
@@ -38,6 +37,105 @@ router.get('/me/inscriptions', requireAuth, async (req, res) => {
   } catch (e) {
     console.error(e);
     res.status(500).json({ ok: false, msg: 'Error listando inscripciones' });
+  }
+});
+
+// --- Apuntarse usando EasyPass ---
+router.post('/matches/:id/join-with-easypass', requireAuth, async (req, res) => {
+  const conn = await pool.getConnection();
+
+  try {
+    const userId = req.user.id;
+    const matchId = Number(req.params.id);
+
+    await conn.beginTransaction();
+
+    // bloquear usuario para comprobar saldo EasyPass
+    const [[user]] = await conn.query(
+      'SELECT easypass_balance AS easyPassBalance FROM users WHERE id=? FOR UPDATE',
+      [userId]
+    );
+
+    if (!user || Number(user.easyPassBalance || 0) < 1) {
+      await conn.rollback();
+      return res.status(400).json({ ok:false, msg:'No tienes EasyPass suficientes' });
+    }
+
+    // comprobar plazas
+    const [[match]] = await conn.query(
+      'SELECT spots_taken, spots_total FROM matches WHERE id=? FOR UPDATE',
+      [matchId]
+    );
+
+    if (!match) {
+      await conn.rollback();
+      return res.status(404).json({ ok:false, msg:'Partido no encontrado' });
+    }
+
+    const [[existingInscription]] = await conn.query(
+      `SELECT id, status
+       FROM inscriptions
+       WHERE match_id=? AND user_id=?
+       LIMIT 1`,
+      [matchId, userId]
+    );
+
+    if (existingInscription && existingInscription.status !== 'cancelled') {
+      await conn.rollback();
+      return res.status(400).json({ ok:false, msg:'Ya estás inscrito en este partido' });
+    }
+
+    if (Number(match.spots_taken || 0) >= Number(match.spots_total || 0)) {
+      await conn.rollback();
+      return res.status(400).json({ ok:false, msg:'Partido lleno' });
+    }
+
+    // descontar EasyPass
+    await conn.query(
+      'UPDATE users SET easypass_balance = easypass_balance - 1 WHERE id=?',
+      [userId]
+    );
+
+    // crear inscripción confirmada
+    const [ins] = await conn.query(
+      `INSERT INTO inscriptions (match_id, user_id, status, ticket_type)
+       VALUES (?, ?, 'confirmed', 'easypass')`,
+      [matchId, userId]
+    );
+
+    // aumentar plazas ocupadas
+    await conn.query(
+      'UPDATE matches SET spots_taken = spots_taken + 1 WHERE id=?',
+      [matchId]
+    );
+
+    // registrar movimiento de EasyPass
+    await conn.query(
+      `INSERT INTO easypass_transactions (user_id, type, amount, description, event_id, created_at)
+       VALUES (?, 'spend', -1, 'Inscripción con EasyPass', ?, NOW())`,
+      [userId, matchId]
+    );
+
+    const [[updatedUser]] = await conn.query(
+      'SELECT easypass_balance AS easyPassBalance FROM users WHERE id=? LIMIT 1',
+      [userId]
+    );
+
+    await conn.commit();
+
+    return res.json({
+      ok:true,
+      msg:'Inscripción confirmada con EasyPass',
+      inscription_id: ins.insertId,
+      easyPassBalance: Number(updatedUser?.easyPassBalance || 0),
+    });
+
+  } catch (e) {
+    await conn.rollback();
+    console.error(e);
+    return res.status(500).json({ ok:false, msg:'Error al usar EasyPass' });
+  } finally {
+    conn.release();
   }
 });
 
@@ -71,9 +169,59 @@ router.post('/matches/:id/cancel', requireAuth, async (req, res) => {
 
     // Si estaba confirmado, calcular política
     if (row.status === 'confirmed') {
+
+      // --- Caso nuevo: inscripción pagada con EasyPass ---
+      if (!row.stripe_session_id && (row.ticket_type === 'credit' || row.ticket_type === 'easypass')) {
+        const pct = refundPercent(row.starts_at);
+        if (pct === 0) {
+          return res.status(400).json({ ok:false, msg:'Solo se devuelve el EasyPass si cancelas con más de 6 horas de antelación' });
+        }
+
+        await conn.beginTransaction();
+
+        // devolver EasyPass
+        await conn.query(
+          'UPDATE users SET easypass_balance = easypass_balance + 1 WHERE id=?',
+          [userId]
+        );
+
+        // registrar devolución
+        await conn.query(
+          `INSERT INTO easypass_transactions (user_id, type, amount, description, event_id, created_at)
+           VALUES (?, 'refund', 1, 'Cancelación con devolución de EasyPass', ?, NOW())`,
+          [userId, matchId]
+        );
+
+        // cancelar inscripción
+        await conn.query(
+          'UPDATE inscriptions SET status="cancelled" WHERE id=?',
+          [row.inscription_id]
+        );
+
+        // liberar plaza
+        await conn.query(
+          'UPDATE matches SET spots_taken = GREATEST(spots_taken - 1, 0) WHERE id=?',
+          [matchId]
+        );
+
+        const [[updatedUser]] = await conn.query(
+          'SELECT easypass_balance AS easyPassBalance FROM users WHERE id=? LIMIT 1',
+          [userId]
+        );
+
+        await conn.commit();
+
+        return res.json({
+          ok:true,
+          msg:'Cancelada y EasyPass devuelto',
+          pct,
+          easyPassBalance: Number(updatedUser?.easyPassBalance || 0),
+        });
+      }
+
       const pct = refundPercent(row.starts_at);
       if (pct === 0) {
-        return res.status(400).json({ ok:false, msg:'Fuera de ventana de reembolso' });
+        return res.status(400).json({ ok:false, msg:'Solo se devuelve el pago si cancelas con más de 6 horas de antelación' });
       }
       if (!row.stripe_session_id) {
         return res.status(400).json({ ok:false, msg:'No se encontró el pago en Stripe' });

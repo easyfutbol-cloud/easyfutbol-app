@@ -33,6 +33,7 @@ import ProfileScreen from './src/screens/ProfileScreen';
 import AdminCreateMatchScreen from './src/screens/AdminCreateMatchScreen';
 import AdminMatchStatsScreen from './src/screens/AdminMatchStatsScreen';
 import AdminNotifyScreen from './src/screens/AdminNotifyScreen';
+import AdminEasyPassScreen from './src/screens/admineasypassscreen';
 
 // Notificaciones (opcional)
 let Notifications = null;
@@ -286,6 +287,7 @@ function AppMenu({ currentRouteName }) {
     { label: 'Crear Partido (Admin)', screen: 'AdminCreateMatch' },
     { label: 'Stats Partido (Admin)', screen: 'AdminMatchStats' },
     { label: 'Avisos (Admin)', screen: 'AdminNotify' },
+    { label: 'Control de EasyPass (Admin)', screen: 'AdminEasyPass' },
   ];
 
   const goTo = (screen) => {
@@ -390,6 +392,7 @@ function AppShell({ currentRouteName }) {
         <Stack.Screen name="AdminCreateMatch" component={AdminCreateMatchScreen} />
         <Stack.Screen name="AdminMatchStats" component={AdminMatchStatsScreen} />
         <Stack.Screen name="AdminNotify" component={AdminNotifyScreen} />
+        <Stack.Screen name="AdminEasyPass" component={AdminEasyPassScreen} />
       </Stack.Navigator>
 
       <AppMenu currentRouteName={currentRouteName} />

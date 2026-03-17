@@ -1,7 +1,8 @@
-import { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, StatusBar, TouchableOpacity, Linking, ActivityIndicator, Alert, ImageBackground } from 'react-native';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { View, Text, StyleSheet, StatusBar, TouchableOpacity, Linking, ActivityIndicator, Alert, ImageBackground, Image, ScrollView } from 'react-native';
 import { colors, spacing } from '../theme';
 import { api } from '../api/client';
+import { useFocusEffect } from '@react-navigation/native';
 
 const MAX_TICKETS_PER_PURCHASE = 8;
 
@@ -18,6 +19,48 @@ export default function MatchScreen({ route, navigation }) {
   const [myTicketsCount, setMyTicketsCount] = useState(0);
   const [myTicketsLoading, setMyTicketsLoading] = useState(true);
   const [quantity, setQuantity] = useState(1);
+  const [easyPassBalance, setEasyPassBalance] = useState(0);
+  const [easyPassLoading, setEasyPassLoading] = useState(true);
+
+  const [attendees, setAttendees] = useState([]);
+  const [attendeesLoading, setAttendeesLoading] = useState(true);
+
+  const attendeesNormalized = useMemo(() => {
+    const base = (api?.defaults?.baseURL || '').replace(/\/+$/, '');
+
+    // Normalizamos y a la vez evitamos duplicados por user_id (por si hay inscripciones duplicadas)
+    const seen = new Set();
+    const out = [];
+
+    (attendees || []).forEach((a, idx) => {
+      const userId = a.user_id ?? a.id ?? a.player_id ?? null;
+      const username = a.username || a.user_login || a.handle || a.name || 'Jugador';
+      let avatar = a.avatar_url || a.avatarUrl || a.avatar || '';
+
+      // Si viene path relativo (/uploads/avatars/...), lo convertimos a URL absoluta
+      if (avatar && avatar.startsWith('/')) {
+        avatar = `${base}${avatar}`;
+      }
+
+      // Key estable y única
+      const stableId = userId != null ? String(userId) : `${username}-${idx}`;
+
+      // Evitar duplicados por userId cuando exista
+      if (userId != null) {
+        if (seen.has(stableId)) return;
+        seen.add(stableId);
+      }
+
+      out.push({
+        key: stableId,
+        id: userId,
+        username,
+        avatar,
+      });
+    });
+
+    return out;
+  }, [attendees]);
 
   useEffect(() => {
     if (!matchId) {
@@ -91,6 +134,76 @@ export default function MatchScreen({ route, navigation }) {
     };
   }, [matchId]);
 
+  const loadEasyPassCredits = useCallback(async () => {
+    try {
+      setEasyPassLoading(true);
+      const res = await api.get('/me/credits');
+      const payload = res?.data;
+      setEasyPassBalance(Number(payload?.easyPassBalance ?? payload?.credits ?? 0));
+    } catch (err) {
+      console.log('Error cargando EasyPass', err?.message || err);
+      setEasyPassBalance(0);
+    } finally {
+      setEasyPassLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadEasyPassCredits();
+  }, [loadEasyPassCredits]);
+
+  useFocusEffect(
+    useCallback(() => {
+      loadEasyPassCredits();
+    }, [loadEasyPassCredits])
+  );
+
+  useEffect(() => {
+    if (!matchId) {
+      setAttendeesLoading(false);
+      return;
+    }
+
+    let cancelled = false;
+
+    (async () => {
+      try {
+        setAttendeesLoading(true);
+
+        // 1) Endpoint dedicado (recomendado)
+        try {
+          const res = await api.get(`/matches/${matchId}/attendees`);
+          const payload = res?.data;
+          if (!cancelled && payload?.ok) {
+            setAttendees(payload.data?.attendees || []);
+            return;
+          }
+        } catch (_) {
+          // fallback abajo
+        }
+
+        // 2) Fallback: si el endpoint del partido ya incluye asistentes
+        if (match?.attendees && Array.isArray(match.attendees)) {
+          if (!cancelled) setAttendees(match.attendees);
+          return;
+        }
+
+        if (!cancelled) setAttendees([]);
+      } catch (e) {
+        if (!cancelled) {
+          console.log('Error cargando asistentes', e?.message || e);
+          setAttendees([]);
+        }
+      } finally {
+        if (!cancelled) setAttendeesLoading(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [matchId, match?.attendees]);
+
   const fieldName = match?.field_name || '';
   const city = match?.city || '';
   const price = match?.price_eur ?? null;
@@ -111,11 +224,17 @@ export default function MatchScreen({ route, navigation }) {
     navigation?.navigate('AdminMatchStats', { id: Number(matchId) });
   };
 
+  const handleGoToEasyPass = () => {
+    navigation?.navigate('EasyPass');
+  };
+
+  const canJoinWithEasyPass = quantity === 1 && easyPassBalance >= 1;
+
   const handlePay = async () => {
     if (!matchId || !match) return;
 
     if (!isPayable) {
-      Alert.alert('No disponible', 'Este partido ya no está disponible para pago');
+      Alert.alert('No disponible', 'Este partido ya no está disponible para reserva');
       return;
     }
 
@@ -124,33 +243,56 @@ export default function MatchScreen({ route, navigation }) {
       return;
     }
 
+    if (quantity === 1 && easyPassBalance < 1) {
+      Alert.alert(
+        'Sin EasyPass',
+        'No tienes EasyPass suficientes para reservar este partido. Compra más EasyPass para continuar.',
+        [
+          { text: 'Cancelar', style: 'cancel' },
+          { text: 'Comprar EasyPass', onPress: handleGoToEasyPass },
+        ]
+      );
+      return;
+    }
+
+    if (quantity > 1) {
+      Alert.alert(
+        'Reserva múltiple no disponible con EasyPass',
+        'Por ahora solo puedes reservar 1 plaza usando EasyPass desde esta pantalla.'
+      );
+      return;
+    }
+
     try {
       setPaying(true);
 
-      const res = await api.post(`/matches/${matchId}/pay`, {
+      const res = await api.post(`/matches/${matchId}/join-with-easypass`, {
         ticketType,
-        quantity,
       });
       const data = res?.data;
 
-      if (!data?.ok || !data.checkoutUrl) {
-        const msg = data?.msg || 'No se ha podido iniciar el pago';
+      if (!data?.ok) {
+        const msg = data?.msg || 'No se ha podido completar la reserva con EasyPass';
         Alert.alert('Error', msg);
         return;
       }
 
-      const url = data.checkoutUrl;
+      setEasyPassBalance((prev) => Math.max(Number(prev || 0) - 1, 0));
+      loadEasyPassCredits();
+      setMyTicketsCount((prev) => Number(prev || 0) + 1);
+      setMatch((prev) => {
+        if (!prev) return prev;
+        const currentSpots = Number(prev.spots_taken || 0);
+        return {
+          ...prev,
+          spots_taken: currentSpots + 1,
+        };
+      });
 
-      const supported = await Linking.canOpenURL(url);
-      if (!supported) {
-        Alert.alert('Error', 'No se ha podido abrir la página de pago');
-        return;
-      }
-
-      await Linking.openURL(url);
+      Alert.alert('Reserva confirmada', 'Te has inscrito al partido usando 1 EasyPass.');
     } catch (e) {
-      console.log('Error iniciando pago', e?.response?.data || e.message || e);
-      const msg = e?.response?.data?.msg || 'No se ha podido iniciar el pago';
+      console.log('Error usando EasyPass', e?.response?.data || e.message || e);
+      const msg = e?.response?.data?.msg || 'No se ha podido completar la reserva con EasyPass';
       Alert.alert('Error', msg);
     } finally {
       setPaying(false);
@@ -249,6 +391,38 @@ export default function MatchScreen({ route, navigation }) {
         </View>
       )}
 
+      <Text style={styles.label}>Jugadores apuntados</Text>
+
+      {attendeesLoading ? (
+        <View style={styles.attendeesLoadingRow}>
+          <ActivityIndicator size="small" color={colors.orange} />
+          <Text style={styles.attendeesLoadingText}>Cargando jugadores...</Text>
+        </View>
+      ) : attendeesNormalized.length === 0 ? (
+        <Text style={styles.meta}>Aún no hay jugadores confirmados.</Text>
+      ) : (
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.attendeesRow}
+        >
+          {attendeesNormalized.map((p) => (
+            <View key={p.key} style={styles.attendeeCard}>
+              <View style={styles.attendeeAvatarWrap}>
+                {p.avatar ? (
+                  <Image source={{ uri: p.avatar }} style={styles.attendeeAvatar} />
+                ) : (
+                  <View style={styles.attendeeAvatarFallback} />
+                )}
+              </View>
+              <Text style={styles.attendeeName} numberOfLines={1}>
+                {p.username}
+              </Text>
+            </View>
+          ))}
+        </ScrollView>
+      )}
+
       <Text style={styles.label}>Elige tu camiseta</Text>
       <View style={styles.shirtRow}>
         <TouchableOpacity
@@ -341,10 +515,36 @@ export default function MatchScreen({ route, navigation }) {
             : isFull
             ? 'Partido completo'
             : paying
-            ? 'Abriendo pago...'
-            : `Pagar y reservar (${quantity})`}
+            ? 'Reservando...'
+            : quantity > 1
+            ? `Reservar ${quantity} plazas`
+            : canJoinWithEasyPass
+            ? 'Reservar con 1 EasyPass'
+            : 'Comprar EasyPass para reservar'}
         </Text>
       </TouchableOpacity>
+
+      <View style={styles.easyPassCard}>
+        <Text style={styles.easyPassTitle}>Tus EasyPass</Text>
+        <Text style={styles.easyPassValue}>
+          {easyPassLoading ? 'Cargando...' : easyPassBalance}
+        </Text>
+        <Text style={styles.easyPassHint}>
+          {easyPassLoading
+            ? 'Estamos consultando tu saldo'
+            : easyPassBalance > 0
+            ? 'Tienes saldo disponible para reservar 1 plaza al instante con EasyPass.'
+            : 'Compra más EasyPass para reservar tus próximos partidos más rápido.'}
+        </Text>
+
+        <TouchableOpacity
+          style={styles.easyPassBtn}
+          onPress={handleGoToEasyPass}
+          activeOpacity={0.85}
+        >
+          <Text style={styles.easyPassBtnText}>Comprar más EasyPass</Text>
+        </TouchableOpacity>
+      </View>
 
       {isAdmin && (
         <TouchableOpacity
@@ -369,7 +569,7 @@ export default function MatchScreen({ route, navigation }) {
         <Text style={styles.infoText}>
           {`Ya tienes ${myTicketsCount} entrada${
             myTicketsCount > 1 ? 's' : ''
-          } para este partido, pero puedes comprar más.`}
+          } para este partido.`}
         </Text>
       )}
     </View>
@@ -523,7 +723,92 @@ const styles = StyleSheet.create({
     color: '#aaaaaa',
     fontSize: 13,
   },
+  easyPassCard: {
+    marginTop: spacing(2),
+    padding: spacing(2),
+    borderRadius: 16,
+    backgroundColor: '#111',
+    borderWidth: 1,
+    borderColor: '#2a2a2a',
+  },
+  easyPassTitle: {
+    color: colors.orange,
+    fontSize: 14,
+    fontWeight: '800',
+    marginBottom: spacing(0.5),
+  },
+  easyPassValue: {
+    color: colors.white,
+    fontSize: 28,
+    fontWeight: '900',
+  },
+  easyPassHint: {
+    color: '#aaaaaa',
+    fontSize: 13,
+    marginTop: spacing(0.5),
+    lineHeight: 18,
+  },
+  easyPassBtn: {
+    marginTop: spacing(1.5),
+    backgroundColor: '#1b1b1b',
+    borderWidth: 1,
+    borderColor: colors.orange,
+    paddingVertical: spacing(1.2),
+    borderRadius: 12,
+    alignItems: 'center',
+  },
+  easyPassBtnText: {
+    color: colors.white,
+    fontWeight: '800',
+    fontSize: 14,
+  },
   loading:{ color:colors.gray, textAlign:'center', marginTop:spacing(4) },
   btn:{ backgroundColor:colors.orange, paddingVertical:spacing(1.5), borderRadius:12, alignItems:'center', marginTop:spacing(3) },
   btnText:{ color:colors.black, fontWeight:'800', fontSize:16 },
+  attendeesLoadingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: spacing(1.5),
+  },
+  attendeesLoadingText: {
+    color: '#aaaaaa',
+    marginLeft: spacing(1),
+    fontSize: 13,
+  },
+  attendeesRow: {
+    paddingBottom: spacing(1.5),
+  },
+  attendeeCard: {
+    width: 86,
+    alignItems: 'center',
+    marginRight: spacing(1),
+  },
+  attendeeAvatarWrap: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    borderWidth: 2,
+    borderColor: colors.orange,
+    backgroundColor: '#111',
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+    marginBottom: spacing(0.6),
+  },
+  attendeeAvatar: {
+    width: 56,
+    height: 56,
+  },
+  attendeeAvatarFallback: {
+    width: 56,
+    height: 56,
+    backgroundColor: '#1b1b1b',
+  },
+  attendeeName: {
+    color: colors.white,
+    fontSize: 12,
+    fontWeight: '700',
+    textAlign: 'center',
+    maxWidth: 86,
+  },
 });

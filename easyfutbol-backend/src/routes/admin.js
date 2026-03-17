@@ -161,4 +161,88 @@ router.post('/admin/matches', requireAuth, requireAdmin, async (req, res) => {
   }
 });
 
+/**
+ * 4) Ajuste manual de EasyPass (ADMIN)
+ * Body esperado:
+ * {
+ *   "amount": 3,                         // puede ser positivo o negativo, pero no 0
+ *   "reason": "Compensación por incidencia"
+ * }
+ */
+router.post('/admin/users/:id/easypass-adjust', requireAuth, requireAdmin, async (req, res) => {
+  const conn = await pool.getConnection();
+  try {
+    const userId = Number(req.params.id);
+    const amount = Number(req.body?.amount);
+    const reason = String(req.body?.reason || '').trim();
+
+    if (!Number.isInteger(userId) || userId <= 0) {
+      return res.status(400).json({ ok:false, msg:'Usuario inválido' });
+    }
+
+    if (!Number.isInteger(amount) || amount === 0) {
+      return res.status(400).json({ ok:false, msg:'La cantidad debe ser un número entero distinto de 0' });
+    }
+
+    if (!reason) {
+      return res.status(400).json({ ok:false, msg:'El motivo es obligatorio' });
+    }
+
+    await conn.beginTransaction();
+
+    const [[user]] = await conn.query(
+      'SELECT id, name, email, easypass_balance FROM users WHERE id=? LIMIT 1 FOR UPDATE',
+      [userId]
+    );
+
+    if (!user) {
+      await conn.rollback();
+      return res.status(404).json({ ok:false, msg:'Usuario no encontrado' });
+    }
+
+    const currentBalance = Number(user.easypass_balance || 0);
+    const nextBalance = currentBalance + amount;
+
+    if (nextBalance < 0) {
+      await conn.rollback();
+      return res.status(400).json({ ok:false, msg:'El ajuste dejaría el saldo de EasyPass en negativo' });
+    }
+
+    await conn.query(
+      'UPDATE users SET easypass_balance=? WHERE id=?',
+      [nextBalance, userId]
+    );
+
+    await conn.query(
+      `INSERT INTO easypass_transactions (user_id, type, amount, description, created_at)
+       VALUES (?, 'admin_adjustment', ?, ?, NOW())`,
+      [userId, amount, `Ajuste manual admin: ${reason}`]
+    );
+
+    await conn.commit();
+
+    return res.json({
+      ok:true,
+      msg:'Ajuste de EasyPass aplicado correctamente',
+      data: {
+        user: {
+          id: Number(user.id),
+          name: user.name,
+          email: user.email,
+        },
+        amount,
+        reason,
+        easyPassBalance: nextBalance,
+        credits: nextBalance,
+      },
+    });
+  } catch (e) {
+    await conn.rollback();
+    console.error(e);
+    return res.status(500).json({ ok:false, msg:'Error aplicando ajuste manual de EasyPass' });
+  } finally {
+    conn.release();
+  }
+});
+
 export default router;

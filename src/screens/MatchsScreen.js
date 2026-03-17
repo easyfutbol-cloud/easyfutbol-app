@@ -10,9 +10,13 @@ import {
   RefreshControl,
   StatusBar,
   ImageBackground,
+  ScrollView,
 } from 'react-native';
 import api from '../api/client';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { colors, spacing } from '../theme';
+
+const STORAGE_CITY_KEY = 'ef_selected_city';
 
 // Helper: formatea el día (sin la hora)
 function formatDayLabel(dateObj) {
@@ -54,6 +58,23 @@ export default function MatchsScreen({ navigation }) {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
+  const [selectedCity, setSelectedCity] = useState('');
+  const [initialCityLoaded, setInitialCityLoaded] = useState(false);
+
+  const availableCities = useMemo(() => {
+    const set = new Set();
+    matches.forEach((m) => {
+      const c = (m.city || '').trim();
+      if (c) set.add(c);
+    });
+    return Array.from(set).sort((a, b) => a.localeCompare(b, 'es'));
+  }, [matches]);
+
+  const filteredMatches = useMemo(() => {
+    if (!selectedCity) return matches;
+    return matches.filter((m) => (m.city || '').trim() === selectedCity);
+  }, [matches, selectedCity]);
+
   const loadMatches = async (isRefresh = false) => {
     if (isRefresh) {
       setRefreshing(true);
@@ -92,14 +113,44 @@ export default function MatchsScreen({ navigation }) {
   };
 
   useEffect(() => {
-    loadMatches(false);
+    (async () => {
+      try {
+        const saved = await AsyncStorage.getItem(STORAGE_CITY_KEY);
+        if (saved) setSelectedCity(saved);
+      } catch (e) {
+        // ignore
+      } finally {
+        setInitialCityLoaded(true);
+        loadMatches(false);
+      }
+    })();
   }, []);
+
+  useEffect(() => {
+    if (!initialCityLoaded) return;
+    if (selectedCity) return;
+    if (availableCities.length === 0) return;
+
+    // Primera vez: selecciona una ciudad por defecto
+    const first = availableCities[0];
+    setSelectedCity(first);
+    AsyncStorage.setItem(STORAGE_CITY_KEY, first).catch(() => {});
+  }, [availableCities, selectedCity, initialCityLoaded]);
 
   const onRefresh = useCallback(() => {
     loadMatches(true);
   }, []);
 
-  const sections = useMemo(() => groupMatchesByDay(matches), [matches]);
+  const changeCity = useCallback(async (city) => {
+    setSelectedCity(city);
+    try {
+      await AsyncStorage.setItem(STORAGE_CITY_KEY, city);
+    } catch (e) {
+      // ignore
+    }
+  }, []);
+
+  const sections = useMemo(() => groupMatchesByDay(filteredMatches), [filteredMatches]);
 
   const renderItem = ({ item }) => {
     const startsAt = item.starts_at;
@@ -167,14 +218,16 @@ export default function MatchsScreen({ navigation }) {
     );
   }
 
-  if (!loading && matches.length === 0) {
+  if (!loading && filteredMatches.length === 0) {
     return (
       <View style={styles.container}>
         <StatusBar barStyle="light-content" />
         <View style={styles.center}>
           <Text style={styles.emptyTitle}>No hay partidos disponibles</Text>
           <Text style={styles.emptyText}>
-            Cuando creemos nuevos partidos en EasyFutbol aparecerán aquí.
+            {selectedCity
+              ? `No hay partidos abiertos en ${selectedCity} ahora mismo.`
+              : 'Cuando creemos nuevos partidos en EasyFutbol aparecerán aquí.'}
           </Text>
         </View>
       </View>
@@ -184,6 +237,32 @@ export default function MatchsScreen({ navigation }) {
   return (
     <View style={styles.container}>
       <StatusBar barStyle="light-content" />
+      {availableCities.length > 0 && (
+        <View style={styles.cityBar}>
+          <Text style={styles.cityLabel}>Ciudad</Text>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.cityChips}
+          >
+            {availableCities.map((c) => {
+              const active = c === selectedCity;
+              return (
+                <TouchableOpacity
+                  key={c}
+                  activeOpacity={0.85}
+                  onPress={() => changeCity(c)}
+                  style={[styles.cityChip, active && styles.cityChipActive]}
+                >
+                  <Text style={[styles.cityChipText, active && styles.cityChipTextActive]}>
+                    {c}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
+        </View>
+      )}
       <SectionList
         sections={sections}
         keyExtractor={(item) => String(item.id)}
@@ -223,6 +302,42 @@ const styles = StyleSheet.create({
     color: colors.white,
     fontSize: 16,
     fontWeight: '800',
+  },
+  cityBar: {
+    marginTop: spacing(1),
+    marginBottom: spacing(1),
+  },
+  cityLabel: {
+    color: colors.gray,
+    fontSize: 12,
+    fontWeight: '700',
+    marginBottom: spacing(0.75),
+    textTransform: 'uppercase',
+    letterSpacing: 0.6,
+  },
+  cityChips: {
+    paddingRight: spacing(1),
+  },
+  cityChip: {
+    borderWidth: 1,
+    borderColor: '#2a2a2a',
+    backgroundColor: '#121212',
+    paddingHorizontal: spacing(1.5),
+    paddingVertical: spacing(0.8),
+    borderRadius: 999,
+    marginRight: spacing(1),
+  },
+  cityChipActive: {
+    borderColor: colors.orange,
+    backgroundColor: 'rgba(255, 90, 0, 0.15)',
+  },
+  cityChipText: {
+    color: colors.white,
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  cityChipTextActive: {
+    color: colors.orange,
   },
   cardWrapper: {
     marginBottom: spacing(1.5),

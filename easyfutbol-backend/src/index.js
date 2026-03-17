@@ -13,6 +13,7 @@ import admin from './routes/admin.js';
 import stats from './routes/stats.js';
 import adminStats from './routes/adminStats.js';
 import profile from './routes/profile.js';
+import easyPass from './routes/easypass.js';
 import adminNotify from './routes/adminNotify.js';
 
 const app = express();
@@ -45,6 +46,7 @@ app.use('/api', admin);
 app.use('/api', stats);
 app.use('/api', adminStats);
 app.use('/api', profile);
+app.use('/api', easyPass);
 app.use('/api', adminNotify);
 
 // estáticos para avatares
