@@ -41,7 +41,7 @@ export default function AdminCreateMatchScreen() {
   const [time, setTime] = useState(new Date());
   const [showTime, setShowTime] = useState(false);
 
-  const [price, setPrice] = useState('3.90');
+  const EASY_PASS_COST = 1;
   const [capacity, setCapacity] = useState('14');
   const [duration, setDuration] = useState('60');
 
@@ -129,14 +129,9 @@ export default function AdminCreateMatchScreen() {
       if (!city) return Alert.alert('Selecciona ciudad');
       if (!fieldId && !cleanFieldName) return Alert.alert('Selecciona o escribe un campo');
 
-      // Normalizar precio (aceptar coma o punto)
-      const priceNum = Number(String(price).replace(',', '.'));
       const capacityNum = Number(capacity);
       const durationNum = Number(duration);
 
-      if (!price || isNaN(priceNum) || priceNum <= 0) {
-        return Alert.alert('Precio inválido', 'Introduce un precio mayor que 0');
-      }
       if (!capacity || isNaN(capacityNum) || capacityNum <= 0) {
         return Alert.alert('Capacidad inválida', 'Introduce un número de plazas mayor que 0');
       }
@@ -151,7 +146,7 @@ export default function AdminCreateMatchScreen() {
         city,
         date: dateStr,          // YYYY-MM-DD (lo que espera el backend)
         time: timeStr,          // HH:mm (24h)
-        price_eur: priceNum,    // se usa directamente en matches/:id/pay (Stripe)
+        easypass_cost: EASY_PASS_COST,
         capacity: capacityNum,
         duration_min: durationNum,
       };
@@ -174,7 +169,6 @@ export default function AdminCreateMatchScreen() {
       setTitle('');
       setFieldId('');
       setFieldName('');
-      setPrice('3.90');
       setCapacity('14');
       setDuration('60');
     } catch (e) {
@@ -302,17 +296,13 @@ export default function AdminCreateMatchScreen() {
           />
         )}
 
+        <Text style={styles.label}>Coste</Text>
+        <View style={styles.fixedInfoBox}>
+          <Text style={styles.fixedInfoText}>Este partido costará 1 EasyPass</Text>
+        </View>
+
         <View style={styles.row}>
-          <View style={{ flex: 1, marginRight: 8 }}>
-            <Text style={styles.label}>Precio (€)</Text>
-            <TextInput
-              style={styles.input}
-              keyboardType="decimal-pad"
-              value={price}
-              onChangeText={setPrice}
-            />
-          </View>
-          <View style={{ flex: 1, marginRight: 8 }}>
+          <View style={{ flex: 1, marginRight: 6 }}>
             <Text style={styles.label}>Capacidad</Text>
             <TextInput
               style={styles.input}
@@ -321,7 +311,7 @@ export default function AdminCreateMatchScreen() {
               onChangeText={setCapacity}
             />
           </View>
-          <View style={{ flex: 1 }}>
+          <View style={{ flex: 1, marginLeft: 6 }}>
             <Text style={styles.label}>Duración (min)</Text>
             <TextInput
               style={styles.input}
@@ -351,6 +341,8 @@ const styles = StyleSheet.create({
   label:{ color:'#ddd', fontWeight:'700', marginTop:spacing(1), marginBottom:4 },
   input:{ backgroundColor:'#111', borderWidth:1, borderColor:'#222', color:'#fff', padding:spacing(1.2), borderRadius:10 },
   picker:{ color:'#fff', backgroundColor:'#111', borderRadius:8 },
+  fixedInfoBox:{ backgroundColor:'#111', borderWidth:1, borderColor:'#222', padding:spacing(1.2), borderRadius:10 },
+  fixedInfoText:{ color:'#fff', fontWeight:'700' },
   row:{ flexDirection:'row', alignItems:'flex-start', marginTop:spacing(1) },
   btn:{ backgroundColor:colors.orange, paddingVertical:spacing(1.6), borderRadius:12, alignItems:'center', marginTop:spacing(2) },
   btnText:{ color:colors.black, fontWeight:'800', fontSize:16 },

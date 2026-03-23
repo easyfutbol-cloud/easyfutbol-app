@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { View, Text, StyleSheet, StatusBar, TouchableOpacity, Linking, ActivityIndicator, Alert, ImageBackground, Image, ScrollView } from 'react-native';
+import { View, Text, StyleSheet, StatusBar, TouchableOpacity, ActivityIndicator, Alert, ImageBackground, Image, ScrollView } from 'react-native';
 import { colors, spacing } from '../theme';
 import { api } from '../api/client';
 import { useFocusEffect } from '@react-navigation/native';
 
 const MAX_TICKETS_PER_PURCHASE = 8;
+const EASY_PASS_COST = 1;
 
 const pitchImage = {
   uri: 'https://images.pexels.com/photos/399187/football-pitch-sport-play-399187.jpeg?auto=compress&cs=tinysrgb&w=1200',
@@ -206,7 +207,7 @@ export default function MatchScreen({ route, navigation }) {
 
   const fieldName = match?.field_name || '';
   const city = match?.city || '';
-  const price = match?.price_eur ?? null;
+  const easyPassCost = match?.easypass_cost ?? EASY_PASS_COST;
 
   const capacity = match?.capacity ?? null;
   const spotsTaken = match?.spots_taken ?? 0;
@@ -228,7 +229,7 @@ export default function MatchScreen({ route, navigation }) {
     navigation?.navigate('EasyPass');
   };
 
-  const canJoinWithEasyPass = quantity === 1 && easyPassBalance >= 1;
+  const canJoinWithEasyPass = quantity === 1 && easyPassBalance >= easyPassCost;
 
   const handlePay = async () => {
     if (!matchId || !match) return;
@@ -243,10 +244,10 @@ export default function MatchScreen({ route, navigation }) {
       return;
     }
 
-    if (quantity === 1 && easyPassBalance < 1) {
+    if (quantity === 1 && easyPassBalance < easyPassCost) {
       Alert.alert(
         'Sin EasyPass',
-        'No tienes EasyPass suficientes para reservar este partido. Compra más EasyPass para continuar.',
+        `No tienes ${easyPassCost} EasyPass disponibles para reservar este partido. Compra más EasyPass para continuar.`,
         [
           { text: 'Cancelar', style: 'cancel' },
           { text: 'Comprar EasyPass', onPress: handleGoToEasyPass },
@@ -277,7 +278,7 @@ export default function MatchScreen({ route, navigation }) {
         return;
       }
 
-      setEasyPassBalance((prev) => Math.max(Number(prev || 0) - 1, 0));
+      setEasyPassBalance((prev) => Math.max(Number(prev || 0) - easyPassCost, 0));
       loadEasyPassCredits();
       setMyTicketsCount((prev) => Number(prev || 0) + 1);
       setMatch((prev) => {
@@ -289,7 +290,7 @@ export default function MatchScreen({ route, navigation }) {
         };
       });
 
-      Alert.alert('Reserva confirmada', 'Te has inscrito al partido usando 1 EasyPass.');
+      Alert.alert('Reserva confirmada', `Te has inscrito al partido usando ${easyPassCost} EasyPass.`);
     } catch (e) {
       console.log('Error usando EasyPass', e?.response?.data || e.message || e);
       const msg = e?.response?.data?.msg || 'No se ha podido completar la reserva con EasyPass';
@@ -349,6 +350,10 @@ export default function MatchScreen({ route, navigation }) {
   return (
     <View style={styles.container}>
       <StatusBar barStyle="light-content" />
+      <ScrollView
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={styles.scrollContent}
+      >
 
       <Text style={styles.title}>{match.title}</Text>
 
@@ -373,9 +378,10 @@ export default function MatchScreen({ route, navigation }) {
         </ImageBackground>
       </View>
 
-      {!!price && (
-        <Text style={styles.price}>{price} €</Text>
-      )}
+      <View style={styles.priceCard}>
+        <Text style={styles.priceLabel}>Coste del partido</Text>
+        <Text style={styles.price}>{easyPassCost} EasyPass</Text>
+      </View>
 
       {!!capacity && (
         <View style={styles.capacityRow}>
@@ -519,7 +525,7 @@ export default function MatchScreen({ route, navigation }) {
             : quantity > 1
             ? `Reservar ${quantity} plazas`
             : canJoinWithEasyPass
-            ? 'Reservar con 1 EasyPass'
+            ? `Reservar con ${easyPassCost} EasyPass`
             : 'Comprar EasyPass para reservar'}
         </Text>
       </TouchableOpacity>
@@ -533,7 +539,7 @@ export default function MatchScreen({ route, navigation }) {
           {easyPassLoading
             ? 'Estamos consultando tu saldo'
             : easyPassBalance > 0
-            ? 'Tienes saldo disponible para reservar 1 plaza al instante con EasyPass.'
+            ? `Tienes saldo disponible para reservar 1 plaza al instante por ${easyPassCost} EasyPass.`
             : 'Compra más EasyPass para reservar tus próximos partidos más rápido.'}
         </Text>
 
@@ -572,12 +578,14 @@ export default function MatchScreen({ route, navigation }) {
           } para este partido.`}
         </Text>
       )}
+      </ScrollView>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   container:{ flex:1, backgroundColor:colors.black, padding:spacing(2) },
+  scrollContent:{ paddingBottom: spacing(4) },
   title:{ color:colors.white, fontSize:24, fontWeight:'800', marginBottom:spacing(1.5) },
   meta:{ color:'#aaa', marginBottom:spacing(0.5) }, // keep meta for misc text
   heroCard: {
@@ -615,11 +623,23 @@ const styles = StyleSheet.create({
     fontSize: 13,
     marginTop: spacing(0.5),
   },
+  priceCard: {
+    backgroundColor: '#111',
+    borderWidth: 1,
+    borderColor: '#2a2a2a',
+    borderRadius: 14,
+    padding: spacing(1.5),
+    marginBottom: spacing(1.2),
+  },
+  priceLabel: {
+    color: '#aaaaaa',
+    fontSize: 12,
+    marginBottom: 4,
+  },
   price: {
-    color: colors.white,
-    fontSize: 16,
-    fontWeight: '700',
-    marginBottom: spacing(1),
+    color: colors.orange,
+    fontSize: 20,
+    fontWeight: '900',
   },
   capacityRow: {
     flexDirection: 'row',

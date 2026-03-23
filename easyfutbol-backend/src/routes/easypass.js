@@ -19,9 +19,8 @@ const stripe = stripeSecretKey ? new Stripe(stripeSecretKey) : null;
 
 const APP_BASE_URL =
   process.env.APP_BASE_URL ||
-  process.env.MOBILE_APP_URL ||
   process.env.FRONTEND_URL ||
-  'easyfutbol://';
+  'https://easyfutbol.es';
 
 /**
  * Packs de EasyPass disponibles
@@ -110,8 +109,9 @@ router.post('/packs/:id/checkout', requireAuth, async (req, res) => {
       return res.status(404).json({ ok:false, msg:'Pack no encontrado' });
     }
 
-    const successUrl = `${APP_BASE_URL}`;
-    const cancelUrl = `${APP_BASE_URL}`;
+    const baseUrl = String(APP_BASE_URL || 'https://easyfutbol.es').replace(/\/$/, '');
+    const successUrl = `${baseUrl}/easypass-success?session_id={CHECKOUT_SESSION_ID}`;
+    const cancelUrl = `${baseUrl}/easypass-cancel`;
 
     const session = await stripe.checkout.sessions.create({
       mode: 'payment',
@@ -141,6 +141,7 @@ router.post('/packs/:id/checkout', requireAuth, async (req, res) => {
 
     return res.json({
       ok: true,
+      url: session.url,
       checkout_url: session.url,
       session_id: session.id,
       pack: {

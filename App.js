@@ -11,6 +11,7 @@ import {
   TextInput,
   Keyboard,
   TouchableWithoutFeedback,
+  ScrollView,
 } from 'react-native';
 import {
   NavigationContainer,
@@ -30,11 +31,11 @@ import MatchsScreen from './src/screens/MatchsScreen';
 import MyMatchesScreen from './src/screens/MyMatchesScreen';
 import StatsScreen from './src/screens/StatsScreen';
 import ProfileScreen from './src/screens/ProfileScreen';
-import PrivacyPolicyScreen from './src/screens/PrivacyPolicyScreen';
 import AdminCreateMatchScreen from './src/screens/AdminCreateMatchScreen';
 import AdminMatchStatsScreen from './src/screens/AdminMatchStatsScreen';
 import AdminNotifyScreen from './src/screens/AdminNotifyScreen';
 import AdminEasyPassScreen from './src/screens/admineasypassscreen';
+import EasyPassScreen from './src/screens/EasyPassScreen';
 
 // Notificaciones (opcional)
 let Notifications = null;
@@ -229,6 +230,28 @@ function VerifyEmailScreen({ navigation, route }) {
   );
 }
 
+function PrivacyPolicyScreen() {
+  return (
+    <View style={privacyStyles.container}>
+      <ScrollView
+        contentContainerStyle={privacyStyles.content}
+        showsVerticalScrollIndicator={false}
+      >
+        <Text style={privacyStyles.title}>Política de Privacidad</Text>
+
+        <Text style={privacyStyles.text}>
+          Aquí irá el texto completo de la política de privacidad y protección de datos de EasyFutbol.
+        </Text>
+
+        <Text style={privacyStyles.text}>
+          Sustituye este contenido por el texto legal definitivo, incluyendo la información sobre el
+          responsable del tratamiento, finalidad, legitimación, conservación de los datos, cesiones,
+          derechos de los usuarios y canales de contacto.
+        </Text>
+      </ScrollView>
+    </View>
+  );
+}
 
 // --- Botón + Menú hamburguesa persistente (arriba derecha) ---
 function AppMenu({ currentRouteName }) {
@@ -398,6 +421,7 @@ function AppShell({ currentRouteName }) {
         <Stack.Screen name="MyMatches" component={MyMatchesScreen} />
         <Stack.Screen name="Stats" component={StatsScreen} />
         <Stack.Screen name="Profile" component={ProfileScreen} />
+        <Stack.Screen name="EasyPass" component={EasyPassScreen} />
         <Stack.Screen name="AdminCreateMatch" component={AdminCreateMatchScreen} />
         <Stack.Screen name="AdminMatchStats" component={AdminMatchStatsScreen} />
         <Stack.Screen name="AdminNotify" component={AdminNotifyScreen} />
@@ -530,5 +554,28 @@ const styles = StyleSheet.create({
     color: '#9a9aa0',
     fontSize: 13,
     textDecorationLine: 'underline',
+  },
+});
+
+const privacyStyles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: '#0b0b0d',
+  },
+  content: {
+    paddingHorizontal: 20,
+    paddingBottom: 32,
+  },
+  title: {
+    color: '#fff',
+    fontSize: 24,
+    fontWeight: '900',
+    marginBottom: 18,
+  },
+  text: {
+    color: '#d0d0d0',
+    fontSize: 15,
+    lineHeight: 24,
+    marginBottom: 14,
   },
 });
