@@ -20,15 +20,27 @@ router.get('/me/inscriptions', requireAuth, async (req, res) => {
   try {
     const userId = req.user.id;
     const [rows] = await pool.query(
-      `SELECT i.id AS inscription_id, i.status, i.stripe_session_id, i.ticket_type, i.payment_type,
-              m.id AS match_id, m.title, m.city, m.starts_at, m.duration_min,
+      `SELECT MIN(i.id) AS inscription_id,
+              i.status,
+              i.stripe_session_id,
+              i.ticket_type,
+              i.payment_type,
+              COUNT(*) AS quantity,
+              m.id AS match_id,
+              m.title,
+              m.city,
+              m.starts_at,
+              m.duration_min,
               f.name AS field_name
        FROM inscriptions i
        JOIN matches m ON m.id = i.match_id
        JOIN fields  f ON f.id = m.field_id
        WHERE i.user_id = ?
+       GROUP BY i.status, i.stripe_session_id, i.ticket_type, i.payment_type,
+                m.id, m.title, m.city, m.starts_at, m.duration_min, f.name
        ORDER BY m.starts_at DESC
-       LIMIT 300`, [userId]
+       LIMIT 300`,
+      [userId]
     );
 
     console.log('GET /me/inscriptions', { userId, count: rows.length });
@@ -91,7 +103,14 @@ router.post('/matches/:id/join-with-easypass', requireAuth, async (req, res) => 
       return res.status(500).json({ ok:false, msg:'No se pudo determinar la capacidad del partido' });
     }
 
-    const currentTaken = Number(match.spots_taken || 0);
+    const [[takenRow]] = await conn.query(
+      `SELECT COUNT(*) AS taken
+       FROM inscriptions
+       WHERE match_id = ? AND status = 'confirmed'`,
+      [matchId]
+    );
+
+    const currentTaken = Number(takenRow?.taken || 0);
     if ((currentTaken + quantity) > totalSpots) {
       await conn.rollback();
       return res.status(400).json({ ok:false, msg:`No hay ${quantity} plaza(s) disponibles` });
@@ -136,6 +155,7 @@ router.post('/matches/:id/join-with-easypass', requireAuth, async (req, res) => 
       msg:`${quantity} plaza(s) confirmada(s) con EasyPass`,
       inscription_id: ins.insertId,
       quantity,
+      created_rows: Number(ins.affectedRows || 0),
       easyPassBalance: Number(updatedUser?.easyPassBalance || 0),
     });
 
@@ -163,10 +183,13 @@ router.post('/matches/:id/cancel', requireAuth, async (req, res) => {
               MAX(i.stripe_session_id) AS stripe_session_id,
               MAX(i.ticket_type) AS ticket_type,
               MAX(i.payment_type) AS payment_type,
-              m.starts_at, m.id AS match_id
+              m.starts_at,
+              m.id AS match_id
        FROM inscriptions i
        JOIN matches m ON m.id = i.match_id
-       WHERE i.user_id=? AND i.match_id=? AND i.status != 'cancelled'`,
+       WHERE i.user_id=?
+         AND i.match_id=?
+         AND i.status <> 'cancelled'`,
       [userId, matchId]
     );
 
