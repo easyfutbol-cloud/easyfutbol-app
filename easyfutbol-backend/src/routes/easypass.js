@@ -1,7 +1,16 @@
 import express from 'express';
 import Stripe from 'stripe';
 import { pool } from '../config/db.js';
-import requireAuth from '../middlewares/auth.js';
+import * as authMiddleware from '../middlewares/auth.js';
+
+const requireAuth =
+  authMiddleware.default ||
+  authMiddleware.requireAuth ||
+  authMiddleware.auth;
+
+if (!requireAuth) {
+  throw new Error("No se pudo resolver el middleware de auth desde ../middlewares/auth.js");
+}
 
 const router = express.Router();
 
