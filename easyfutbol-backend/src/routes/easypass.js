@@ -1,7 +1,7 @@
-const express = require('express');
-const Stripe = require('stripe');
-const pool = require('../db');
-const requireAuth = require('../middleware/requireAuth');
+import express from 'express';
+import Stripe from 'stripe';
+import pool from '../db.js';
+import requireAuth from '../middleware/requireAuth.js';
 
 const router = express.Router();
 
@@ -234,4 +234,4 @@ router.post('/packs/:id/confirm', requireAuth, async (req, res) => {
   }
 });
 
-module.exports = router;
+export default router;

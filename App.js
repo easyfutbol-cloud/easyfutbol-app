@@ -30,6 +30,7 @@ import MatchsScreen from './src/screens/MatchsScreen';
 import MyMatchesScreen from './src/screens/MyMatchesScreen';
 import StatsScreen from './src/screens/StatsScreen';
 import ProfileScreen from './src/screens/ProfileScreen';
+import PrivacyPolicyScreen from './src/screens/PrivacyPolicyScreen';
 import AdminCreateMatchScreen from './src/screens/AdminCreateMatchScreen';
 import AdminMatchStatsScreen from './src/screens/AdminMatchStatsScreen';
 import AdminNotifyScreen from './src/screens/AdminNotifyScreen';
@@ -228,6 +229,7 @@ function VerifyEmailScreen({ navigation, route }) {
   );
 }
 
+
 // --- Botón + Menú hamburguesa persistente (arriba derecha) ---
 function AppMenu({ currentRouteName }) {
   const insets = useSafeAreaInsets();
@@ -358,6 +360,12 @@ function AppMenu({ currentRouteName }) {
                 <Text style={styles.itemText}>Iniciar sesión / Acceso</Text>
               </Pressable>
             )}
+
+            <View style={styles.menuFooter}>
+              <Pressable onPress={() => goTo('PrivacyPolicy')}>
+                <Text style={styles.privacyLink}>Política de privacidad</Text>
+              </Pressable>
+            </View>
           </Pressable>
         </Pressable>
       </Modal>
@@ -384,6 +392,7 @@ function AppShell({ currentRouteName }) {
         <Stack.Screen name="Home" component={HomeScreen} />
         <Stack.Screen name="Access" component={AccessScreen} />
         <Stack.Screen name="VerifyEmail" component={VerifyEmailScreen} />
+        <Stack.Screen name="PrivacyPolicy" component={PrivacyPolicyScreen} />
         <Stack.Screen name="Match" component={MatchScreen} />
         <Stack.Screen name="Matchs" component={MatchsScreen} />
         <Stack.Screen name="MyMatches" component={MyMatchesScreen} />
@@ -511,5 +520,15 @@ const styles = StyleSheet.create({
     height: 1,
     backgroundColor: 'rgba(255,255,255,0.08)',
     marginVertical: 8,
+  },
+  menuFooter: {
+    marginTop: 8,
+    paddingTop: 8,
+    alignItems: 'center',
+  },
+  privacyLink: {
+    color: '#9a9aa0',
+    fontSize: 13,
+    textDecorationLine: 'underline',
   },
 });
