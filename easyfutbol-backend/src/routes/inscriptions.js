@@ -20,7 +20,7 @@ router.get('/me/inscriptions', requireAuth, async (req, res) => {
   try {
     const userId = req.user.id;
     const [rows] = await pool.query(
-      `SELECT i.id AS inscription_id, i.status, i.stripe_session_id, i.ticket_type,
+      `SELECT i.id AS inscription_id, i.status, i.stripe_session_id, i.ticket_type, i.payment_type,
               m.id AS match_id, m.title, m.city, m.starts_at, m.duration_min,
               f.name AS field_name
        FROM inscriptions i
@@ -48,6 +48,10 @@ router.post('/matches/:id/join-with-easypass', requireAuth, async (req, res) => 
     const userId = req.user.id;
     const matchId = Number(req.params.id);
 
+    const quantity = Math.max(1, Number.parseInt(req.body?.quantity, 10) || 1);
+    const shirtColorRaw = String(req.body?.ticket_type || req.body?.shirtColor || 'white').toLowerCase();
+    const shirtColor = shirtColorRaw === 'black' ? 'black' : 'white';
+
     await conn.beginTransaction();
 
     // bloquear usuario para comprobar saldo EasyPass
@@ -56,9 +60,9 @@ router.post('/matches/:id/join-with-easypass', requireAuth, async (req, res) => 
       [userId]
     );
 
-    if (!user || Number(user.easyPassBalance || 0) < 1) {
+    if (!user || Number(user.easyPassBalance || 0) < quantity) {
       await conn.rollback();
-      return res.status(400).json({ ok:false, msg:'No tienes EasyPass suficientes' });
+      return res.status(400).json({ ok:false, msg:`No tienes EasyPass suficientes para ${quantity} plaza(s)` });
     }
 
     // comprobar plazas
@@ -70,19 +74,6 @@ router.post('/matches/:id/join-with-easypass', requireAuth, async (req, res) => 
     if (!match) {
       await conn.rollback();
       return res.status(404).json({ ok:false, msg:'Partido no encontrado' });
-    }
-
-    const [[existingInscription]] = await conn.query(
-      `SELECT id, status
-       FROM inscriptions
-       WHERE match_id=? AND user_id=?
-       LIMIT 1`,
-      [matchId, userId]
-    );
-
-    if (existingInscription && existingInscription.status !== 'cancelled') {
-      await conn.rollback();
-      return res.status(400).json({ ok:false, msg:'Ya estás inscrito en este partido' });
     }
 
     const totalSpots = Number(
@@ -100,35 +91,37 @@ router.post('/matches/:id/join-with-easypass', requireAuth, async (req, res) => 
       return res.status(500).json({ ok:false, msg:'No se pudo determinar la capacidad del partido' });
     }
 
-    if (Number(match.spots_taken || 0) >= totalSpots) {
+    const currentTaken = Number(match.spots_taken || 0);
+    if ((currentTaken + quantity) > totalSpots) {
       await conn.rollback();
-      return res.status(400).json({ ok:false, msg:'Partido lleno' });
+      return res.status(400).json({ ok:false, msg:`No hay ${quantity} plaza(s) disponibles` });
     }
 
     // descontar EasyPass
     await conn.query(
-      'UPDATE users SET easypass_balance = easypass_balance - 1 WHERE id=?',
-      [userId]
+      'UPDATE users SET easypass_balance = easypass_balance - ? WHERE id=?',
+      [quantity, userId]
     );
 
     // crear inscripción confirmada
+    const inscriptionValues = Array.from({ length: quantity }, () => [matchId, userId, 'confirmed', shirtColor, 'easypass']);
     const [ins] = await conn.query(
-      `INSERT INTO inscriptions (match_id, user_id, status, ticket_type)
-       VALUES (?, ?, 'confirmed', 'easypass')`,
-      [matchId, userId]
+      `INSERT INTO inscriptions (match_id, user_id, status, ticket_type, payment_type)
+       VALUES ?`,
+      [inscriptionValues]
     );
 
     // aumentar plazas ocupadas
     await conn.query(
-      'UPDATE matches SET spots_taken = spots_taken + 1 WHERE id=?',
-      [matchId]
+      'UPDATE matches SET spots_taken = spots_taken + ? WHERE id=?',
+      [quantity, matchId]
     );
 
     // registrar movimiento de EasyPass
     await conn.query(
       `INSERT INTO easypass_transactions (user_id, type, amount, description, event_id, created_at)
-       VALUES (?, 'spend', -1, 'Inscripción con EasyPass', ?, NOW())`,
-      [userId, matchId]
+       VALUES (?, 'spend', ?, ?, ?, NOW())`,
+      [userId, -quantity, `Compra de ${quantity} plaza(s) con EasyPass`, matchId]
     );
 
     const [[updatedUser]] = await conn.query(
@@ -140,8 +133,9 @@ router.post('/matches/:id/join-with-easypass', requireAuth, async (req, res) => 
 
     return res.json({
       ok:true,
-      msg:'Inscripción confirmada con EasyPass',
+      msg:`${quantity} plaza(s) confirmada(s) con EasyPass`,
       inscription_id: ins.insertId,
+      quantity,
       easyPassBalance: Number(updatedUser?.easyPassBalance || 0),
     });
 
@@ -163,20 +157,28 @@ router.post('/matches/:id/cancel', requireAuth, async (req, res) => {
 
     // Traer inscripción + datos de partido
     const [[row]] = await conn.query(
-      `SELECT i.id AS inscription_id, i.status, i.stripe_session_id, i.ticket_type,
+      `SELECT COUNT(*) AS inscription_count,
+              MIN(i.id) AS inscription_id,
+              MAX(i.status) AS status,
+              MAX(i.stripe_session_id) AS stripe_session_id,
+              MAX(i.ticket_type) AS ticket_type,
+              MAX(i.payment_type) AS payment_type,
               m.starts_at, m.id AS match_id
        FROM inscriptions i
        JOIN matches m ON m.id = i.match_id
-       WHERE i.user_id=? AND i.match_id=?
-       LIMIT 1`, [userId, matchId]
+       WHERE i.user_id=? AND i.match_id=? AND i.status != 'cancelled'`,
+      [userId, matchId]
     );
 
     if (!row) return res.status(404).json({ ok:false, msg:'No estabas inscrito' });
 
+    const inscriptionCount = Number(row.inscription_count || 0);
+    if (inscriptionCount <= 0) return res.status(404).json({ ok:false, msg:'No estabas inscrito' });
+
     // Si está pending (no pagado), borrar y liberar plaza si se había sumado (no debería)
     if (row.status === 'pending') {
       await conn.beginTransaction();
-      await conn.query('DELETE FROM inscriptions WHERE id=?', [row.inscription_id]);
+      await conn.query('DELETE FROM inscriptions WHERE user_id=? AND match_id=? AND status="pending"', [userId, matchId]);
       // por seguridad, no tocamos spots_taken aquí (pending no suma)
       await conn.commit();
       return res.json({ ok:true, msg:'Inscripción cancelada (pendiente, sin pago)' });
@@ -186,7 +188,7 @@ router.post('/matches/:id/cancel', requireAuth, async (req, res) => {
     if (row.status === 'confirmed') {
 
       // --- Caso nuevo: inscripción pagada con EasyPass ---
-      if (!row.stripe_session_id && (row.ticket_type === 'credit' || row.ticket_type === 'easypass')) {
+      if (!row.stripe_session_id && (row.payment_type === 'easypass' || row.ticket_type === 'credit' || row.ticket_type === 'easypass')) {
         const pct = refundPercent(row.starts_at);
         if (pct === 0) {
           return res.status(400).json({ ok:false, msg:'Solo se devuelve el EasyPass si cancelas con más de 6 horas de antelación' });
@@ -196,27 +198,27 @@ router.post('/matches/:id/cancel', requireAuth, async (req, res) => {
 
         // devolver EasyPass
         await conn.query(
-          'UPDATE users SET easypass_balance = easypass_balance + 1 WHERE id=?',
-          [userId]
+          'UPDATE users SET easypass_balance = easypass_balance + ? WHERE id=?',
+          [inscriptionCount, userId]
         );
 
         // registrar devolución
         await conn.query(
           `INSERT INTO easypass_transactions (user_id, type, amount, description, event_id, created_at)
-           VALUES (?, 'refund', 1, 'Cancelación con devolución de EasyPass', ?, NOW())`,
-          [userId, matchId]
+           VALUES (?, 'refund', ?, ?, ?, NOW())`,
+          [userId, inscriptionCount, `Cancelación con devolución de ${inscriptionCount} EasyPass`, matchId]
         );
 
         // cancelar inscripción
         await conn.query(
-          'UPDATE inscriptions SET status="cancelled" WHERE id=?',
-          [row.inscription_id]
+          'UPDATE inscriptions SET status="cancelled" WHERE user_id=? AND match_id=? AND status!="cancelled"',
+          [userId, matchId]
         );
 
         // liberar plaza
         await conn.query(
-          'UPDATE matches SET spots_taken = GREATEST(spots_taken - 1, 0) WHERE id=?',
-          [matchId]
+          'UPDATE matches SET spots_taken = GREATEST(spots_taken - ?, 0) WHERE id=?',
+          [inscriptionCount, matchId]
         );
 
         const [[updatedUser]] = await conn.query(
@@ -257,15 +259,15 @@ router.post('/matches/:id/cancel', requireAuth, async (req, res) => {
       const refund = await stripe.refunds.create({ charge: charge.id, amount: refundAmount });
 
       // Marcar cancelada y liberar plaza
-      await conn.query('UPDATE inscriptions SET status="cancelled" WHERE id=?', [row.inscription_id]);
+      await conn.query('UPDATE inscriptions SET status="cancelled" WHERE user_id=? AND match_id=? AND status!="cancelled"', [userId, matchId]);
       await conn.query(
-        'UPDATE matches SET spots_taken = GREATEST(spots_taken - 1, 0) WHERE id=?',
-        [matchId]
+        'UPDATE matches SET spots_taken = GREATEST(spots_taken - ?, 0) WHERE id=?',
+        [inscriptionCount, matchId]
       );
 
       await conn.commit();
 
-      return res.json({ ok:true, msg:'Cancelada con reembolso', pct, refund_id: refund.id });
+      return res.json({ ok:true, msg:`Canceladas ${inscriptionCount} plaza(s) con reembolso`, pct, refund_id: refund.id });
     }
 
     // Ya estaba cancelada
