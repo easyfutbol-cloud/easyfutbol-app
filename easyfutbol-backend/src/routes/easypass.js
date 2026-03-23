@@ -110,8 +110,8 @@ router.post('/packs/:id/checkout', requireAuth, async (req, res) => {
     }
 
     const baseUrl = String(APP_BASE_URL || 'https://easyfutbol.es').replace(/\/$/, '');
-    const successUrl = `${baseUrl}/easypass-success?session_id={CHECKOUT_SESSION_ID}`;
-    const cancelUrl = `${baseUrl}/easypass-cancel`;
+    const successUrl = `${baseUrl}/pago-ok/?session_id={CHECKOUT_SESSION_ID}`;
+    const cancelUrl = `${baseUrl}/pago-cancelado/`;
 
     const session = await stripe.checkout.sessions.create({
       mode: 'payment',
