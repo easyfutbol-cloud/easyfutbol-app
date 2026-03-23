@@ -63,7 +63,7 @@ router.post('/matches/:id/join-with-easypass', requireAuth, async (req, res) => 
 
     // comprobar plazas
     const [[match]] = await conn.query(
-      'SELECT spots_taken, spots_total FROM matches WHERE id=? FOR UPDATE',
+      'SELECT * FROM matches WHERE id=? FOR UPDATE',
       [matchId]
     );
 
@@ -85,7 +85,22 @@ router.post('/matches/:id/join-with-easypass', requireAuth, async (req, res) => 
       return res.status(400).json({ ok:false, msg:'Ya estás inscrito en este partido' });
     }
 
-    if (Number(match.spots_taken || 0) >= Number(match.spots_total || 0)) {
+    const totalSpots = Number(
+      match.spots_total
+      ?? match.capacity
+      ?? match.max_players
+      ?? match.total_spots
+      ?? match.plazas
+      ?? match.plazas_totales
+      ?? 0
+    );
+
+    if (totalSpots <= 0) {
+      await conn.rollback();
+      return res.status(500).json({ ok:false, msg:'No se pudo determinar la capacidad del partido' });
+    }
+
+    if (Number(match.spots_taken || 0) >= totalSpots) {
       await conn.rollback();
       return res.status(400).json({ ok:false, msg:'Partido lleno' });
     }
@@ -229,9 +244,9 @@ router.post('/matches/:id/cancel', requireAuth, async (req, res) => {
 
       // Obtener charge desde la sesión
       const session = await stripe.checkout.sessions.retrieve(row.stripe_session_id, {
-        expand: ['payment_intent.charges']
+        expand: ['payment_intent.latest_charge']
       });
-      const charge = session?.payment_intent?.charges?.data?.[0];
+      const charge = session?.payment_intent?.latest_charge;
       if (!charge) return res.status(400).json({ ok:false, msg:'Pago no localizable' });
 
       const refundAmount = Math.round((charge.amount_captured || 0) * (pct/100));
