@@ -5,12 +5,6 @@ import { requireAuth, requireAdmin } from '../middlewares/auth.js';
 
 const router = express.Router();
 
-function requireAdmin(req, res, next) {
-  if (!req.user || req.user.role !== 'admin') {
-    return res.status(403).json({ error: 'Acceso denegado' });
-  }
-  next();
-}
 
 async function getConfirmedCount(matchId) {
   const [rows] = await db.query(
@@ -27,7 +21,7 @@ async function getConfirmedCount(matchId) {
 }
 
 // Listado admin de partidos
-router.get('/', verifyToken, requireAdmin, async (req, res) => {
+router.get('/', requireAuth, requireAdmin, async (req, res) => {
   try {
     const { city, status } = req.query;
 
@@ -75,7 +69,7 @@ router.get('/', verifyToken, requireAdmin, async (req, res) => {
 });
 
 // Obtener detalle de un partido
-router.get('/:id', verifyToken, requireAdmin, async (req, res) => {
+router.get('/:id', requireAuth, requireAdmin, async (req, res) => {
   try {
     const { id } = req.params;
 
@@ -121,7 +115,7 @@ router.get('/:id', verifyToken, requireAdmin, async (req, res) => {
 });
 
 // Actualizar partido
-router.put('/:id', verifyToken, requireAdmin, async (req, res) => {
+router.put('/:id', requireAuth, requireAdmin, async (req, res) => {
   try {
     const { id } = req.params;
     const {
@@ -250,7 +244,7 @@ router.put('/:id', verifyToken, requireAdmin, async (req, res) => {
 });
 
 // Cambiar solo el estado del partido
-router.patch('/:id/status', verifyToken, requireAdmin, async (req, res) => {
+router.patch('/:id/status', requireAuth, requireAdmin, async (req, res) => {
   try {
     const { id } = req.params;
     const { status } = req.body;
