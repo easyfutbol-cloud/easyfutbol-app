@@ -1,4 +1,3 @@
-
 import express from 'express';
 import { pool } from '../config/db.js';
 import { requireAuth, requireAdmin } from '../middlewares/auth.js';
@@ -29,7 +28,7 @@ router.get('/', requireAuth, requireAdmin, async (req, res) => {
       SELECT
         id,
         title,
-        description,
+        '' AS description,
         city,
         field_name,
         match_date,
@@ -78,7 +77,7 @@ router.get('/:id', requireAuth, requireAdmin, async (req, res) => {
         SELECT
           id,
           title,
-          description,
+          '' AS description,
           city,
           field_name,
           match_date,
@@ -174,7 +173,6 @@ router.put('/:id', requireAuth, requireAdmin, async (req, res) => {
         UPDATE matches
         SET
           title = ?,
-          description = ?,
           city = ?,
           field_name = ?,
           match_date = ?,
@@ -190,7 +188,6 @@ router.put('/:id', requireAuth, requireAdmin, async (req, res) => {
       `,
       [
         title,
-        description || null,
         city,
         field_name,
         match_date,
@@ -210,7 +207,7 @@ router.put('/:id', requireAuth, requireAdmin, async (req, res) => {
         SELECT
           id,
           title,
-          description,
+          '' AS description,
           city,
           field_name,
           match_date,

@@ -33,6 +33,8 @@ import StatsScreen from './src/screens/StatsScreen';
 import ProfileScreen from './src/screens/ProfileScreen';
 import AdminCreateMatchScreen from './src/screens/AdminCreateMatchScreen';
 import AdminMatchStatsScreen from './src/screens/AdminMatchStatsScreen';
+import AdminMatchesScreen from './src/screens/AdminMatchesScreen';
+import AdminMatchEditScreen from './src/screens/AdminMatchEditScreen';
 import AdminNotifyScreen from './src/screens/AdminNotifyScreen';
 import AdminEasyPassScreen from './src/screens/admineasypassscreen';
 import EasyPassScreen from './src/screens/EasyPassScreen';
@@ -422,6 +424,7 @@ function AppMenu({ currentRouteName }) {
   ];
 
   const adminItems = [
+    { label: 'Administrar Partidos (Admin)', screen: 'AdminMatches' },
     { label: 'Crear Partido (Admin)', screen: 'AdminCreateMatch' },
     { label: 'Stats Partido (Admin)', screen: 'AdminMatchStats' },
     { label: 'Avisos (Admin)', screen: 'AdminNotify' },
@@ -535,6 +538,8 @@ function AppShell({ currentRouteName }) {
         <Stack.Screen name="Stats" component={StatsScreen} />
         <Stack.Screen name="Profile" component={ProfileScreen} />
         <Stack.Screen name="EasyPass" component={EasyPassScreen} />
+        <Stack.Screen name="AdminMatches" component={AdminMatchesScreen} />
+        <Stack.Screen name="AdminMatchEdit" component={AdminMatchEditScreen} />
         <Stack.Screen name="AdminCreateMatch" component={AdminCreateMatchScreen} />
         <Stack.Screen name="AdminMatchStats" component={AdminMatchStatsScreen} />
         <Stack.Screen name="AdminNotify" component={AdminNotifyScreen} />

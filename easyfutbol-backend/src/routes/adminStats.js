@@ -53,7 +53,7 @@ router.get(
            FROM inscriptions i
            JOIN users buyer ON buyer.id = i.user_id
            LEFT JOIN users assigned ON assigned.id = i.assigned_user_id
-           WHERE i.match_id = ? AND i.status = 'confirmed'
+           WHERE i.match_id = ? AND i.status IN ('confirmed', 'paid', 'active')
            ORDER BY i.is_mvp DESC, COALESCE(assigned.name, buyer.name) ASC`
         : `SELECT 
             i.id   AS inscription_id,
@@ -71,7 +71,7 @@ router.get(
             i.is_mvp
            FROM inscriptions i
            JOIN users u ON u.id = i.user_id
-           WHERE i.match_id = ? AND i.status = 'confirmed'
+           WHERE i.match_id = ? AND i.status IN ('confirmed', 'paid', 'active')
            ORDER BY i.is_mvp DESC, u.name ASC`;
 
       const [rows] = await pool.query(statsQuery, [matchId]);
