@@ -2,7 +2,7 @@
   "expo": {
     "name": "EasyFutbol App",
     "slug": "easyfutbol-app",
-    "version": "1.0.10",
+    "version": "1.0.13",
     "orientation": "portrait",
     "icon": "./assets/Logo.png",
     "userInterfaceStyle": "automatic",
@@ -15,7 +15,7 @@
     },
     "ios": {
       "bundleIdentifier": "com.easyfutbol.easyfutbol",
-      "buildNumber": "7",
+      "buildNumber": "8",
       "supportsTablet": true,
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false
@@ -23,7 +23,7 @@
     },
     "android": {
       "package": "es.easyfutbol.app",
-      "versionCode": 11,
+      "versionCode": 13,
       "permissions": ["INTERNET"],
       "adaptiveIcon": {
         "foregroundImage": "./assets/Logo.png",
@@ -43,7 +43,7 @@
       }
     },
     "owner": "easyfutbol",
-    "runtimeVersion": "1.0.9",
+    "runtimeVersion": "1.0.13",
     "updates": {
       "url": "https://u.expo.dev/287d443d-1c44-43d1-9d00-5d4008cf038e"
     }

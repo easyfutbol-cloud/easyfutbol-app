@@ -3,7 +3,20 @@ import { Router } from 'express';
 import { pool } from '../config/db.js';
 import { requireAuth, requireAdmin } from '../middlewares/auth.js';
 
+
 const router = Router();
+
+async function hasAssignedUserIdColumn() {
+  const [rows] = await pool.query(
+    `SELECT COUNT(*) AS count
+     FROM INFORMATION_SCHEMA.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE()
+       AND TABLE_NAME = 'inscriptions'
+       AND COLUMN_NAME = 'assigned_user_id'`
+  );
+
+  return Number(rows?.[0]?.count || 0) > 0;
+}
 
 /**
  * Listar inscripciones de un partido con goles + asistencias + MVP
@@ -20,28 +33,60 @@ router.get(
         return res.status(400).json({ ok: false, msg: 'ID de partido inválido' });
       }
 
-      const [rows] = await pool.query(
-        `SELECT 
+      const hasAssignedUser = await hasAssignedUserIdColumn();
+
+      const statsQuery = hasAssignedUser
+        ? `SELECT 
             i.id   AS inscription_id,
             i.match_id,
-            u.id   AS user_id,
+            i.user_id,
+            i.assigned_user_id,
+            buyer.name AS buyer_name,
+            buyer.email AS buyer_email,
+            COALESCE(assigned.id, buyer.id) AS stats_user_id,
+            COALESCE(assigned.name, buyer.name) AS name,
+            COALESCE(assigned.email, buyer.email) AS email,
+            i.goals,
+            i.assists,
+            i.status,
+            i.is_mvp
+           FROM inscriptions i
+           JOIN users buyer ON buyer.id = i.user_id
+           LEFT JOIN users assigned ON assigned.id = i.assigned_user_id
+           WHERE i.match_id = ? AND i.status = 'confirmed'
+           ORDER BY i.is_mvp DESC, COALESCE(assigned.name, buyer.name) ASC`
+        : `SELECT 
+            i.id   AS inscription_id,
+            i.match_id,
+            i.user_id,
+            NULL AS assigned_user_id,
+            u.name AS buyer_name,
+            u.email AS buyer_email,
+            u.id   AS stats_user_id,
             u.name,
             u.email,
             i.goals,
             i.assists,
             i.status,
             i.is_mvp
-         FROM inscriptions i
-         JOIN users u ON u.id = i.user_id
-         WHERE i.match_id = ? AND i.status = 'confirmed'
-         ORDER BY i.is_mvp DESC, u.name ASC`,
-        [matchId]
+           FROM inscriptions i
+           JOIN users u ON u.id = i.user_id
+           WHERE i.match_id = ? AND i.status = 'confirmed'
+           ORDER BY i.is_mvp DESC, u.name ASC`;
+
+      const [rows] = await pool.query(statsQuery, [matchId]);
+
+      const [allUsers] = await pool.query(
+        `SELECT id, name, email
+         FROM users
+         ORDER BY name ASC, email ASC`
       );
 
-      // Normalizamos is_mvp a boolean para el front
       const data = rows.map(r => ({
         ...r,
         is_mvp: !!r.is_mvp,
+        user_id: r.stats_user_id,
+        assignable_users: allUsers,
       }));
 
       res.json({ ok: true, data });
@@ -64,7 +109,7 @@ router.patch(
   async (req, res) => {
     try {
       const id = Number(req.params.id);
-      const { goals, assists, is_mvp } = req.body || {};
+      const { goals, assists, is_mvp, assigned_user_id } = req.body || {};
 
       if (!Number.isInteger(id)) {
         return res.status(400).json({ ok: false, msg: 'ID de inscripción inválido' });
@@ -87,9 +132,29 @@ router.patch(
       }
 
       const matchId = insc.match_id;
+      const hasAssignedUser = await hasAssignedUserIdColumn();
       const goalsNum = Number(goals) || 0;
       const assistsNum = Number(assists) || 0;
       const isMvpFlag = is_mvp ? 1 : 0;
+
+      let assignedUserId = null;
+
+      if (assigned_user_id !== undefined && assigned_user_id !== null && assigned_user_id !== '') {
+        assignedUserId = Number(assigned_user_id);
+
+        if (!Number.isInteger(assignedUserId)) {
+          return res.status(400).json({ ok: false, msg: 'assigned_user_id inválido' });
+        }
+
+        const [[userExists]] = await pool.query(
+          'SELECT id FROM users WHERE id = ? LIMIT 1',
+          [assignedUserId]
+        );
+
+        if (!userExists) {
+          return res.status(404).json({ ok: false, msg: 'Usuario asignado no encontrado' });
+        }
+      }
 
       // Si marcamos como MVP, primero quitamos el MVP del resto del partido
       if (isMvpFlag === 1) {
@@ -100,10 +165,17 @@ router.patch(
       }
 
       // Actualizamos las stats de esta inscripción
-      await pool.query(
-        'UPDATE inscriptions SET goals = ?, assists = ?, is_mvp = ? WHERE id = ?',
-        [goalsNum, assistsNum, isMvpFlag, id]
-      );
+      if (hasAssignedUser) {
+        await pool.query(
+          'UPDATE inscriptions SET goals = ?, assists = ?, is_mvp = ?, assigned_user_id = ? WHERE id = ?',
+          [goalsNum, assistsNum, isMvpFlag, assignedUserId, id]
+        );
+      } else {
+        await pool.query(
+          'UPDATE inscriptions SET goals = ?, assists = ?, is_mvp = ? WHERE id = ?',
+          [goalsNum, assistsNum, isMvpFlag, id]
+        );
+      }
 
       res.json({ ok: true, msg: 'Estadísticas actualizadas' });
     } catch (e) {

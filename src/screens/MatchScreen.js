@@ -229,7 +229,8 @@ export default function MatchScreen({ route, navigation }) {
     navigation?.navigate('EasyPass');
   };
 
-  const canJoinWithEasyPass = quantity === 1 && easyPassBalance >= easyPassCost;
+  const totalEasyPassCost = quantity * easyPassCost;
+  const canJoinWithEasyPass = easyPassBalance >= totalEasyPassCost;
 
   const handlePay = async () => {
     if (!matchId || !match) return;
@@ -244,22 +245,14 @@ export default function MatchScreen({ route, navigation }) {
       return;
     }
 
-    if (quantity === 1 && easyPassBalance < easyPassCost) {
+    if (easyPassBalance < totalEasyPassCost) {
       Alert.alert(
         'Sin EasyPass',
-        `No tienes ${easyPassCost} EasyPass disponibles para reservar este partido. Compra más EasyPass para continuar.`,
+        `No tienes ${totalEasyPassCost} EasyPass disponibles para reservar ${quantity} plaza${quantity > 1 ? 's' : ''}. Compra más EasyPass para continuar.`,
         [
           { text: 'Cancelar', style: 'cancel' },
           { text: 'Comprar EasyPass', onPress: handleGoToEasyPass },
         ]
-      );
-      return;
-    }
-
-    if (quantity > 1) {
-      Alert.alert(
-        'Reserva múltiple no disponible con EasyPass',
-        'Por ahora solo puedes reservar 1 plaza usando EasyPass desde esta pantalla.'
       );
       return;
     }
@@ -269,6 +262,7 @@ export default function MatchScreen({ route, navigation }) {
 
       const res = await api.post(`/matches/${matchId}/join-with-easypass`, {
         ticketType,
+        quantity,
       });
       const data = res?.data;
 
@@ -278,19 +272,22 @@ export default function MatchScreen({ route, navigation }) {
         return;
       }
 
-      setEasyPassBalance((prev) => Math.max(Number(prev || 0) - easyPassCost, 0));
+      setEasyPassBalance((prev) => Math.max(Number(prev || 0) - totalEasyPassCost, 0));
       loadEasyPassCredits();
-      setMyTicketsCount((prev) => Number(prev || 0) + 1);
+      setMyTicketsCount((prev) => Number(prev || 0) + quantity);
       setMatch((prev) => {
         if (!prev) return prev;
         const currentSpots = Number(prev.spots_taken || 0);
         return {
           ...prev,
-          spots_taken: currentSpots + 1,
+          spots_taken: currentSpots + quantity,
         };
       });
 
-      Alert.alert('Reserva confirmada', `Te has inscrito al partido usando ${easyPassCost} EasyPass.`);
+      Alert.alert(
+        'Reserva confirmada',
+        `Te has inscrito al partido con ${quantity} plaza${quantity > 1 ? 's' : ''} usando ${totalEasyPassCost} EasyPass.`
+      );
     } catch (e) {
       console.log('Error usando EasyPass', e?.response?.data || e.message || e);
       const msg = e?.response?.data?.msg || 'No se ha podido completar la reserva con EasyPass';
@@ -486,17 +483,26 @@ export default function MatchScreen({ route, navigation }) {
         <TouchableOpacity
           style={[
             styles.quantityButton,
-            quantity >= MAX_TICKETS_PER_PURCHASE && styles.quantityButtonDisabled,
+            quantity >= Math.min(MAX_TICKETS_PER_PURCHASE, remainingSpots != null ? remainingSpots : MAX_TICKETS_PER_PURCHASE) && styles.quantityButtonDisabled,
           ]}
-          onPress={() =>
-            quantity < MAX_TICKETS_PER_PURCHASE &&
-            setQuantity(quantity + 1)
+          onPress={() => {
+            const maxByCapacity = remainingSpots != null ? remainingSpots : MAX_TICKETS_PER_PURCHASE;
+            const nextMax = Math.min(MAX_TICKETS_PER_PURCHASE, maxByCapacity);
+            if (quantity < nextMax) {
+              setQuantity(quantity + 1);
+            }
+          }}
+          disabled={
+            !canPay ||
+            quantity >= Math.min(MAX_TICKETS_PER_PURCHASE, remainingSpots != null ? remainingSpots : MAX_TICKETS_PER_PURCHASE)
           }
-          disabled={!canPay || quantity >= MAX_TICKETS_PER_PURCHASE}
         >
           <Text style={styles.quantityButtonText}>+</Text>
         </TouchableOpacity>
       </View>
+      <Text style={styles.meta}>
+        Coste total: {totalEasyPassCost} EasyPass
+      </Text>
       {match.white_remaining != null && match.black_remaining != null && (
         <Text style={styles.meta}>
           Quedan {match.white_remaining} blancas 
@@ -522,11 +528,9 @@ export default function MatchScreen({ route, navigation }) {
             ? 'Partido completo'
             : paying
             ? 'Reservando...'
-            : quantity > 1
-            ? `Reservar ${quantity} plazas`
             : canJoinWithEasyPass
-            ? `Reservar con ${easyPassCost} EasyPass`
-            : 'Comprar EasyPass para reservar'}
+            ? `Reservar ${quantity} plaza${quantity > 1 ? 's' : ''} por ${totalEasyPassCost} EasyPass`
+            : `Comprar EasyPass (${totalEasyPassCost}) para reservar`}
         </Text>
       </TouchableOpacity>
 
@@ -539,7 +543,7 @@ export default function MatchScreen({ route, navigation }) {
           {easyPassLoading
             ? 'Estamos consultando tu saldo'
             : easyPassBalance > 0
-            ? `Tienes saldo disponible para reservar 1 plaza al instante por ${easyPassCost} EasyPass.`
+            ? `Tienes ${easyPassBalance} EasyPass. Esta reserva cuesta ${totalEasyPassCost} EasyPass para ${quantity} plaza${quantity > 1 ? 's' : ''}.`
             : 'Compra más EasyPass para reservar tus próximos partidos más rápido.'}
         </Text>
 

@@ -15,6 +15,7 @@ import adminStats from './routes/adminStats.js';
 import profile from './routes/profile.js';
 import easyPass from './routes/easypass.js';
 import adminNotify from './routes/adminNotify.js';
+import adminMatches from './routes/adminMatches.js';
 
 const app = express();
 const PORT = Number(process.env.PORT || 4000);
@@ -48,6 +49,7 @@ app.use('/api', adminStats);
 app.use('/api', profile);
 app.use('/api', easyPass);
 app.use('/api', adminNotify);
+app.use('/api/admin/matches', adminMatches);
 
 // estáticos para avatares
 app.use('/uploads', express.static('uploads'));
