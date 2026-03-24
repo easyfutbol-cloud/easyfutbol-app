@@ -1,13 +1,13 @@
 
 import express from 'express';
-import db from '../config/db.js';
+import { pool } from '../config/db.js';
 import { requireAuth, requireAdmin } from '../middlewares/auth.js';
 
 const router = express.Router();
 
 
 async function getConfirmedCount(matchId) {
-  const [rows] = await db.query(
+  const [rows] = await pool.query(
     `
       SELECT COUNT(*) AS total
       FROM inscriptions
@@ -60,7 +60,7 @@ router.get('/', requireAuth, requireAdmin, async (req, res) => {
 
     sql += ' ORDER BY match_date DESC, start_time DESC';
 
-    const [rows] = await db.query(sql, params);
+    const [rows] = await pool.query(sql, params);
     res.json(rows);
   } catch (error) {
     console.error('Error obteniendo partidos admin:', error);
@@ -73,7 +73,7 @@ router.get('/:id', requireAuth, requireAdmin, async (req, res) => {
   try {
     const { id } = req.params;
 
-    const [rows] = await db.query(
+    const [rows] = await pool.query(
       `
         SELECT
           id,
@@ -132,7 +132,7 @@ router.put('/:id', requireAuth, requireAdmin, async (req, res) => {
       shirt_color,
     } = req.body;
 
-    const [existingRows] = await db.query(
+    const [existingRows] = await pool.query(
       'SELECT id, total_slots, available_slots FROM matches WHERE id = ? LIMIT 1',
       [id]
     );
@@ -169,7 +169,7 @@ router.put('/:id', requireAuth, requireAdmin, async (req, res) => {
 
     const recalculatedAvailableSlots = parsedTotalSlots - confirmedCount;
 
-    await db.query(
+    await pool.query(
       `
         UPDATE matches
         SET
@@ -205,7 +205,7 @@ router.put('/:id', requireAuth, requireAdmin, async (req, res) => {
       ]
     );
 
-    const [updatedRows] = await db.query(
+    const [updatedRows] = await pool.query(
       `
         SELECT
           id,
@@ -255,7 +255,7 @@ router.patch('/:id/status', requireAuth, requireAdmin, async (req, res) => {
       return res.status(400).json({ error: 'Estado no válido' });
     }
 
-    const [result] = await db.query(
+    const [result] = await pool.query(
       `
         UPDATE matches
         SET status = ?, updated_at = NOW()
