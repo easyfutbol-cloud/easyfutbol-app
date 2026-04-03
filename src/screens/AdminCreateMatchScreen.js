@@ -146,6 +146,7 @@ export default function AdminCreateMatchScreen() {
         city,
         date: dateStr,          // YYYY-MM-DD (lo que espera el backend)
         time: timeStr,          // HH:mm (24h)
+        price_eur: 0,
         easypass_cost: EASY_PASS_COST,
         capacity: capacityNum,
         duration_min: durationNum,
