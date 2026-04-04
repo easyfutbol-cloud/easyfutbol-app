@@ -39,13 +39,14 @@ router.get('/me/profile', requireAuth, async (req, res) => {
     if (!user) return res.status(404).json({ ok:false, msg:'Usuario no encontrado' });
 
     const [[stats]] = await pool.query(
-      `SELECT 
-         COUNT(*) AS matches_played,
-         SUM(goals) AS goals,
-         SUM(assists) AS assists,
-         SUM(goals + assists) AS total
-       FROM inscriptions
-       WHERE user_id=? AND status='confirmed'`,
+      `SELECT
+         COUNT(DISTINCT mps.match_id) AS matches_played,
+         COALESCE(SUM(mps.goals), 0) AS goals,
+         COALESCE(SUM(mps.assists), 0) AS assists,
+         COALESCE(SUM(mps.is_mvp), 0) AS mvps,
+         COALESCE(SUM(mps.goals + mps.assists), 0) AS total
+       FROM match_player_stats mps
+       WHERE mps.user_id=?`,
       [userId]
     );
 
@@ -58,10 +59,11 @@ router.get('/me/profile', requireAuth, async (req, res) => {
           credits: Number(user.easypass_balance || 0),
         },
         stats: {
-          matches_played: stats.matches_played || 0,
-          goals: stats.goals || 0,
-          assists: stats.assists || 0,
-          total: stats.total || 0
+          matches_played: Number(stats.matches_played || 0),
+          goals: Number(stats.goals || 0),
+          assists: Number(stats.assists || 0),
+          mvps: Number(stats.mvps || 0),
+          total: Number(stats.total || 0)
         }
       }
     });
