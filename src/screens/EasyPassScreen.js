@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, ActivityIndicator, Alert, Linking } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, ActivityIndicator, Alert, Linking, Image } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { api } from '../api/client';
 import { colors, spacing } from '../theme';
 import { useFocusEffect, useNavigation, useRoute } from '@react-navigation/native';
+import easypassLogo from '../../assets/easypass-logo.png';
 
 const ORANGE = '#ff5a00';
 
@@ -141,7 +142,12 @@ export default function EasyPassScreen() {
   return (
     <View style={{ flex:1, backgroundColor: colors.black }}>
       <ScrollView contentContainerStyle={{ padding: spacing(2), paddingBottom: spacing(6) }}>
-        <Text style={styles.title}>🎟️ EasyPass</Text>
+        <View style={styles.heroHeader}>
+          <View style={styles.heroLogoWrap}>
+            <Image source={easypassLogo} style={styles.heroLogo} resizeMode="contain" />
+          </View>
+          <Text style={styles.title}>🎟️ EasyPass</Text>
+        </View>
 
         <View style={styles.balanceCard}>
           <Text style={styles.balanceLabel}>Disponibles</Text>
@@ -200,7 +206,11 @@ export default function EasyPassScreen() {
 
 const styles = StyleSheet.create({
   loader:{ flex:1, backgroundColor:'#000', alignItems:'center', justifyContent:'center' },
-  title:{ color:'#fff', fontSize:22, fontWeight:'900', marginBottom: 14, textAlign:'center' },
+
+  heroHeader:{ alignItems:'center', marginBottom: 14 },
+  heroLogoWrap:{ width:88, height:88, borderRadius:44, backgroundColor:'transparent', overflow:'hidden', alignItems:'center', justifyContent:'center', marginBottom:10 },
+  heroLogo:{ width:'100%', height:'100%' },
+  title:{ color:'#fff', fontSize:22, fontWeight:'900', textAlign:'center' },
 
   balanceCard:{
     backgroundColor:'rgba(17,17,17,0.92)',
@@ -208,7 +218,8 @@ const styles = StyleSheet.create({
     padding: 16,
     borderWidth:1,
     borderColor:'rgba(255,255,255,0.06)',
-    marginBottom: 18
+    marginBottom: 18,
+    marginTop: 4
   },
   balanceLabel:{ color:'#bbb', fontWeight:'800' },
   balanceValue:{ color:'#fff', fontSize:34, fontWeight:'900', marginTop: 6 },

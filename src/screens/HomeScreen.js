@@ -1,5 +1,5 @@
 // src/screens/HomeScreen.js
-import { View, Text, StyleSheet, StatusBar, TouchableOpacity, ImageBackground, Image, ScrollView } from 'react-native';
+import { View, Text, StyleSheet, StatusBar, TouchableOpacity, ImageBackground, Image, ScrollView, Alert } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import { colors, spacing } from '../theme';
@@ -42,6 +42,22 @@ export default function HomeScreen({ navigation }) {
   const [avatar, setAvatar]       = useState(null);
   const [displayName, setDisplayName] = useState('');
   const [stats, setStats] = useState({ goals: null, assists: null, rank: null });
+
+  const requireAuth = (targetScreen) => {
+    if (isLogged) {
+      navigation.navigate(targetScreen);
+      return;
+    }
+
+    Alert.alert(
+      'Acceso restringido',
+      'Inicia sesión o regístrate para acceder a esta sección.',
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        { text: 'Iniciar sesión / Registrarme', onPress: () => navigation.navigate('Access') },
+      ]
+    );
+  };
 
   const readSession = useCallback(async () => {
     try {
@@ -173,7 +189,7 @@ export default function HomeScreen({ navigation }) {
         <SectionCard
           title="Próximos partidos"
           bgSource={BG.upcoming}
-          onPress={() => navigation.navigate('Matchs')}  // ajusta si tu ruta es distinta
+          onPress={() => requireAuth('Matchs')}  // ajusta si tu ruta es distinta
         />
                 <SectionCard
           title="Mis entradas"
@@ -194,7 +210,7 @@ export default function HomeScreen({ navigation }) {
         <SectionCard
           title="EasyPass"
           bgSource={BG.easyPass}
-          onPress={() => navigation.navigate('EasyPass')}
+          onPress={() => requireAuth('EasyPass')}
         >
           <Text style={{ color: '#fff', fontSize: 13, opacity: 0.9 }}>
             Compra packs de EasyPass y reserva tus partidos más rápido.

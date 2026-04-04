@@ -27,7 +27,8 @@ export default function MatchScreen({ route, navigation }) {
   const [attendeesLoading, setAttendeesLoading] = useState(true);
 
   const attendeesNormalized = useMemo(() => {
-    const base = (api?.defaults?.baseURL || '').replace(/\/+$/, '');
+    const apiBase = (api?.defaults?.baseURL || '').replace(/\/+$/, '');
+    const assetBase = apiBase.replace(/\/api$/, '');
 
     // Normalizamos y a la vez evitamos duplicados por user_id (por si hay inscripciones duplicadas)
     const seen = new Set();
@@ -40,7 +41,7 @@ export default function MatchScreen({ route, navigation }) {
 
       // Si viene path relativo (/uploads/avatars/...), lo convertimos a URL absoluta
       if (avatar && avatar.startsWith('/')) {
-        avatar = `${base}${avatar}`;
+        avatar = `${assetBase}${avatar}`;
       }
 
       // Key estable y única
@@ -57,6 +58,7 @@ export default function MatchScreen({ route, navigation }) {
         id: userId,
         username,
         avatar,
+        rawAvatar: a.avatar_url || a.avatarUrl || a.avatar || '',
       });
     });
 
@@ -413,7 +415,18 @@ export default function MatchScreen({ route, navigation }) {
             <View key={p.key} style={styles.attendeeCard}>
               <View style={styles.attendeeAvatarWrap}>
                 {p.avatar ? (
-                  <Image source={{ uri: p.avatar }} style={styles.attendeeAvatar} />
+                  <Image
+                    source={{ uri: p.avatar }}
+                    style={styles.attendeeAvatar}
+                    onError={(e) => {
+                      console.log('Error cargando avatar', {
+                        username: p.username,
+                        rawAvatar: p.rawAvatar,
+                        resolvedAvatar: p.avatar,
+                        error: e?.nativeEvent,
+                      });
+                    }}
+                  />
                 ) : (
                   <View style={styles.attendeeAvatarFallback} />
                 )}

@@ -11,8 +11,10 @@ import * as ImagePicker from 'expo-image-picker';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import { useFocusEffect, CommonActions } from '@react-navigation/native';
+import easypassLogo from '../../assets/easypass-logo.png';
 
 const ORANGE = '#ff5a00';
+const WHATSAPP_GROUP_URL = 'https://chat.whatsapp.com/HWUQF9eynLvD2XhiPgR01c?mode=gi_t';
 const FIELD_BG = {
   uri: 'https://images.unsplash.com/photo-1486286701208-1d58e9338013?q=80&w=2400&auto=format&fit=crop'
 };
@@ -116,6 +118,16 @@ export default function ProfileScreen({ navigation }) {
       ]);
     } catch (e) {
       Alert.alert('Error', e?.message || 'No se pudieron cargar los packs');
+    }
+  };
+
+  const openWhatsAppGroup = async () => {
+    try {
+      const supported = await Linking.canOpenURL(WHATSAPP_GROUP_URL);
+      if (!supported) throw new Error('No se pudo abrir el enlace');
+      await Linking.openURL(WHATSAPP_GROUP_URL);
+    } catch (e) {
+      Alert.alert('Error', e?.message || 'No se pudo abrir el grupo de WhatsApp');
     }
   };
 
@@ -411,15 +423,30 @@ export default function ProfileScreen({ navigation }) {
           {/* EasyPass */}
           <View style={styles.passCard}>
             <Text style={styles.section}>🎟️ EasyPass</Text>
-            <View style={{ flexDirection:'row', alignItems:'center', justifyContent:'space-between' }}>
-              <View>
+
+            <View style={styles.passHeader}>
+              <View style={styles.passLogoWrap}>
+                <Image source={easypassLogo} style={styles.passLogo} resizeMode="cover" />
+              </View>
+              <View style={styles.passHeaderText}>
                 <Text style={styles.passValue}>{easyPassLoading ? '...' : easyPass}</Text>
                 <Text style={styles.passHint}>Tus créditos disponibles para apuntarte a partidos</Text>
               </View>
-              <TouchableOpacity style={styles.passBtn} onPress={buyEasyPass} activeOpacity={0.85}>
-                <Text style={styles.passBtnText}>Adquirir más</Text>
-              </TouchableOpacity>
             </View>
+
+            <TouchableOpacity style={styles.passBtn} onPress={buyEasyPass} activeOpacity={0.85}>
+              <Text style={styles.passBtnText}>Adquirir más</Text>
+            </TouchableOpacity>
+          </View>
+
+          <View style={styles.communityCard}>
+            <Text style={styles.section}>📣 Novedades EasyFutbol</Text>
+            <Text style={styles.communityText}>
+              Únete al grupo de WhatsApp para enterarte de todas las novedades, partidos y avisos.
+            </Text>
+            <TouchableOpacity style={styles.communityBtn} onPress={openWhatsAppGroup} activeOpacity={0.85}>
+              <Text style={styles.communityBtnText}>Entrar al grupo de WhatsApp</Text>
+            </TouchableOpacity>
           </View>
 
           {/* Stats */}
@@ -498,10 +525,18 @@ const styles = StyleSheet.create({
   statsCard:{ backgroundColor:'rgba(17,17,17,0.92)', borderRadius:16, padding: spacing(2), borderWidth:1, borderColor:'rgba(255,255,255,0.06)' },
   section:{ color: ORANGE, fontWeight:'800', marginBottom:10, fontSize:14 },
   passCard:{ backgroundColor:'rgba(17,17,17,0.92)', borderRadius:16, padding: spacing(2), borderWidth:1, borderColor:'rgba(255,255,255,0.06)', marginBottom: spacing(2) },
+  passHeader:{ flexDirection:'row', alignItems:'center', marginBottom:14 },
+  passLogoWrap:{ width:72, height:72, borderRadius:36, marginRight:14, backgroundColor:'transparent', overflow:'hidden', alignItems:'center', justifyContent:'center' },
+  passLogo:{ width:'100%', height:'100%' },
+  passHeaderText:{ flex:1 },
   passValue:{ color:'#fff', fontSize:28, fontWeight:'900', marginBottom:4 },
-  passHint:{ color:'#9f9f9f', fontSize:12, fontWeight:'700', maxWidth:220 },
-  passBtn:{ backgroundColor: ORANGE, paddingVertical:12, paddingHorizontal:14, borderRadius:12 },
+  passHint:{ color:'#9f9f9f', fontSize:12, fontWeight:'700' },
+  passBtn:{ backgroundColor: ORANGE, paddingVertical:12, paddingHorizontal:14, borderRadius:12, alignItems:'center' },
   passBtnText:{ color:'#000', fontWeight:'900' },
+  communityCard:{ backgroundColor:'rgba(17,17,17,0.92)', borderRadius:16, padding: spacing(2), borderWidth:1, borderColor:'rgba(255,255,255,0.06)', marginBottom: spacing(2) },
+  communityText:{ color:'#bdbdbd', fontSize:13, lineHeight:20, marginBottom:14 },
+  communityBtn:{ backgroundColor:'#25D366', paddingVertical:14, paddingHorizontal:16, borderRadius:12 },
+  communityBtnText:{ color:'#000', fontWeight:'900', textAlign:'center' },
   grid:{ flexDirection:'row', flexWrap:'wrap', columnGap:10, rowGap:10, justifyContent:'space-between' },
   gridItem:{ width:'48%', backgroundColor:'#121212', borderRadius:14, paddingVertical:14, paddingHorizontal:12, borderWidth:1, borderColor:'rgba(255,255,255,0.05)' },
   gridValue:{ color:'#fff', fontSize:20, fontWeight:'900', marginBottom:4 },

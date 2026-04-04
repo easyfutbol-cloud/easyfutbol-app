@@ -1,6 +1,6 @@
 import { View, Text, StyleSheet, StatusBar, FlatList, TouchableOpacity, Alert, ActivityIndicator } from 'react-native';
 import { colors, spacing } from '../theme';
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useMemo } from 'react';
 import { api } from '../api/client';
 
 function Badge({ status }) {
@@ -71,10 +71,18 @@ function groupInscriptionsByMatch(list) {
   return groups;
 }
 
+function isFutureMatch(startsAt) {
+  if (!startsAt) return false;
+  const time = new Date(startsAt).getTime();
+  if (Number.isNaN(time)) return false;
+  return time >= Date.now();
+}
+
 export default function MyMatchesScreen() {
   const [items, setItems] = useState([]); // inscripciones crudas
   const [groups, setGroups] = useState([]); // inscripciones agrupadas por partido
   const [loading, setLoading] = useState(true);
+  const [tab, setTab] = useState('future');
 
   const load = useCallback(() => {
     setLoading(true);
@@ -112,6 +120,16 @@ export default function MyMatchesScreen() {
 
   useEffect(() => { load(); }, [load]);
 
+  const futureGroups = useMemo(() => {
+    return groups.filter((group) => isFutureMatch(group.starts_at));
+  }, [groups]);
+
+  const pastGroups = useMemo(() => {
+    return groups.filter((group) => !isFutureMatch(group.starts_at));
+  }, [groups]);
+
+  const visibleGroups = tab === 'future' ? futureGroups : pastGroups;
+
   const cancel = async (matchId) => {
     try {
       const { data } = await api.post(`/matches/${matchId}/cancel`);
@@ -143,7 +161,8 @@ export default function MyMatchesScreen() {
 
   const renderItem = ({ item }) => {
     const date = new Date(item.starts_at);
-    const canCancel = item.status === 'pending' || item.status === 'confirmed';
+    const isFuture = isFutureMatch(item.starts_at);
+    const canCancel = isFuture && (item.status === 'pending' || item.status === 'confirmed');
     const total = item.total || 0;
     const whites = item.whiteCount || 0;
     const blacks = item.blackCount || 0;
@@ -182,6 +201,25 @@ export default function MyMatchesScreen() {
     <View style={styles.container}>
       <StatusBar barStyle="light-content" />
       <Text style={styles.title}>Mis partidos</Text>
+      <View style={styles.tabsWrap}>
+        <TouchableOpacity
+          style={[styles.tabBtn, tab === 'future' && styles.tabBtnActive]}
+          onPress={() => setTab('future')}
+        >
+          <Text style={[styles.tabText, tab === 'future' && styles.tabTextActive]}>
+            Entradas futuras
+          </Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[styles.tabBtn, tab === 'past' && styles.tabBtnActive]}
+          onPress={() => setTab('past')}
+        >
+          <Text style={[styles.tabText, tab === 'past' && styles.tabTextActive]}>
+            Entradas anteriores
+          </Text>
+        </TouchableOpacity>
+      </View>
       {loading ? (
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color={colors.orange} />
@@ -189,12 +227,14 @@ export default function MyMatchesScreen() {
         </View>
       ) : (
         <FlatList
-          data={groups}
+          data={visibleGroups}
           keyExtractor={(it) => String(it.match_id)}
           renderItem={renderItem}
           ListEmptyComponent={
             <Text style={styles.empty}>
-              Aún no tienes inscripciones. Ve a la pestaña "Partidos" y reserva tu plaza ⚽️
+              {tab === 'future'
+                ? 'Aún no tienes entradas futuras. Ve a la pestaña "Partidos" y reserva tu plaza ⚽️'
+                : 'Aún no tienes entradas anteriores.'}
             </Text>
           }
           contentContainerStyle={{ paddingBottom: spacing(6) }}
@@ -207,6 +247,11 @@ export default function MyMatchesScreen() {
 const styles = StyleSheet.create({
   container:{ flex:1, backgroundColor:colors.black, padding:spacing(2) },
   title:{ color:colors.white, fontSize:22, fontWeight:'800', marginVertical:spacing(2), textAlign:'center' },
+  tabsWrap:{ flexDirection:'row', backgroundColor:'#111', borderRadius:14, padding:4, marginBottom:spacing(2) },
+  tabBtn:{ flex:1, paddingVertical:12, borderRadius:10, alignItems:'center' },
+  tabBtnActive:{ backgroundColor:colors.orange },
+  tabText:{ color:'#aaa', fontWeight:'700', fontSize:14 },
+  tabTextActive:{ color:'#000', fontWeight:'800' },
   loadingContainer:{ flex:1, justifyContent:'center', alignItems:'center' },
   loading:{ color:colors.gray, textAlign:'center', marginTop:spacing(2) },
   empty:{ color:colors.gray, textAlign:'center', marginTop:spacing(4) },

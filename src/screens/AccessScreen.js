@@ -56,6 +56,8 @@ export default function AccessScreen({ navigation, route }) {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showRegPassword, setShowRegPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [acceptedTerms, setAcceptedTerms] = useState(false);
+  const [isAdult, setIsAdult] = useState(false);
 
   // baseURL del backend (api/client). Si termina en /api, lo normalizamos para no duplicar rutas.
   const BASE = (api?.defaults?.baseURL || '')
@@ -269,6 +271,12 @@ export default function AccessScreen({ navigation, route }) {
       }
       if (!pass2) throw new Error('Confirma tu contraseña.');
       if (pass !== pass2) throw new Error('Las contraseñas no coinciden.');
+      if (!acceptedTerms) {
+        throw new Error('Debes aceptar los términos, condiciones y la política de privacidad.');
+      }
+      if (!isAdult) {
+        throw new Error('Debes confirmar que eres mayor de 18 años.');
+      }
 
       setLoading(true);
 
@@ -514,6 +522,37 @@ export default function AccessScreen({ navigation, route }) {
                   </TouchableOpacity>
                 </View>
 
+                <View style={styles.checksWrap}>
+                  <TouchableOpacity
+                    style={styles.checkRow}
+                    onPress={() => setAcceptedTerms(v => !v)}
+                    disabled={loading}
+                    activeOpacity={0.85}
+                  >
+                    <View style={[styles.checkbox, acceptedTerms && styles.checkboxActive]}>
+                      {acceptedTerms ? <Text style={styles.checkboxTick}>✓</Text> : null}
+                    </View>
+                    <Text style={styles.checkText}>
+                      Acepto los términos y condiciones y la{' '}
+                      <Text style={styles.linkText} onPress={() => navigation.navigate('PrivacyPolicy')}>
+                        política de privacidad
+                      </Text>
+                    </Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={styles.checkRow}
+                    onPress={() => setIsAdult(v => !v)}
+                    disabled={loading}
+                    activeOpacity={0.85}
+                  >
+                    <View style={[styles.checkbox, isAdult && styles.checkboxActive]}>
+                      {isAdult ? <Text style={styles.checkboxTick}>✓</Text> : null}
+                    </View>
+                    <Text style={styles.checkText}>Confirmo que tengo más de 18 años</Text>
+                  </TouchableOpacity>
+                </View>
+
                 <TouchableOpacity
                   style={[styles.primaryBtn, loading && { opacity: 0.7 }]}
                   onPress={handleRegister}
@@ -648,5 +687,43 @@ const styles = StyleSheet.create({
     color: '#ff5a00',
     fontWeight: '900',
     fontSize: 16,
+  },
+  checksWrap: {
+    marginTop: 14,
+    gap: 12,
+  },
+  checkRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+  },
+  checkbox: {
+    width: 22,
+    height: 22,
+    borderRadius: 6,
+    borderWidth: 2,
+    borderColor: '#ff5a00',
+    backgroundColor: 'rgba(255,255,255,0.04)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 10,
+    marginTop: 1,
+  },
+  checkboxActive: {
+    backgroundColor: '#ff5a00',
+  },
+  checkboxTick: {
+    color: '#000',
+    fontWeight: '900',
+    fontSize: 14,
+  },
+  checkText: {
+    flex: 1,
+    color: '#d6d6d6',
+    lineHeight: 20,
+  },
+  linkText: {
+    color: '#ff5a00',
+    fontWeight: '800',
+    textDecorationLine: 'underline',
   }
 });

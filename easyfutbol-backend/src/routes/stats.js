@@ -34,6 +34,7 @@ router.get('/stats/top-players', async (req, res) => {
         u.id,
         u.name,
         u.email,
+        u.avatar_url,
         COALESCE(SUM(mps.goals), 0) AS goals,
         COALESCE(SUM(mps.assists), 0) AS assists,
         COALESCE(SUM(mps.is_mvp), 0) AS mvps,
@@ -43,7 +44,7 @@ router.get('/stats/top-players', async (req, res) => {
       JOIN matches m ON m.id = mps.match_id
       WHERE 1=1
       ${dateWhere}
-      GROUP BY u.id, u.name, u.email
+      GROUP BY u.id, u.name, u.email, u.avatar_url
       HAVING total > 0
       ORDER BY total DESC, goals DESC, mvps DESC
       LIMIT 50

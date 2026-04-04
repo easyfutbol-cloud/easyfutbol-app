@@ -1,12 +1,31 @@
 // src/screens/StatsScreen.js
 import React, { useEffect, useMemo, useState, useCallback } from 'react';
-import { View, Text, StyleSheet, StatusBar, FlatList, TouchableOpacity, ImageBackground, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, StatusBar, FlatList, TouchableOpacity, ImageBackground, ActivityIndicator, Image } from 'react-native';
 import { BlurView } from 'expo-blur';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors, spacing } from '../theme';
 import { api } from '../api/client';
 
 const ORANGE = '#ff5a00';
+function buildAvatarUrl(rawAvatar) {
+  if (!rawAvatar) return null;
+
+  const value = String(rawAvatar).trim();
+  if (!value) return null;
+
+  if (/^https?:\/\//i.test(value)) {
+    return value;
+  }
+
+  const apiBase = (api?.defaults?.baseURL || '').replace(/\/+$/, '');
+  const assetBase = apiBase.replace(/\/api$/, '');
+
+  if (value.startsWith('/')) {
+    return assetBase ? `${assetBase}${value}` : value;
+  }
+
+  return assetBase ? `${assetBase}/${value.replace(/^\/+/, '')}` : value;
+}
 
 // Imágenes de fondo de fútbol
 const BG_IMAGES = [
@@ -71,11 +90,25 @@ export default function StatsScreen() {
 
   const renderRow = ({ item, index }) => {
     const medal = index === 0 ? '🥇' : index === 1 ? '🥈' : index === 2 ? '🥉' : `${index + 1}`;
+    const rawAvatar = item.avatar_url || item.avatarUrl || item.avatar || item.profile_image || item.photo || null;
+    const avatar = buildAvatarUrl(rawAvatar);
+    const displayName = item.username || item.name || 'Usuario';
     return (
       <View style={styles.row}>
         <Text style={[styles.rank, index < 3 && styles.rankMedal]}>{medal}</Text>
+
+        {avatar ? (
+          <Image source={{ uri: avatar }} style={styles.avatar} resizeMode="cover" />
+        ) : (
+          <View style={styles.avatarFallback}>
+            <Text style={styles.avatarFallbackText}>
+              {displayName.charAt(0).toUpperCase()}
+            </Text>
+          </View>
+        )}
+
         <View style={{ flex: 1 }}>
-          <Text style={styles.name} numberOfLines={1}>{item.username || item.name}</Text>
+          <Text style={styles.name} numberOfLines={1}>{displayName}</Text>
           <Text style={styles.meta}>{item.goals ?? 0} G · {item.assists ?? 0} A</Text>
         </View>
         <View style={styles.totalWrap}>
@@ -231,6 +264,31 @@ const styles = StyleSheet.create({
   },
   rank: { color: ORANGE, fontSize: 16, fontWeight: '800', width: 36, textAlign: 'center' },
   rankMedal: { fontSize: 18 },
+  avatar: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    marginRight: spacing(1.2),
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.10)',
+    backgroundColor: '#1a1a1a',
+  },
+  avatarFallback: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    marginRight: spacing(1.2),
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#1f1f1f',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.10)',
+  },
+  avatarFallbackText: {
+    color: colors.white,
+    fontSize: 16,
+    fontWeight: '800',
+  },
   name: { color: colors.white, fontSize: 16, fontWeight: '700' },
   meta: { color: '#b3b3b3', fontSize: 12, marginTop: 2 },
   totalWrap: { alignItems: 'flex-end', minWidth: 60 },
