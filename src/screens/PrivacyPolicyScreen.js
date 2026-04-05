@@ -78,6 +78,21 @@ const legalSections = [
     ],
   },
   {
+    title: 'TÉRMINOS Y CONDICIONES DEL SERVICIO',
+    paragraphs: [
+      'Estas Condiciones regulan el acceso y uso de la web, la app y de las actividades organizadas por EASYFUTBOL E.S.P.J. Al utilizar nuestros servicios, el usuario acepta íntegramente estas Condiciones.',
+      '1. PARTICIPACIÓN BAJO RESPONSABILIDAD PROPIA. EASYFUTBOL E.S.P.J. no proporciona seguro de accidentes ni de responsabilidad civil para los jugadores, salvo que se indique expresamente en un evento concreto. Por tanto, cualquier accidente, lesión o daño ocasionado a terceras personas o propiedades durante la actividad será responsabilidad exclusiva del participante.',
+      '2. EDAD MÍNIMA. No está permitido participar a menores de 18 años. La participación está limitada a personas mayores de edad. El incumplimiento de esta norma conlleva la exclusión inmediata sin derecho a devolución ni compensación.',
+      '3. RESPONSABILIDAD DEL USUARIO. El usuario es responsable del uso de su cuenta y de los EasyPass adquiridos o canjeados desde la misma, asegurando en todo caso que el uso de los servicios se realiza conforme a estas Condiciones.',
+      '4. POLÍTICA DE EASYPASS Y DEVOLUCIONES. Los EasyPass adquiridos tienen carácter general de no reembolsables.',
+      'No obstante, si un usuario desea solicitar una devolución, podrá ponerse en contacto con el servicio de soporte de EASYFUTBOL, explicando el motivo de su solicitud. Cada caso será revisado individualmente por la organización, que se reserva el derecho de aceptar o rechazar la devolución.',
+      'En el caso de un EasyPass ya canjeado para reservar plaza en un partido, solo podrá solicitarse la devolución de dicho EasyPass si la cancelación de la plaza se realiza con más de 6 horas de antelación respecto al inicio del partido.',
+      'Si la cancelación se realiza con 6 horas o menos de antelación, o si el jugador no se presenta, el EasyPass canjeado no será devuelto.',
+      '5. CONDUCTA. El jugador se compromete a mantener un comportamiento respetuoso con otros participantes, instalaciones y personal. EASYFUTBOL podrá denegar el acceso o expulsar a quien incumpla estas Condiciones, sin que exista derecho a devolución ni compensación.',
+      '6. CAMBIOS Y CANCELACIONES POR PARTE DE LA ORGANIZACIÓN. EASYFUTBOL se reserva el derecho de modificar horarios o cancelar partidos por causas de fuerza mayor, indisponibilidad de instalaciones u otras circunstancias justificadas. En estos casos, la organización podrá ofrecer, según corresponda, la devolución del EasyPass utilizado, la reasignación de plaza o una solución alternativa.',
+    ],
+  },
+  {
     title: '5. CARÁCTER OBLIGATORIO O FACULTATIVO DE LA INFORMACIÓN FACILITADA POR EL USUARIO',
     paragraphs: [
       'Los usuarios, mediante la marcación de las casillas correspondientes y entrada de datos en los campos marcados con un asterisco (*) en los formularios de la APLICACIÓN, aceptan expresamente y de forma libre e inequívoca que sus datos personales son necesarios para atender su petición por parte del prestador, siendo voluntaria la inclusión de datos en los campos restantes. El usuario garantiza que los datos personales facilitados a EASYFUTBOL E.S.P.J. son veraces y se hace responsable de comunicar cualquier modificación de los mismos.',

@@ -61,7 +61,9 @@ router.post('/matches/:id/join-with-easypass', requireAuth, async (req, res) => 
     const matchId = Number(req.params.id);
 
     const quantity = Math.max(1, Number.parseInt(req.body?.quantity, 10) || 1);
-    const shirtColorRaw = String(req.body?.ticket_type || req.body?.shirtColor || 'white').toLowerCase();
+    const shirtColorInput = req.body?.ticketType ?? req.body?.ticket_type ?? req.body?.shirtColor ?? 'white';
+    const shirtColorRaw = String(shirtColorInput).trim().toLowerCase();
+    console.log('POST /matches/:id/join-with-easypass ticket color', { userId, matchId, quantity, ticketType: req.body?.ticketType, ticket_type: req.body?.ticket_type, shirtColor: req.body?.shirtColor, normalized: shirtColorRaw });
     const shirtColor = shirtColorRaw === 'black' ? 'black' : 'white';
 
     await conn.beginTransaction();
