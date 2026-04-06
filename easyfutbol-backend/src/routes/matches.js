@@ -39,14 +39,22 @@ router.get('/matches', async (req, res) => {
               m.capacity,
               m.spots_taken,
               m.status,
+              (m.capacity - m.spots_taken) AS spots_remaining,
+              CASE WHEN m.spots_taken >= m.capacity THEN 1 ELSE 0 END AS is_full,
               f.name AS field_name
        FROM matches m
        JOIN fields f ON f.id = m.field_id
-       ${onlyOpen ? "WHERE m.status IN ('scheduled','open') AND m.spots_taken < m.capacity" : ''}
+       ${onlyOpen ? "WHERE m.status IN ('scheduled','open')" : ''}
        ORDER BY m.starts_at ASC`
     );
 
-    return res.json({ ok: true, data: rows });
+    const data = rows.map((row) => ({
+      ...row,
+      spots_remaining: Math.max(0, Number(row.spots_remaining) || 0),
+      is_full: Number(row.is_full) === 1,
+    }));
+
+    return res.json({ ok: true, data });
   } catch (e) {
     console.error('Error listando partidos', e);
     return res
@@ -116,6 +124,8 @@ router.get('/matches/:id/attendees', requireAuth, async (req, res) => {
               m.capacity,
               m.spots_taken,
               m.status,
+              (m.capacity - m.spots_taken) AS spots_remaining,
+              CASE WHEN m.spots_taken >= m.capacity THEN 1 ELSE 0 END AS is_full,
               f.name AS field_name
        FROM matches m
        JOIN fields f ON f.id = m.field_id
@@ -130,6 +140,9 @@ router.get('/matches/:id/attendees', requireAuth, async (req, res) => {
     }
 
     const match = rows[0];
+
+    match.spots_remaining = Math.max(0, Number(match.spots_remaining) || 0);
+    match.is_full = Number(match.is_full) === 1;
 
     // Calcular plazas restantes por color usando el mismo criterio que en /matches/:id/pay
     const capacity = Number(match.capacity) || 0;
