@@ -118,6 +118,25 @@ router.post('/matches/:id/join-with-easypass', requireAuth, async (req, res) => 
       return res.status(400).json({ ok:false, msg:`No hay ${quantity} plaza(s) disponibles` });
     }
 
+    const maxPerColor = 8;
+    const [[colorTakenRow]] = await conn.query(
+      `SELECT COUNT(*) AS taken
+       FROM inscriptions
+       WHERE match_id = ?
+         AND status = 'confirmed'
+         AND ticket_type = ?`,
+      [matchId, shirtColor]
+    );
+
+    const currentColorTaken = Number(colorTakenRow?.taken || 0);
+    if ((currentColorTaken + quantity) > maxPerColor) {
+      await conn.rollback();
+      return res.status(400).json({
+        ok: false,
+        msg: `No quedan ${shirtColor === 'white' ? 'camisetas blancas' : 'camisetas negras'} suficientes para ${quantity} plaza(s)`
+      });
+    }
+
     // descontar EasyPass
     await conn.query(
       'UPDATE users SET easypass_balance = easypass_balance - ? WHERE id=?',
