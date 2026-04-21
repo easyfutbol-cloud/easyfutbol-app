@@ -22,6 +22,7 @@ export default function MatchScreen({ route, navigation }) {
   const [quantity, setQuantity] = useState(1);
   const [easyPassBalance, setEasyPassBalance] = useState(0);
   const [easyPassLoading, setEasyPassLoading] = useState(true);
+  const [isGuest, setIsGuest] = useState(false);
 
   const [attendees, setAttendees] = useState([]);
   const [attendeesLoading, setAttendeesLoading] = useState(true);
@@ -123,7 +124,14 @@ export default function MatchScreen({ route, navigation }) {
         }
       } catch (err) {
         if (!cancelled) {
-          console.log('Error cargando mis inscripciones', err?.message || err);
+          const status = err?.response?.status;
+
+          if (status === 401 || status === 403) {
+            setIsGuest(true);
+            setMyTicketsCount(0);
+          } else {
+            console.log('Error cargando mis inscripciones', err?.message || err);
+          }
         }
       } finally {
         if (!cancelled) {
@@ -142,10 +150,18 @@ export default function MatchScreen({ route, navigation }) {
       setEasyPassLoading(true);
       const res = await api.get('/me/credits');
       const payload = res?.data;
+      setIsGuest(false);
       setEasyPassBalance(Number(payload?.easyPassBalance ?? payload?.credits ?? 0));
     } catch (err) {
-      console.log('Error cargando EasyPass', err?.message || err);
-      setEasyPassBalance(0);
+      const status = err?.response?.status;
+
+      if (status === 401 || status === 403) {
+        setIsGuest(true);
+        setEasyPassBalance(0);
+      } else {
+        console.log('Error cargando EasyPass', err?.message || err);
+        setEasyPassBalance(0);
+      }
     } finally {
       setEasyPassLoading(false);
     }
@@ -210,6 +226,13 @@ export default function MatchScreen({ route, navigation }) {
   const fieldName = match?.field_name || '';
   const city = match?.city || '';
   const easyPassCost = match?.easypass_cost ?? EASY_PASS_COST;
+  const hasAftergame =
+    match?.has_aftergame === true ||
+    match?.has_aftergame === 1 ||
+    match?.aftergame === true ||
+    match?.aftergame === 1 ||
+    match?.aftergame_enabled === true ||
+    match?.aftergame_enabled === 1;
 
   const capacity = match?.capacity ?? null;
   const spotsTaken = match?.spots_taken ?? 0;
@@ -231,6 +254,14 @@ export default function MatchScreen({ route, navigation }) {
     navigation?.navigate('EasyPass');
   };
 
+  const handleGoToLogin = () => {
+    navigation?.navigate('Login');
+  };
+
+  const handleGoToRegister = () => {
+    navigation?.navigate('Register');
+  };
+
   const totalEasyPassCost = quantity * easyPassCost;
   const canJoinWithEasyPass = easyPassBalance >= totalEasyPassCost;
 
@@ -244,6 +275,19 @@ export default function MatchScreen({ route, navigation }) {
 
     if (isFull) {
       Alert.alert('Partido completo', 'Este partido ya ha alcanzado el máximo de plazas');
+      return;
+    }
+
+    if (isGuest) {
+      Alert.alert(
+        'Inicia sesión',
+        'Inicia sesión o regístrate para apuntarte a este partido.',
+        [
+          { text: 'Cancelar', style: 'cancel' },
+          { text: 'Iniciar sesión', onPress: () => navigation?.navigate('Login') },
+          { text: 'Registrarme', onPress: () => navigation?.navigate('Register') },
+        ]
+      );
       return;
     }
 
@@ -291,9 +335,24 @@ export default function MatchScreen({ route, navigation }) {
         `Te has inscrito al partido con ${quantity} plaza${quantity > 1 ? 's' : ''} usando ${totalEasyPassCost} EasyPass.`
       );
     } catch (e) {
-      console.log('Error usando EasyPass', e?.response?.data || e.message || e);
-      const msg = e?.response?.data?.msg || 'No se ha podido completar la reserva con EasyPass';
-      Alert.alert('Error', msg);
+      const status = e?.response?.status;
+
+      if (status === 401 || status === 403) {
+        setIsGuest(true);
+        Alert.alert(
+          'Inicia sesión',
+          'Inicia sesión o regístrate para apuntarte a este partido.',
+          [
+            { text: 'Cancelar', style: 'cancel' },
+            { text: 'Iniciar sesión', onPress: () => navigation?.navigate('Login') },
+            { text: 'Registrarme', onPress: () => navigation?.navigate('Register') },
+          ]
+        );
+      } else {
+        console.log('Error usando EasyPass', e?.response?.data || e.message || e);
+        const msg = e?.response?.data?.msg || 'No se ha podido completar la reserva con EasyPass';
+        Alert.alert('Error', msg);
+      }
     } finally {
       setPaying(false);
     }
@@ -381,6 +440,14 @@ export default function MatchScreen({ route, navigation }) {
         <Text style={styles.priceLabel}>Coste del partido</Text>
         <Text style={styles.price}>{easyPassCost} EasyPass</Text>
       </View>
+      {hasAftergame && (
+        <View style={styles.aftergameCard}>
+          <Text style={styles.aftergameTitle}>Aftergame incluido</Text>
+          <Text style={styles.aftergameText}>
+            Este partido incluye ofertas especiales del aftergame para los jugadores.
+          </Text>
+        </View>
+      )}
 
       {!!capacity && (
         <View style={styles.capacityRow}>
@@ -541,6 +608,8 @@ export default function MatchScreen({ route, navigation }) {
             ? 'Partido completo'
             : paying
             ? 'Reservando...'
+            : isGuest
+            ? 'Inicia sesión para apuntarte'
             : canJoinWithEasyPass
             ? `Reservar ${quantity} plaza${quantity > 1 ? 's' : ''} por ${totalEasyPassCost} EasyPass`
             : `Comprar EasyPass (${totalEasyPassCost}) para reservar`}
@@ -555,18 +624,40 @@ export default function MatchScreen({ route, navigation }) {
         <Text style={styles.easyPassHint}>
           {easyPassLoading
             ? 'Estamos consultando tu saldo'
+            : isGuest
+            ? 'Inicia sesión o regístrate para ver tu saldo y apuntarte a este partido.'
             : easyPassBalance > 0
             ? `Tienes ${easyPassBalance} EasyPass. Esta reserva cuesta ${totalEasyPassCost} EasyPass para ${quantity} plaza${quantity > 1 ? 's' : ''}.`
             : 'Compra más EasyPass para reservar tus próximos partidos más rápido.'}
         </Text>
 
-        <TouchableOpacity
-          style={styles.easyPassBtn}
-          onPress={handleGoToEasyPass}
-          activeOpacity={0.85}
-        >
-          <Text style={styles.easyPassBtnText}>Comprar más EasyPass</Text>
-        </TouchableOpacity>
+        {isGuest ? (
+          <View style={styles.guestActionsRow}>
+            <TouchableOpacity
+              style={[styles.easyPassBtn, styles.guestActionBtn, styles.guestActionBtnLeft]}
+              onPress={handleGoToLogin}
+              activeOpacity={0.85}
+            >
+              <Text style={styles.easyPassBtnText}>Iniciar sesión</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.easyPassBtn, styles.guestActionBtn]}
+              onPress={handleGoToRegister}
+              activeOpacity={0.85}
+            >
+              <Text style={styles.easyPassBtnText}>Registrarme</Text>
+            </TouchableOpacity>
+          </View>
+        ) : (
+          <TouchableOpacity
+            style={styles.easyPassBtn}
+            onPress={handleGoToEasyPass}
+            activeOpacity={0.85}
+          >
+            <Text style={styles.easyPassBtnText}>Comprar más EasyPass</Text>
+          </TouchableOpacity>
+        )}
       </View>
 
       {isAdmin && (
@@ -657,6 +748,25 @@ const styles = StyleSheet.create({
     color: colors.orange,
     fontSize: 20,
     fontWeight: '900',
+  },
+  aftergameCard: {
+    backgroundColor: '#111',
+    borderWidth: 1,
+    borderColor: colors.orange,
+    borderRadius: 14,
+    padding: spacing(1.5),
+    marginBottom: spacing(1.2),
+  },
+  aftergameTitle: {
+    color: colors.orange,
+    fontSize: 14,
+    fontWeight: '800',
+    marginBottom: spacing(0.5),
+  },
+  aftergameText: {
+    color: colors.white,
+    fontSize: 13,
+    lineHeight: 18,
   },
   capacityRow: {
     flexDirection: 'row',
@@ -798,6 +908,17 @@ const styles = StyleSheet.create({
     color: colors.white,
     fontWeight: '800',
     fontSize: 14,
+  },
+  guestActionsRow: {
+    flexDirection: 'row',
+    marginTop: spacing(1.5),
+  },
+  guestActionBtn: {
+    flex: 1,
+    marginTop: 0,
+  },
+  guestActionBtnLeft: {
+    marginRight: spacing(1),
   },
   loading:{ color:colors.gray, textAlign:'center', marginTop:spacing(4) },
   btn:{ backgroundColor:colors.orange, paddingVertical:spacing(1.5), borderRadius:12, alignItems:'center', marginTop:spacing(3) },

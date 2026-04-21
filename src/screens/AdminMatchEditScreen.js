@@ -1,5 +1,3 @@
-
-
 import React, { useCallback, useState } from 'react';
 import {
   View,
@@ -10,6 +8,7 @@ import {
   ScrollView,
   ActivityIndicator,
   Alert,
+  Switch,
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -59,6 +58,7 @@ export default function AdminMatchEditScreen({ route, navigation }) {
   const [status, setStatus] = useState('open');
   const [easyPassRequired, setEasyPassRequired] = useState('1');
   const [shirtColor, setShirtColor] = useState('');
+  const [hasAftergame, setHasAftergame] = useState(false);
   const [confirmedCount, setConfirmedCount] = useState(0);
   const [availableSlots, setAvailableSlots] = useState(0);
 
@@ -99,6 +99,14 @@ export default function AdminMatchEditScreen({ route, navigation }) {
       setStatus(data?.status || 'open');
       setEasyPassRequired(String(data?.easypass_required ?? 1));
       setShirtColor(data?.shirt_color || '');
+      setHasAftergame(
+        data?.has_aftergame === true ||
+        data?.has_aftergame === 1 ||
+        data?.aftergame === true ||
+        data?.aftergame === 1 ||
+        data?.aftergame_enabled === true ||
+        data?.aftergame_enabled === 1
+      );
       setConfirmedCount(Number(data?.confirmed_count ?? 0));
       setAvailableSlots(Number(data?.available_slots ?? 0));
     } catch (err) {
@@ -159,6 +167,7 @@ export default function AdminMatchEditScreen({ route, navigation }) {
           status,
           easypass_required: Number(easyPassRequired),
           shirt_color: shirtColor || null,
+          has_aftergame: hasAftergame ? 1 : 0,
         }),
       });
 
@@ -373,6 +382,24 @@ export default function AdminMatchEditScreen({ route, navigation }) {
         {renderShirtSelector()}
       </View>
 
+      <View style={styles.section}>
+        <Text style={styles.label}>Aftergame</Text>
+        <View style={styles.switchRow}>
+          <View style={styles.switchTextWrap}>
+            <Text style={styles.switchTitle}>Ofertas del aftergame</Text>
+            <Text style={styles.switchSubtitle}>
+              Activa esta opción si este partido incluye promociones del aftergame para los jugadores.
+            </Text>
+          </View>
+          <Switch
+            value={hasAftergame}
+            onValueChange={setHasAftergame}
+            trackColor={{ false: '#333', true: '#ff5a00' }}
+            thumbColor={hasAftergame ? '#fff' : '#ccc'}
+          />
+        </View>
+      </View>
+
       <TouchableOpacity
         style={[styles.saveButton, saving && styles.saveButtonDisabled]}
         onPress={handleSave}
@@ -529,6 +556,31 @@ const styles = StyleSheet.create({
   },
   selectorPillTextActive: {
     color: '#ff8c4d',
+  },
+  switchRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#181818',
+    borderWidth: 1,
+    borderColor: '#2a2a2a',
+    borderRadius: 12,
+    padding: 14,
+  },
+  switchTextWrap: {
+    flex: 1,
+    paddingRight: 12,
+  },
+  switchTitle: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '700',
+    marginBottom: 4,
+  },
+  switchSubtitle: {
+    color: '#b3b3b3',
+    fontSize: 13,
+    lineHeight: 18,
   },
   saveButton: {
     backgroundColor: '#ff5a00',

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { View, Text, StyleSheet, TextInput, TouchableOpacity, ActivityIndicator, Alert, StatusBar, Platform, ScrollView, TouchableWithoutFeedback, Keyboard } from 'react-native';
+import { View, Text, StyleSheet, TextInput, TouchableOpacity, ActivityIndicator, Alert, StatusBar, Platform, ScrollView, TouchableWithoutFeedback, Keyboard, Switch } from 'react-native';
 import { colors, spacing } from '../theme';
 import { api } from '../api/client';
 import { Picker } from '@react-native-picker/picker';
@@ -44,6 +44,7 @@ export default function AdminCreateMatchScreen() {
   const EASY_PASS_COST = 1;
   const [capacity, setCapacity] = useState('14');
   const [duration, setDuration] = useState('60');
+  const [hasAftergame, setHasAftergame] = useState(false);
 
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
@@ -150,6 +151,7 @@ export default function AdminCreateMatchScreen() {
         easypass_cost: EASY_PASS_COST,
         capacity: capacityNum,
         duration_min: durationNum,
+        has_aftergame: hasAftergame ? 1 : 0,
       };
 
       if (fieldId) {
@@ -172,6 +174,7 @@ export default function AdminCreateMatchScreen() {
       setFieldName('');
       setCapacity('14');
       setDuration('60');
+      setHasAftergame(false);
     } catch (e) {
       const info = debugHttpError(e, 'POST create match');
       console.log('Error creando partido admin', info?.data || e.message || e);
@@ -323,6 +326,21 @@ export default function AdminCreateMatchScreen() {
           </View>
         </View>
 
+        <View style={styles.switchCard}>
+          <View style={styles.switchTextWrap}>
+            <Text style={styles.switchTitle}>Aftergame</Text>
+            <Text style={styles.switchSubtitle}>
+              Activa esta opción si el partido incluye ofertas del aftergame.
+            </Text>
+          </View>
+          <Switch
+            value={hasAftergame}
+            onValueChange={setHasAftergame}
+            trackColor={{ false: '#333', true: colors.orange }}
+            thumbColor={hasAftergame ? '#fff' : '#ccc'}
+          />
+        </View>
+
         <TouchableOpacity
           style={styles.btn}
           onPress={create}
@@ -345,6 +363,32 @@ const styles = StyleSheet.create({
   fixedInfoBox:{ backgroundColor:'#111', borderWidth:1, borderColor:'#222', padding:spacing(1.2), borderRadius:10 },
   fixedInfoText:{ color:'#fff', fontWeight:'700' },
   row:{ flexDirection:'row', alignItems:'flex-start', marginTop:spacing(1) },
+  switchCard:{
+    backgroundColor:'#111',
+    borderWidth:1,
+    borderColor:'#222',
+    borderRadius:12,
+    padding:spacing(1.4),
+    marginTop:spacing(1.5),
+    flexDirection:'row',
+    alignItems:'center',
+    justifyContent:'space-between',
+  },
+  switchTextWrap:{
+    flex:1,
+    paddingRight:spacing(1),
+  },
+  switchTitle:{
+    color:colors.white,
+    fontWeight:'800',
+    fontSize:15,
+    marginBottom:4,
+  },
+  switchSubtitle:{
+    color:'#bbb',
+    fontSize:13,
+    lineHeight:18,
+  },
   btn:{ backgroundColor:colors.orange, paddingVertical:spacing(1.6), borderRadius:12, alignItems:'center', marginTop:spacing(2) },
   btnText:{ color:colors.black, fontWeight:'800', fontSize:16 },
   btnSmall:{ backgroundColor:'#222', paddingVertical:8, paddingHorizontal:12, borderRadius:8, alignSelf:'flex-start' },

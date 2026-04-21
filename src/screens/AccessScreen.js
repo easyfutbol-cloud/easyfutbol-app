@@ -19,6 +19,7 @@ import {
 import { BlurView } from 'expo-blur';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { api } from '../api/client';
+import { registerForPushNotificationsAsync } from '../utils/notifications';
 
 const BG_IMG = {
   uri: 'https://images.unsplash.com/photo-1517747614396-d21a78b850e8?q=80&w=1200&auto=format',
@@ -104,6 +105,40 @@ export default function AccessScreen({ navigation, route }) {
   async function persistSession(token, user) {
     await AsyncStorage.setItem('token', String(token));
     await AsyncStorage.setItem('user', JSON.stringify(user || {}));
+  }
+
+  async function registerPushTokenInBackend(authToken) {
+    try {
+      const pushToken = await registerForPushNotificationsAsync();
+      if (!pushToken) return;
+
+      const response = await fetch(`${BASE}/api/push/register-token`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Accept: 'application/json',
+          Authorization: `Bearer ${authToken}`,
+        },
+        body: JSON.stringify({
+          pushToken,
+          platform: Platform.OS,
+        }),
+      });
+
+      const json = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        console.log(
+          'No se pudo registrar el push token en backend:',
+          json?.message || json?.error || response.status
+        );
+        return;
+      }
+
+      console.log('Push token registrado en backend correctamente');
+    } catch (error) {
+      console.log('Error registrando push token en backend:', error?.message);
+    }
   }
 
   async function postJsonWithFallback(paths, payload) {
@@ -199,6 +234,7 @@ export default function AccessScreen({ navigation, route }) {
       if (!token) throw new Error('La API no devolvió token.');
 
       await persistSession(token, user);
+      await registerPushTokenInBackend(token);
       navigation.reset({ index: 0, routes: [{ name: 'Home' }] });
     } catch (e) {
       console.log('Error login:', e?.message);
@@ -311,6 +347,7 @@ export default function AccessScreen({ navigation, route }) {
       // Si el backend devuelve token (caso legacy), iniciamos sesión.
       if (token) {
         await persistSession(token, user);
+        await registerPushTokenInBackend(token);
         navigation.reset({ index: 0, routes: [{ name: 'Home' }] });
         return;
       }

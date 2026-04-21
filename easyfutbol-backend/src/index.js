@@ -2,7 +2,7 @@
 import express from 'express';
 import cors from 'cors';
 import 'dotenv/config';
-import { assertDB } from './config/db.js';
+import { assertDB, pool } from './config/db.js';
 
 import webhookRouter from './routes/stripeWebhook.js';
 import health from './routes/health.js';
@@ -16,6 +16,7 @@ import profile from './routes/profile.js';
 import easyPass from './routes/easypass.js';
 import adminNotify from './routes/adminNotify.js';
 import adminMatches from './routes/adminMatches.js';
+import { requireAuth } from './middlewares/auth.js';
 
 const app = express();
 const PORT = Number(process.env.PORT || 4000);
@@ -28,6 +29,39 @@ app.use(cors({ origin: process.env.CORS_ORIGIN?.split(',') || '*' }));
 app.use(express.json());
 
 // Healthcheck directo para la app (evita 404 en /api/health)
+app.post('/api/push/register-token', requireAuth, async (req, res) => {
+  try {
+    const userId = req.user?.id;
+    const { pushToken, platform } = req.body || {};
+
+    if (!userId) {
+      return res.status(401).json({ ok: false, msg: 'Usuario no autenticado' });
+    }
+
+    if (!pushToken || !platform) {
+      return res.status(400).json({ ok: false, msg: 'pushToken y platform son obligatorios' });
+    }
+
+    if (!['ios', 'android'].includes(platform)) {
+      return res.status(400).json({ ok: false, msg: 'Platform no válida' });
+    }
+
+    await pool.query(
+      `INSERT INTO push_tokens (user_id, expo_push_token, platform, is_active)
+       VALUES (?, ?, ?, 1)
+       ON DUPLICATE KEY UPDATE
+         platform = VALUES(platform),
+         is_active = 1,
+         updated_at = CURRENT_TIMESTAMP`,
+      [userId, pushToken, platform]
+    );
+
+    return res.json({ ok: true, msg: 'Token push registrado correctamente' });
+  } catch (error) {
+    console.error('Error registrando push token:', error);
+    return res.status(500).json({ ok: false, msg: 'Error interno del servidor' });
+  }
+});
 app.get('/api/health', async (_req, res) => {
   try {
     await assertDB();

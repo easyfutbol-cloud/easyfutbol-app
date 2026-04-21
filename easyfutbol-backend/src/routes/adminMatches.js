@@ -56,6 +56,7 @@ router.get('/', requireAuth, requireAdmin, async (req, res) => {
         END AS status,
         1 AS easypass_required,
         NULL AS shirt_color,
+        COALESCE(has_aftergame, 0) AS has_aftergame,
         created_at,
         created_at AS updated_at
       FROM matches
@@ -110,6 +111,7 @@ router.get('/:id', requireAuth, requireAdmin, async (req, res) => {
           END AS status,
           1 AS easypass_required,
           NULL AS shirt_color,
+          COALESCE(has_aftergame, 0) AS has_aftergame,
           created_at,
           created_at AS updated_at
         FROM matches
@@ -149,6 +151,7 @@ router.put('/:id', requireAuth, requireAdmin, async (req, res) => {
       total_slots,
       status,
       easypass_required,
+      has_aftergame,
     } = req.body;
 
     const [existingRows] = await pool.query(
@@ -164,6 +167,7 @@ router.put('/:id', requireAuth, requireAdmin, async (req, res) => {
     const parsedTotalSlots = Number(total_slots);
     const parsedFieldId = Number(field_name);
     const parsedEasyPassRequired = Number(easypass_required);
+    const parsedHasAftergame = Number(has_aftergame) === 1 ? 1 : 0;
 
     const startsAt = new Date(`${match_date}T${start_time}:00`);
     const endsAt = new Date(`${match_date}T${end_time}:00`);
@@ -210,7 +214,8 @@ router.put('/:id', requireAuth, requireAdmin, async (req, res) => {
           duration_min = ?,
           capacity = ?,
           spots_taken = ?,
-          status = ?
+          status = ?,
+          has_aftergame = ?
         WHERE id = ?
       `,
       [
@@ -222,6 +227,7 @@ router.put('/:id', requireAuth, requireAdmin, async (req, res) => {
         parsedTotalSlots,
         confirmedCount,
         autoStatus,
+        parsedHasAftergame,
         id,
       ]
     );
@@ -247,6 +253,7 @@ router.put('/:id', requireAuth, requireAdmin, async (req, res) => {
           END AS status,
           1 AS easypass_required,
           NULL AS shirt_color,
+          COALESCE(has_aftergame, 0) AS has_aftergame,
           created_at,
           created_at AS updated_at
         FROM matches

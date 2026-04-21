@@ -39,6 +39,7 @@ router.get('/matches', async (req, res) => {
               m.capacity,
               m.spots_taken,
               m.status,
+              COALESCE(m.has_aftergame, 0) AS has_aftergame,
               (m.capacity - m.spots_taken) AS spots_remaining,
               CASE WHEN m.spots_taken >= m.capacity THEN 1 ELSE 0 END AS is_full,
               f.name AS field_name
@@ -66,12 +67,12 @@ router.get('/matches', async (req, res) => {
 /**
  * Detalle de un partido
  */
-router.get('/matches/:id', requireAuth, async (req, res) => {
+router.get('/matches/:id', async (req, res) => {
 /**
  * Asistentes de un partido (solo confirmados)
  * Devuelve: [{ user_id, username, avatar_url, ticket_type }]
  */
-router.get('/matches/:id/attendees', requireAuth, async (req, res) => {
+router.get('/matches/:id/attendees', async (req, res) => {
   try {
     const matchId = Number(req.params.id);
 
@@ -124,6 +125,7 @@ router.get('/matches/:id/attendees', requireAuth, async (req, res) => {
               m.capacity,
               m.spots_taken,
               m.status,
+              COALESCE(m.has_aftergame, 0) AS has_aftergame,
               (m.capacity - m.spots_taken) AS spots_remaining,
               CASE WHEN m.spots_taken >= m.capacity THEN 1 ELSE 0 END AS is_full,
               f.name AS field_name
@@ -170,6 +172,7 @@ router.get('/matches/:id/attendees', requireAuth, async (req, res) => {
 
     // añadir flag de admin
     match.is_admin = req.user?.role === 'admin';
+    match.has_aftergame = Number(match.has_aftergame) === 1;
 
     return res.json({ ok: true, data: match });
   } catch (e) {
