@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { pool } from '../config/db.js';
 import { requireAuth } from '../middlewares/auth.js';
 import Stripe from 'stripe';
+import { sendPushNotification } from '../services/pushService.js';
 
 const router = Router();
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
@@ -12,6 +13,20 @@ function refundPercent(startsAtISO) {
   const now = Date.now();
   const diffH = (starts - now) / 36e5;
   return diffH > 6 ? 100 : 0;
+}
+
+function formatMatchDateTime(startsAtISO) {
+  const date = new Date(startsAtISO);
+  const day = date.toLocaleDateString('es-ES', { weekday: 'long' });
+  const dayNumber = date.toLocaleDateString('es-ES', { day: 'numeric' });
+  const month = date.toLocaleDateString('es-ES', { month: 'long' });
+  const time = date.toLocaleTimeString('es-ES', {
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  });
+
+  return `${day} ${dayNumber} de ${month} a las ${time}`;
 }
 
 
@@ -169,7 +184,49 @@ router.post('/matches/:id/join-with-easypass', requireAuth, async (req, res) => 
       [userId]
     );
 
+    const [[matchDetails]] = await conn.query(
+      `SELECT m.id, m.title, m.starts_at, f.name AS field_name
+       FROM matches m
+       LEFT JOIN fields f ON f.id = m.field_id
+       WHERE m.id = ?
+       LIMIT 1`,
+      [matchId]
+    );
+
     await conn.commit();
+
+    try {
+      const [[tokenRows]] = await pool.query(
+        `SELECT expo_push_token
+         FROM push_tokens
+         WHERE user_id = ? AND is_active = 1`,
+        [userId]
+      );
+
+      const tokens = (tokenRows || []).map(r => r.expo_push_token).filter(Boolean);
+
+      if (tokens.length) {
+        const formattedDate = formatMatchDateTime(matchDetails?.starts_at || match?.starts_at);
+        const fieldName = matchDetails?.field_name || 'el campo indicado en la app';
+        const title = quantity > 1 ? 'Entradas confirmadas' : 'Ya estás apuntado';
+        const body = quantity > 1
+          ? `Has comprado ${quantity} entradas para el partido del ${formattedDate} en ${fieldName}.`
+          : `Has comprado 1 entrada para el partido del ${formattedDate} en ${fieldName}.`;
+
+        await sendPushNotification(tokens, {
+          title,
+          body,
+          data: {
+            type: 'match_confirmed',
+            screen: 'EventDetails',
+            matchId,
+            quantity,
+          },
+        });
+      }
+    } catch (pushError) {
+      console.error('Error enviando push de inscripción confirmada:', pushError);
+    }
 
     return res.json({
       ok:true,
