@@ -2,6 +2,7 @@
 import { Router } from 'express';
 import { requireAuth, requireAdmin } from '../middlewares/auth.js';
 import { getMatchPushTokens, getUserPushToken, sendExpoPush } from '../services/push.js';
+import { sendMatchReminders } from '../services/reminderService.js';
 
 const router = Router();
 
@@ -19,6 +20,23 @@ router.post('/admin/notify/match/:id', requireAuth, requireAdmin, async (req, re
   } catch (e) {
     console.error(e);
     res.status(500).json({ ok:false, msg:'Error enviando notificación' });
+  }
+});
+
+/** Lanzar manualmente los recordatorios de partidos (6h antes por defecto) */
+router.post('/admin/notify/send-reminders', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const { hoursAhead, windowMinutes } = req.body || {};
+
+    const result = await sendMatchReminders({
+      hoursAhead: Number.isFinite(Number(hoursAhead)) ? Number(hoursAhead) : 6,
+      windowMinutes: Number.isFinite(Number(windowMinutes)) ? Number(windowMinutes) : 15,
+    });
+
+    res.json(result);
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ ok:false, msg:'Error enviando recordatorios' });
   }
 });
 
