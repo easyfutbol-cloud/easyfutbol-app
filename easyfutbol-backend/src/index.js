@@ -16,7 +16,9 @@ import profile from './routes/profile.js';
 import easyPass from './routes/easypass.js';
 import adminNotify from './routes/adminNotify.js';
 import adminMatches from './routes/adminMatches.js';
+import achievements from './routes/achievements.js';
 import { requireAuth } from './middlewares/auth.js';
+import { sendPushNotification } from './services/pushService.js';
 
 const app = express();
 const PORT = Number(process.env.PORT || 4000);
@@ -83,6 +85,7 @@ app.use('/api', adminStats);
 app.use('/api', profile);
 app.use('/api', easyPass);
 app.use('/api', adminNotify);
+app.use('/api/achievements', achievements);
 app.use('/api/admin/matches', adminMatches);
 
 // estáticos para avatares

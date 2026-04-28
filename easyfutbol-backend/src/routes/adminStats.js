@@ -2,6 +2,7 @@
 import { Router } from 'express';
 import { pool } from '../config/db.js';
 import { requireAuth, requireAdmin } from '../middlewares/auth.js';
+import { checkAndUnlockAchievements, awardReward } from '../services/achievementsService.js';
 
 
 const router = Router();
@@ -121,9 +122,11 @@ router.patch(
           .json({ ok: false, msg: 'Faltan goles, asistencias o is_mvp' });
       }
 
-      // Obtenemos el partido de esta inscripción
+      // Obtenemos el estado previo de esta inscripción
       const [[insc]] = await pool.query(
-        'SELECT match_id FROM inscriptions WHERE id = ?',
+        `SELECT id, match_id, user_id, assigned_user_id, goals, assists, is_mvp
+         FROM inscriptions
+         WHERE id = ?`,
         [id]
       );
 
@@ -135,7 +138,7 @@ router.patch(
       const hasAssignedUser = await hasAssignedUserIdColumn();
       const goalsNum = Number(goals) || 0;
       const assistsNum = Number(assists) || 0;
-      const isMvpFlag = is_mvp ? 1 : 0;
+      const isMvpFlag = is_mvp === true || is_mvp === 1 || is_mvp === '1' ? 1 : 0;
 
       let assignedUserId = null;
 
@@ -175,6 +178,39 @@ router.patch(
           'UPDATE inscriptions SET goals = ?, assists = ?, is_mvp = ? WHERE id = ?',
           [goalsNum, assistsNum, isMvpFlag, id]
         );
+      }
+
+      const [[updatedInsc]] = await pool.query(
+        `SELECT id, match_id, user_id, assigned_user_id, goals, assists, is_mvp
+         FROM inscriptions
+         WHERE id = ?`,
+        [id]
+      );
+
+      const statsUserId = Number(updatedInsc?.assigned_user_id || updatedInsc?.user_id || 0);
+      const previousStatsUserId = Number(insc?.assigned_user_id || insc?.user_id || 0);
+
+      const beforeWasMvp = Number(insc?.is_mvp || 0) === 1;
+      const afterIsMvp = Number(updatedInsc?.is_mvp || 0) === 1;
+
+      if (statsUserId) {
+        if (!beforeWasMvp && afterIsMvp) {
+          await awardReward(
+            statsUserId,
+            'MATCH_MVP',
+            matchId,
+            null,
+            null,
+            req.user?.id || null,
+            'MVP asignado desde panel admin'
+          );
+        }
+
+        await checkAndUnlockAchievements(statsUserId, matchId);
+      }
+
+      if (previousStatsUserId && previousStatsUserId !== statsUserId) {
+        await checkAndUnlockAchievements(previousStatsUserId, matchId);
       }
 
       res.json({ ok: true, msg: 'Estadísticas actualizadas' });

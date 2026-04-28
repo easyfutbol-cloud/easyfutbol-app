@@ -38,6 +38,15 @@ import AdminMatchEditScreen from './src/screens/AdminMatchEditScreen';
 import AdminNotifyScreen from './src/screens/AdminNotifyScreen';
 import AdminEasyPassScreen from './src/screens/admineasypassscreen';
 import EasyPassScreen from './src/screens/EasyPassScreen';
+import AchievementsScreen from './src/screens/AchievementsScreen';
+import LeaguesHomeScreen from './src/screens/leagues/LeaguesHomeScreen';
+import JoinLeagueScreen from './src/screens/leagues/JoinLeagueScreen';
+import LeagueCalendarScreen from './src/screens/leagues/LeagueCalendarScreen';
+import MyTeamScreen from './src/screens/leagues/MyTeamScreen';
+import LeagueVideosScreen from './src/screens/leagues/LeagueVideosScreen';
+import LeagueStatsScreen from './src/screens/leagues/LeagueStatsScreen';
+import LeagueStandingsScreen from './src/screens/leagues/LeagueStandingsScreen';
+import LeagueInfoScreen from './src/screens/leagues/LeagueInfoScreen';
 
 // Notificaciones (opcional)
 let Notifications = null;
@@ -419,6 +428,7 @@ function AppMenu({ currentRouteName }) {
     { label: 'Inicio', screen: 'Home' },
     { label: 'Partidos', screen: 'Matchs' },
     { label: 'Mis Partidos', screen: 'MyMatches' },
+    { label: 'Ligas', screen: 'LeaguesHome' },
     { label: 'Estadísticas', screen: 'Stats' },
     { label: 'Perfil', screen: 'Profile' },
   ];
@@ -537,6 +547,15 @@ function AppShell({ currentRouteName }) {
         <Stack.Screen name="MyMatches" component={MyMatchesScreen} />
         <Stack.Screen name="Stats" component={StatsScreen} />
         <Stack.Screen name="Profile" component={ProfileScreen} />
+        <Stack.Screen name="LeaguesHome" component={LeaguesHomeScreen} options={{ title: 'Ligas' }} />
+        <Stack.Screen name="JoinLeague" component={JoinLeagueScreen} options={{ title: 'Mi invitación' }} />
+        <Stack.Screen name="LeagueCalendar" component={LeagueCalendarScreen} options={{ title: 'Calendario' }} />
+        <Stack.Screen name="MyTeam" component={MyTeamScreen} options={{ title: 'Mi equipo' }} />
+        <Stack.Screen name="LeagueVideos" component={LeagueVideosScreen} options={{ title: 'Vídeos' }} />
+        <Stack.Screen name="LeagueStats" component={LeagueStatsScreen} options={{ title: 'Estadísticas' }} />
+        <Stack.Screen name="LeagueStandings" component={LeagueStandingsScreen} options={{ title: 'Clasificación' }} />
+        <Stack.Screen name="LeagueInfo" component={LeagueInfoScreen} options={{ title: 'Funcionamiento' }} />
+        <Stack.Screen name="Achievements" component={AchievementsScreen} />
         <Stack.Screen name="EasyPass" component={EasyPassScreen} />
         <Stack.Screen name="AdminMatches" component={AdminMatchesScreen} />
         <Stack.Screen name="AdminMatchEdit" component={AdminMatchEditScreen} />

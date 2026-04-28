@@ -49,15 +49,26 @@ function groupInscriptionsByMatch(list) {
     if (hasConfirmed) status = 'confirmed';
     else if (!hasPending && hasCancelled) status = 'cancelled';
 
-    const whiteCount = group.inscriptions.filter((i) => i.ticket_type === 'white').length;
-    const blackCount = group.inscriptions.filter((i) => i.ticket_type === 'black').length;
+    const activeInscriptions = group.inscriptions.filter(
+      (i) => i.status === 'confirmed' || i.status === 'pending'
+    );
+    const cancelledInscriptions = group.inscriptions.filter((i) => i.status === 'cancelled');
+
+    const whiteCount = activeInscriptions.filter((i) => i.ticket_type === 'white').length;
+    const blackCount = activeInscriptions.filter((i) => i.ticket_type === 'black').length;
+    const cancelledWhiteCount = cancelledInscriptions.filter((i) => i.ticket_type === 'white').length;
+    const cancelledBlackCount = cancelledInscriptions.filter((i) => i.ticket_type === 'black').length;
 
     return {
       ...group,
       status,
       total: group.inscriptions.length,
+      activeCount: activeInscriptions.length,
+      cancelledCount: cancelledInscriptions.length,
       whiteCount,
       blackCount,
+      cancelledWhiteCount,
+      cancelledBlackCount,
     };
   });
 
@@ -164,8 +175,12 @@ export default function MyMatchesScreen() {
     const isFuture = isFutureMatch(item.starts_at);
     const canCancel = isFuture && (item.status === 'pending' || item.status === 'confirmed');
     const total = item.total || 0;
+    const activeCount = item.activeCount || 0;
+    const cancelledCount = item.cancelledCount || 0;
     const whites = item.whiteCount || 0;
     const blacks = item.blackCount || 0;
+    const cancelledWhites = item.cancelledWhiteCount || 0;
+    const cancelledBlacks = item.cancelledBlackCount || 0;
 
     return (
       <View style={styles.card}>
@@ -177,10 +192,25 @@ export default function MyMatchesScreen() {
         <Text style={styles.cardMeta}>{date.toLocaleString()} · {item.duration_min} min</Text>
 
         {total > 0 && (
-          <Text style={styles.cardMeta}>
-            {total === 1 ? 'Tienes 1 entrada' : `Tienes ${total} entradas`}
-            {` (${whites} blancas · ${blacks} negras)`}
-          </Text>
+          <View style={styles.entriesSummaryWrap}>
+            {activeCount > 0 ? (
+              <Text style={styles.cardMetaStrong}>
+                Activas: {activeCount === 1 ? '1 entrada' : `${activeCount} entradas`}
+                {` (${whites} blancas · ${blacks} negras)`}
+              </Text>
+            ) : (
+              <Text style={styles.cardMetaStrong}>
+                Activas: 0 entradas
+              </Text>
+            )}
+
+            {cancelledCount > 0 && (
+              <Text style={styles.cardMetaCancelled}>
+                Canceladas: {cancelledCount === 1 ? '1 entrada' : `${cancelledCount} entradas`}
+                {` (${cancelledWhites} blancas · ${cancelledBlacks} negras)`}
+              </Text>
+            )}
+          </View>
         )}
 
         {canCancel && (
@@ -259,6 +289,9 @@ const styles = StyleSheet.create({
   cardHeader:{ flexDirection:'row', alignItems:'center', justifyContent:'space-between', marginBottom:spacing(1) },
   cardTitle:{ color:colors.white, fontSize:18, fontWeight:'800' },
   cardMeta:{ color:'#aaa', fontSize:13, marginBottom:4 },
+  entriesSummaryWrap:{ marginTop:spacing(1), marginBottom:spacing(0.5) },
+  cardMetaStrong:{ color:colors.white, fontSize:13, fontWeight:'700', marginBottom:4 },
+  cardMetaCancelled:{ color:'#ff9b9b', fontSize:13, marginBottom:4 },
   btnOutline:{ borderWidth:1, borderColor:'#555', paddingVertical:spacing(1.2), borderRadius:12, alignItems:'center', marginTop:spacing(1) },
   btnOutlineText:{ color:'#ddd', fontWeight:'800', fontSize:14 }
 });

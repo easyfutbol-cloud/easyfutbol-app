@@ -255,11 +255,11 @@ export default function MatchScreen({ route, navigation }) {
   };
 
   const handleGoToLogin = () => {
-    navigation?.navigate('Login');
+    navigation?.navigate('Access');
   };
 
   const handleGoToRegister = () => {
-    navigation?.navigate('Register');
+    navigation?.navigate('Access');
   };
 
   const totalEasyPassCost = quantity * easyPassCost;
@@ -506,132 +506,13 @@ export default function MatchScreen({ route, navigation }) {
         </ScrollView>
       )}
 
-      <Text style={styles.label}>Elige tu camiseta</Text>
-      <View style={styles.shirtRow}>
-        <TouchableOpacity
-          style={[
-            styles.shirtOption,
-            ticketType === 'white' && styles.shirtOptionActive,
-          ]}
-          onPress={() => setTicketType('white')}
-          disabled={!canPay}
-        >
-          <View style={styles.shirtIconWrapper}>
-            <View
-              style={[
-                styles.shirtIconBody,
-                { backgroundColor: '#ffffff' },
-              ]}
-            />
-          </View>
-          <Text style={styles.shirtOptionText}>Camiseta blanca</Text>
-        </TouchableOpacity>
+      {isGuest ? (
+        <View style={styles.loginPromptCard}>
+          <Text style={styles.loginPromptTitle}>Inicia sesión para poder apuntarte</Text>
+          <Text style={styles.loginPromptText}>
+            Necesitas iniciar sesión o registrarte para reservar tu plaza en este partido y ver tus EasyPass disponibles.
+          </Text>
 
-        <TouchableOpacity
-          style={[
-            styles.shirtOption,
-            styles.shirtOptionLast,
-            ticketType === 'black' && styles.shirtOptionActive,
-          ]}
-          onPress={() => setTicketType('black')}
-          disabled={!canPay}
-        >
-          <View style={styles.shirtIconWrapper}>
-            <View
-              style={[
-                styles.shirtIconBody,
-                { backgroundColor: '#000000' },
-              ]}
-            />
-          </View>
-          <Text style={styles.shirtOptionText}>Camiseta negra</Text>
-        </TouchableOpacity>
-      </View>
-
-      <Text style={styles.label}>Número de entradas</Text>
-      <View style={styles.quantityRow}>
-        <TouchableOpacity
-          style={[styles.quantityButton, quantity <= 1 && styles.quantityButtonDisabled]}
-          onPress={() => quantity > 1 && setQuantity(quantity - 1)}
-          disabled={!canPay || quantity <= 1}
-        >
-          <Text style={styles.quantityButtonText}>-</Text>
-        </TouchableOpacity>
-
-        <Text style={styles.quantityValue}>{quantity}</Text>
-
-        <TouchableOpacity
-          style={[
-            styles.quantityButton,
-            quantity >= Math.min(MAX_TICKETS_PER_PURCHASE, remainingSpots != null ? remainingSpots : MAX_TICKETS_PER_PURCHASE) && styles.quantityButtonDisabled,
-          ]}
-          onPress={() => {
-            const maxByCapacity = remainingSpots != null ? remainingSpots : MAX_TICKETS_PER_PURCHASE;
-            const nextMax = Math.min(MAX_TICKETS_PER_PURCHASE, maxByCapacity);
-            if (quantity < nextMax) {
-              setQuantity(quantity + 1);
-            }
-          }}
-          disabled={
-            !canPay ||
-            quantity >= Math.min(MAX_TICKETS_PER_PURCHASE, remainingSpots != null ? remainingSpots : MAX_TICKETS_PER_PURCHASE)
-          }
-        >
-          <Text style={styles.quantityButtonText}>+</Text>
-        </TouchableOpacity>
-      </View>
-      <Text style={styles.meta}>
-        Coste total: {totalEasyPassCost} EasyPass
-      </Text>
-      {match.white_remaining != null && match.black_remaining != null && (
-        <Text style={styles.meta}>
-          Quedan {match.white_remaining} blancas 
-          · {match.black_remaining} negras
-        </Text>
-      )}
-
-      {!!match.description && (
-        <Text style={[styles.meta, { marginTop: spacing(2) }]}>
-          {match.description}
-        </Text>
-      )}
-
-      <TouchableOpacity
-        style={styles.btn}
-        onPress={handlePay}
-        disabled={!canPay}
-      >
-        <Text style={styles.btnText}>
-          {!isPayable
-            ? 'No disponible'
-            : isFull
-            ? 'Partido completo'
-            : paying
-            ? 'Reservando...'
-            : isGuest
-            ? 'Inicia sesión para apuntarte'
-            : canJoinWithEasyPass
-            ? `Reservar ${quantity} plaza${quantity > 1 ? 's' : ''} por ${totalEasyPassCost} EasyPass`
-            : `Comprar EasyPass (${totalEasyPassCost}) para reservar`}
-        </Text>
-      </TouchableOpacity>
-
-      <View style={styles.easyPassCard}>
-        <Text style={styles.easyPassTitle}>Tus EasyPass</Text>
-        <Text style={styles.easyPassValue}>
-          {easyPassLoading ? 'Cargando...' : easyPassBalance}
-        </Text>
-        <Text style={styles.easyPassHint}>
-          {easyPassLoading
-            ? 'Estamos consultando tu saldo'
-            : isGuest
-            ? 'Inicia sesión o regístrate para ver tu saldo y apuntarte a este partido.'
-            : easyPassBalance > 0
-            ? `Tienes ${easyPassBalance} EasyPass. Esta reserva cuesta ${totalEasyPassCost} EasyPass para ${quantity} plaza${quantity > 1 ? 's' : ''}.`
-            : 'Compra más EasyPass para reservar tus próximos partidos más rápido.'}
-        </Text>
-
-        {isGuest ? (
           <View style={styles.guestActionsRow}>
             <TouchableOpacity
               style={[styles.easyPassBtn, styles.guestActionBtn, styles.guestActionBtnLeft]}
@@ -649,16 +530,140 @@ export default function MatchScreen({ route, navigation }) {
               <Text style={styles.easyPassBtnText}>Registrarme</Text>
             </TouchableOpacity>
           </View>
-        ) : (
+        </View>
+      ) : (
+        <>
+          <Text style={styles.label}>Elige tu camiseta</Text>
+          <View style={styles.shirtRow}>
+            <TouchableOpacity
+              style={[
+                styles.shirtOption,
+                ticketType === 'white' && styles.shirtOptionActive,
+              ]}
+              onPress={() => setTicketType('white')}
+              disabled={!canPay}
+            >
+              <View style={styles.shirtIconWrapper}>
+                <View
+                  style={[
+                    styles.shirtIconBody,
+                    { backgroundColor: '#ffffff' },
+                  ]}
+                />
+              </View>
+              <Text style={styles.shirtOptionText}>Camiseta blanca</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[
+                styles.shirtOption,
+                styles.shirtOptionLast,
+                ticketType === 'black' && styles.shirtOptionActive,
+              ]}
+              onPress={() => setTicketType('black')}
+              disabled={!canPay}
+            >
+              <View style={styles.shirtIconWrapper}>
+                <View
+                  style={[
+                    styles.shirtIconBody,
+                    { backgroundColor: '#000000' },
+                  ]}
+                />
+              </View>
+              <Text style={styles.shirtOptionText}>Camiseta negra</Text>
+            </TouchableOpacity>
+          </View>
+
+          <Text style={styles.label}>Número de entradas</Text>
+          <View style={styles.quantityRow}>
+            <TouchableOpacity
+              style={[styles.quantityButton, quantity <= 1 && styles.quantityButtonDisabled]}
+              onPress={() => quantity > 1 && setQuantity(quantity - 1)}
+              disabled={!canPay || quantity <= 1}
+            >
+              <Text style={styles.quantityButtonText}>-</Text>
+            </TouchableOpacity>
+
+            <Text style={styles.quantityValue}>{quantity}</Text>
+
+            <TouchableOpacity
+              style={[
+                styles.quantityButton,
+                quantity >= Math.min(MAX_TICKETS_PER_PURCHASE, remainingSpots != null ? remainingSpots : MAX_TICKETS_PER_PURCHASE) && styles.quantityButtonDisabled,
+              ]}
+              onPress={() => {
+                const maxByCapacity = remainingSpots != null ? remainingSpots : MAX_TICKETS_PER_PURCHASE;
+                const nextMax = Math.min(MAX_TICKETS_PER_PURCHASE, maxByCapacity);
+                if (quantity < nextMax) {
+                  setQuantity(quantity + 1);
+                }
+              }}
+              disabled={
+                !canPay ||
+                quantity >= Math.min(MAX_TICKETS_PER_PURCHASE, remainingSpots != null ? remainingSpots : MAX_TICKETS_PER_PURCHASE)
+              }
+            >
+              <Text style={styles.quantityButtonText}>+</Text>
+            </TouchableOpacity>
+          </View>
+          <Text style={styles.meta}>
+            Coste total: {totalEasyPassCost} EasyPass
+          </Text>
+          {match.white_remaining != null && match.black_remaining != null && (
+            <Text style={styles.meta}>
+              Quedan {match.white_remaining} blancas 
+              · {match.black_remaining} negras
+            </Text>
+          )}
+
+          {!!match.description && (
+            <Text style={[styles.meta, { marginTop: spacing(2) }]}>
+              {match.description}
+            </Text>
+          )}
+
           <TouchableOpacity
-            style={styles.easyPassBtn}
-            onPress={handleGoToEasyPass}
-            activeOpacity={0.85}
+            style={styles.btn}
+            onPress={handlePay}
+            disabled={!canPay}
           >
-            <Text style={styles.easyPassBtnText}>Comprar más EasyPass</Text>
+            <Text style={styles.btnText}>
+              {!isPayable
+                ? 'No disponible'
+                : isFull
+                ? 'Partido completo'
+                : paying
+                ? 'Reservando...'
+                : canJoinWithEasyPass
+                ? `Reservar ${quantity} plaza${quantity > 1 ? 's' : ''} por ${totalEasyPassCost} EasyPass`
+                : `Comprar EasyPass (${totalEasyPassCost}) para reservar`}
+            </Text>
           </TouchableOpacity>
-        )}
-      </View>
+
+          <View style={styles.easyPassCard}>
+            <Text style={styles.easyPassTitle}>Tus EasyPass</Text>
+            <Text style={styles.easyPassValue}>
+              {easyPassLoading ? 'Cargando...' : easyPassBalance}
+            </Text>
+            <Text style={styles.easyPassHint}>
+              {easyPassLoading
+                ? 'Estamos consultando tu saldo'
+                : easyPassBalance > 0
+                ? `Tienes ${easyPassBalance} EasyPass. Esta reserva cuesta ${totalEasyPassCost} EasyPass para ${quantity} plaza${quantity > 1 ? 's' : ''}.`
+                : 'Compra más EasyPass para reservar tus próximos partidos más rápido.'}
+            </Text>
+
+            <TouchableOpacity
+              style={styles.easyPassBtn}
+              onPress={handleGoToEasyPass}
+              activeOpacity={0.85}
+            >
+              <Text style={styles.easyPassBtnText}>Comprar más EasyPass</Text>
+            </TouchableOpacity>
+          </View>
+        </>
+      )}
 
       {isAdmin && (
         <TouchableOpacity
@@ -869,6 +874,25 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     color: '#aaaaaa',
     fontSize: 13,
+  },
+  loginPromptCard: {
+    marginTop: spacing(2),
+    padding: spacing(2),
+    borderRadius: 16,
+    backgroundColor: '#111',
+    borderWidth: 1,
+    borderColor: '#2a2a2a',
+  },
+  loginPromptTitle: {
+    color: colors.white,
+    fontSize: 16,
+    fontWeight: '800',
+    marginBottom: spacing(0.75),
+  },
+  loginPromptText: {
+    color: '#aaaaaa',
+    fontSize: 13,
+    lineHeight: 18,
   },
   easyPassCard: {
     marginTop: spacing(2),

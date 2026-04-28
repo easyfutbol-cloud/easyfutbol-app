@@ -449,6 +449,20 @@ export default function ProfileScreen({ navigation }) {
             </TouchableOpacity>
           </View>
 
+          <View style={styles.achievementsCard}>
+            <Text style={styles.section}>🏅 Logros</Text>
+            <Text style={styles.communityText}>
+              Consulta tus logros desbloqueados, premios especiales y el progreso de tus puntos EasyFutbol.
+            </Text>
+            <TouchableOpacity
+              style={styles.achievementsBtn}
+              onPress={() => navigation.navigate('Achievements')}
+              activeOpacity={0.85}
+            >
+              <Text style={styles.achievementsBtnText}>Ver mis logros</Text>
+            </TouchableOpacity>
+          </View>
+
           {/* Stats */}
           <View style={styles.statsCard}>
             <Text style={styles.section}>📊 Estadísticas</Text>
@@ -537,6 +551,9 @@ const styles = StyleSheet.create({
   communityText:{ color:'#bdbdbd', fontSize:13, lineHeight:20, marginBottom:14 },
   communityBtn:{ backgroundColor:'#25D366', paddingVertical:14, paddingHorizontal:16, borderRadius:12 },
   communityBtnText:{ color:'#000', fontWeight:'900', textAlign:'center' },
+  achievementsCard:{ backgroundColor:'rgba(17,17,17,0.92)', borderRadius:16, padding: spacing(2), borderWidth:1, borderColor:'rgba(255,255,255,0.06)', marginBottom: spacing(2) },
+  achievementsBtn:{ backgroundColor: ORANGE, paddingVertical:14, paddingHorizontal:16, borderRadius:12 },
+  achievementsBtnText:{ color:'#000', fontWeight:'900', textAlign:'center' },
   grid:{ flexDirection:'row', flexWrap:'wrap', columnGap:10, rowGap:10, justifyContent:'space-between' },
   gridItem:{ width:'48%', backgroundColor:'#121212', borderRadius:14, paddingVertical:14, paddingHorizontal:12, borderWidth:1, borderColor:'rgba(255,255,255,0.05)' },
   gridValue:{ color:'#fff', fontSize:20, fontWeight:'900', marginBottom:4 },

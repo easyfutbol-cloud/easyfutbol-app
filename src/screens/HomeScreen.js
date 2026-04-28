@@ -20,6 +20,9 @@ const BG = {
   myMatches: {
     uri: 'https://easyfutbol.es/wp-content/uploads/2024/10/siluetas-futbol-7.jpeg',
   },
+  leagues: {
+    uri: 'https://easyfutbol.es/wp-content/uploads/2025/02/grass-2616911_1280.jpg',
+  },
   upcoming: {
     uri: 'https://easyfutbol.es/wp-content/uploads/2025/01/Imagen-eventos_1.avif',
   },
@@ -196,6 +199,15 @@ export default function HomeScreen({ navigation }) {
           bgSource={BG.myMatches}
           onPress={() => navigation.navigate('MyMatches')}
         />
+        <SectionCard
+          title="Ligas"
+          bgSource={BG.leagues}
+          onPress={() => navigation.navigate('LeaguesHome')}
+        >
+          <Text style={{ color: '#fff', fontSize: 13, opacity: 0.9 }}>
+            Compite con tu equipo, consulta calendario, clasificación, vídeos y estadísticas.
+          </Text>
+        </SectionCard>
         <SectionCard
           title="Estadísticas"
           bgSource={BG.stats}

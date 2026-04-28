@@ -18,6 +18,25 @@ import { colors, spacing } from '../theme';
 
 const STORAGE_CITY_KEY = 'ef_selected_city';
 
+const MATCH_CARD_IMAGES = [
+  require('../../assets/matches/match-2.jpg'),
+  require('../../assets/matches/match-4.jpg'),
+  require('../../assets/matches/match-5.jpg'),
+  require('../../assets/matches/match-8.jpg'),
+  require('../../assets/matches/match-9.jpg'),
+];
+
+function getMatchCardImage(match) {
+  if (!MATCH_CARD_IMAGES.length) return null;
+
+  const rawId = Number(match?.id);
+  const safeIndex = Number.isFinite(rawId)
+    ? Math.abs(rawId) % MATCH_CARD_IMAGES.length
+    : 0;
+
+  return MATCH_CARD_IMAGES[safeIndex];
+}
+
 // Helper: formatea el día (sin la hora)
 function formatDayLabel(dateObj) {
   if (!dateObj) return '';
@@ -162,6 +181,7 @@ export default function MatchsScreen({ navigation }) {
 
     const fieldName = item.field_name || '';
     const city = item.city || '';
+    const cardImage = getMatchCardImage(item);
 
     const handlePress = () => {
       navigation.navigate('Match', { matchId: item.id });
@@ -170,9 +190,8 @@ export default function MatchsScreen({ navigation }) {
     return (
       <TouchableOpacity style={styles.cardWrapper} activeOpacity={0.9} onPress={handlePress}>
         <ImageBackground
-          source={{
-            uri: 'https://images.pexels.com/photos/114296/pexels-photo-114296.jpeg?auto=compress&cs=tinysrgb&w=800',
-          }}
+          source={cardImage}
+          defaultSource={cardImage}
           style={styles.cardBackground}
           imageStyle={styles.cardImage}
         >
@@ -350,7 +369,7 @@ const styles = StyleSheet.create({
   },
   cardImage: {
     borderRadius: 16,
-    opacity: 0.35,
+    opacity: 0.45,
   },
   cardOverlay: {
     flex: 1,
