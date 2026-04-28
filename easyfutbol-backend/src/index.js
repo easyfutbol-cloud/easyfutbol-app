@@ -17,6 +17,7 @@ import easyPass from './routes/easypass.js';
 import adminNotify from './routes/adminNotify.js';
 import adminMatches from './routes/adminMatches.js';
 import achievements from './routes/achievements.js';
+import worldcup from './routes/worldcup.js';
 import { requireAuth } from './middlewares/auth.js';
 import { sendPushNotification } from './services/pushService.js';
 
@@ -131,6 +132,7 @@ app.use('/api', profile);
 app.use('/api', easyPass);
 app.use('/api', adminNotify);
 app.use('/api/achievements', achievements);
+app.use('/api/worldcup', worldcup);
 app.use('/api/admin/matches', adminMatches);
 
 // estáticos para avatares
