@@ -196,7 +196,7 @@ router.post('/matches/:id/join-with-easypass', requireAuth, async (req, res) => 
     await conn.commit();
 
     try {
-      const [[tokenRows]] = await pool.query(
+      const [tokenRows] = await pool.query(
         `SELECT expo_push_token
          FROM push_tokens
          WHERE user_id = ? AND is_active = 1`,
