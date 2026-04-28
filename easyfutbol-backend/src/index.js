@@ -64,6 +64,51 @@ app.post('/api/push/register-token', requireAuth, async (req, res) => {
     return res.status(500).json({ ok: false, msg: 'Error interno del servidor' });
   }
 });
+
+app.post('/api/push/test', requireAuth, async (req, res) => {
+  try {
+    const userId = req.user?.id;
+
+    const [rows] = await pool.query(
+      `SELECT expo_push_token
+       FROM push_tokens
+       WHERE user_id = ? AND is_active = 1`,
+      [userId]
+    );
+
+    const tokens = rows.map(r => r.expo_push_token).filter(Boolean);
+
+    if (!tokens.length) {
+      return res.status(404).json({
+        ok: false,
+        msg: 'No hay tokens push registrados para este usuario',
+      });
+    }
+
+    const tickets = await sendPushNotification(tokens, {
+      title: 'EasyFutbol',
+      body: 'Notificación push de prueba',
+      data: {
+        screen: 'Home',
+        type: 'test_push',
+      },
+    });
+
+    return res.json({
+      ok: true,
+      msg: 'Push enviada',
+      tokens: tokens.length,
+      tickets,
+    });
+  } catch (error) {
+    console.error('Error enviando push de prueba:', error);
+    return res.status(500).json({
+      ok: false,
+      msg: 'Error interno del servidor',
+    });
+  }
+});
+
 app.get('/api/health', async (_req, res) => {
   try {
     await assertDB();
