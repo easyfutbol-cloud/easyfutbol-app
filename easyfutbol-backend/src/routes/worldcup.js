@@ -1,10 +1,8 @@
+import express from 'express';
+import { pool } from '../config/db.js';
+import { requireAuth } from '../middlewares/auth.js';
 
-
-const express = require('express');
 const router = express.Router();
-
-const db = require('../db');
-const authMiddleware = require('../middleware/authMiddleware');
 
 const WORLD_CUP_START = '2026-06-09 00:00:00';
 const WORLD_CUP_END = '2026-07-20 00:00:00';
@@ -17,10 +15,10 @@ const POINTS = {
 };
 
 // GET /api/worldcup/ranking
-// Ranking general por selecciones
-router.get('/ranking', async (req, res) => {
+// Ranking general por selecciones + ranking individual
+router.get('/ranking', async (_req, res) => {
   try {
-    const [teamsRanking] = await db.query(
+    const [teamsRanking] = await pool.query(
       `
       SELECT
         u.worldcup_team AS team,
@@ -67,7 +65,7 @@ router.get('/ranking', async (req, res) => {
       ]
     );
 
-    const [playersRanking] = await db.query(
+    const [playersRanking] = await pool.query(
       `
       SELECT
         u.id,
@@ -102,7 +100,7 @@ router.get('/ranking', async (req, res) => {
       ]
     );
 
-    res.json({
+    return res.json({
       startDate: WORLD_CUP_START,
       endDate: '2026-07-19 23:59:59',
       points: POINTS,
@@ -111,17 +109,17 @@ router.get('/ranking', async (req, res) => {
     });
   } catch (error) {
     console.error('Error obteniendo ranking del Mundial:', error);
-    res.status(500).json({ message: 'Error obteniendo ranking del Mundial' });
+    return res.status(500).json({ message: 'Error obteniendo ranking del Mundial' });
   }
 });
 
 // GET /api/worldcup/me
 // Devuelve la selección elegida por el usuario conectado
-router.get('/me', authMiddleware, async (req, res) => {
+router.get('/me', requireAuth, async (req, res) => {
   try {
-    const userId = req.user.id;
+    const userId = req.user?.id;
 
-    const [rows] = await db.query(
+    const [rows] = await pool.query(
       `
       SELECT id, name, worldcup_team, worldcup_team_selected_at
       FROM users
@@ -135,19 +133,19 @@ router.get('/me', authMiddleware, async (req, res) => {
       return res.status(404).json({ message: 'Usuario no encontrado' });
     }
 
-    res.json(rows[0]);
+    return res.json(rows[0]);
   } catch (error) {
     console.error('Error obteniendo selección del usuario:', error);
-    res.status(500).json({ message: 'Error obteniendo selección del usuario' });
+    return res.status(500).json({ message: 'Error obteniendo selección del usuario' });
   }
 });
 
 // POST /api/worldcup/select-team
 // Permite al usuario elegir selección una sola vez
-router.post('/select-team', authMiddleware, async (req, res) => {
+router.post('/select-team', requireAuth, async (req, res) => {
   try {
-    const userId = req.user.id;
-    const { team } = req.body;
+    const userId = req.user?.id;
+    const { team } = req.body || {};
 
     if (!team || typeof team !== 'string') {
       return res.status(400).json({ message: 'Debes elegir una selección válida' });
@@ -159,7 +157,7 @@ router.post('/select-team', authMiddleware, async (req, res) => {
       return res.status(400).json({ message: 'La selección elegida no es válida' });
     }
 
-    const [users] = await db.query(
+    const [users] = await pool.query(
       `
       SELECT worldcup_team
       FROM users
@@ -177,7 +175,7 @@ router.post('/select-team', authMiddleware, async (req, res) => {
       return res.status(409).json({ message: 'Ya has elegido una selección y no puedes cambiarla' });
     }
 
-    await db.query(
+    await pool.query(
       `
       UPDATE users
       SET worldcup_team = ?, worldcup_team_selected_at = NOW()
@@ -186,14 +184,14 @@ router.post('/select-team', authMiddleware, async (req, res) => {
       [cleanTeam, userId]
     );
 
-    res.json({
+    return res.json({
       message: 'Selección elegida correctamente',
       team: cleanTeam,
     });
   } catch (error) {
     console.error('Error eligiendo selección del Mundial:', error);
-    res.status(500).json({ message: 'Error eligiendo selección del Mundial' });
+    return res.status(500).json({ message: 'Error eligiendo selección del Mundial' });
   }
 });
 
-module.exports = router;
+export default router;
