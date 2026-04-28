@@ -2,7 +2,7 @@
 import { Router } from 'express';
 import { pool } from '../config/db.js';
 import { requireAuth, requireAdmin } from '../middlewares/auth.js';
-import { checkAndUnlockAchievements, awardReward } from '../services/achievementsService.js';
+// import { checkAndUnlockAchievements, awardReward } from '../services/achievementsService.js';
 
 
 const router = Router();
@@ -195,22 +195,14 @@ router.patch(
 
       if (statsUserId) {
         if (!beforeWasMvp && afterIsMvp) {
-          await awardReward(
-            statsUserId,
-            'MATCH_MVP',
-            matchId,
-            null,
-            null,
-            req.user?.id || null,
-            'MVP asignado desde panel admin'
-          );
+          console.log('Recompensa MVP pendiente: achievementsService.js no disponible');
         }
 
-        await checkAndUnlockAchievements(statsUserId, matchId);
+        console.log('Recalculo de logros pendiente para usuario:', statsUserId, 'partido:', matchId);
       }
 
       if (previousStatsUserId && previousStatsUserId !== statsUserId) {
-        await checkAndUnlockAchievements(previousStatsUserId, matchId);
+        console.log('Recalculo de logros pendiente para usuario previo:', previousStatsUserId, 'partido:', matchId);
       }
 
       res.json({ ok: true, msg: 'Estadísticas actualizadas' });
