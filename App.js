@@ -47,6 +47,8 @@ import LeagueVideosScreen from './src/screens/leagues/LeagueVideosScreen';
 import LeagueStatsScreen from './src/screens/leagues/LeagueStatsScreen';
 import LeagueStandingsScreen from './src/screens/leagues/LeagueStandingsScreen';
 import LeagueInfoScreen from './src/screens/leagues/LeagueInfoScreen';
+import WorldCupScreen from './src/screens/worldcup/WorldCupScreen';
+import WorldCupSelectTeamScreen from './src/screens/worldcup/WorldCupSelectTeamScreen';
 
 // Notificaciones (opcional)
 let Notifications = null;
@@ -429,6 +431,7 @@ function AppMenu({ currentRouteName }) {
     { label: 'Partidos', screen: 'Matchs' },
     { label: 'Mis Partidos', screen: 'MyMatches' },
     { label: 'Ligas', screen: 'LeaguesHome' },
+    { label: 'Mundial EasyFutbol', screen: 'WorldCup' },
     { label: 'Estadísticas', screen: 'Stats' },
     { label: 'Perfil', screen: 'Profile' },
   ];
@@ -555,6 +558,8 @@ function AppShell({ currentRouteName }) {
         <Stack.Screen name="LeagueStats" component={LeagueStatsScreen} options={{ title: 'Estadísticas' }} />
         <Stack.Screen name="LeagueStandings" component={LeagueStandingsScreen} options={{ title: 'Clasificación' }} />
         <Stack.Screen name="LeagueInfo" component={LeagueInfoScreen} options={{ title: 'Funcionamiento' }} />
+        <Stack.Screen name="WorldCup" component={WorldCupScreen} />
+        <Stack.Screen name="WorldCupSelectTeam" component={WorldCupSelectTeamScreen} />
         <Stack.Screen name="Achievements" component={AchievementsScreen} />
         <Stack.Screen name="EasyPass" component={EasyPassScreen} />
         <Stack.Screen name="AdminMatches" component={AdminMatchesScreen} />

@@ -117,7 +117,11 @@ router.get('/ranking', async (_req, res) => {
 // Devuelve la selección elegida por el usuario conectado
 router.get('/me', requireAuth, async (req, res) => {
   try {
-    const userId = req.user?.id;
+    const userId = req.user?.id || req.user?.userId;
+
+    if (!userId) {
+      return res.status(401).json({ message: 'Usuario no autenticado' });
+    }
 
     const [rows] = await pool.query(
       `
@@ -144,7 +148,12 @@ router.get('/me', requireAuth, async (req, res) => {
 // Permite al usuario elegir selección una sola vez
 router.post('/select-team', requireAuth, async (req, res) => {
   try {
-    const userId = req.user?.id;
+    const userId = req.user?.id || req.user?.userId;
+
+    if (!userId) {
+      return res.status(401).json({ message: 'Usuario no autenticado' });
+    }
+
     const { team } = req.body || {};
 
     if (!team || typeof team !== 'string') {
