@@ -1,5 +1,5 @@
 // src/screens/HomeScreen.js
-import { View, Text, StyleSheet, StatusBar, TouchableOpacity, ImageBackground, Image, ScrollView, Alert, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, StatusBar, TouchableOpacity, ImageBackground, Image, ScrollView, Alert } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import { colors, spacing } from '../theme';
@@ -12,14 +12,6 @@ import { menuController } from '../../App';
 
 const ORANGE = '#ff5a00';
 
-const getStatsMonthKey = () => {
-  const now = new Date();
-  const year = now.getFullYear();
-  const month = String(now.getMonth() + 1).padStart(2, '0');
-  return `${year}-${month}`;
-};
-
-const API_BASE_URL = 'https://easyfutbol.es';
 
 // ✅ Logo en assets/ en la raíz del proyecto
 const APP_LOGO = require('../../assets/Logo.png');
@@ -53,129 +45,6 @@ export default function HomeScreen({ navigation }) {
   const [isAdmin, setIsAdmin]     = useState(false);
   const [avatar, setAvatar]       = useState(null);
   const [displayName, setDisplayName] = useState('');
-  const [stats, setStats] = useState({ goals: null, assists: null, rank: null });
-  const [statsLoading, setStatsLoading] = useState(false);
-
-  const loadStatsPreview = async (token, user = {}) => {
-    const userId = user?.id || user?.user_id || user?.jugador_id;
-
-    if (!token || !userId) {
-      setStats({ goals: 0, assists: 0, rank: null });
-      return;
-    }
-
-    setStatsLoading(true);
-
-    try {
-      const statsMonthKey = getStatsMonthKey();
-
-      const buildHeaders = () => ({
-        Authorization: `Bearer ${token}`,
-        Accept: 'application/json',
-      });
-
-      const normalizePlayerStats = (player, index = null) => ({
-        goals: Number.isFinite(+player?.goals)
-          ? +player.goals
-          : Number.isFinite(+player?.goles)
-            ? +player.goles
-            : Number.isFinite(+player?.total_goals)
-              ? +player.total_goals
-              : 0,
-        assists: Number.isFinite(+player?.assists)
-          ? +player.assists
-          : Number.isFinite(+player?.asistencias)
-            ? +player.asistencias
-            : Number.isFinite(+player?.total_assists)
-              ? +player.total_assists
-              : 0,
-        rank: Number.isFinite(+player?.rank)
-          ? +player.rank
-          : Number.isFinite(+player?.position)
-            ? +player.position
-            : Number.isFinite(+player?.ranking)
-              ? +player.ranking
-              : index !== null
-                ? index + 1
-                : null,
-      });
-
-      let nextStats = null;
-
-      // Ruta mensual ideal para el Home. Cuando exista en backend, será la fuente principal.
-      const monthlyUrl = `${API_BASE_URL}/api/stats/me/month?user_id=${encodeURIComponent(userId)}`;
-      const monthlyResponse = await fetch(monthlyUrl, {
-        method: 'GET',
-        headers: buildHeaders(),
-      });
-
-      const monthlyData = await monthlyResponse.json().catch(() => ({}));
-
-      if (monthlyResponse.ok) {
-        nextStats = normalizePlayerStats(monthlyData);
-      } else {
-        console.log(
-          'No carga /api/stats/me/month, usando fallback /api/stats/top-players:',
-          monthlyData?.message || monthlyData?.msg || monthlyData?.error || monthlyResponse.status
-        );
-      }
-
-      // Fallback a la ruta que ya existe en stats.js.
-      // Ojo: si top-players no filtra por mes en backend, esta parte no será mensual.
-      if (!nextStats) {
-        const topPlayersUrl = `${API_BASE_URL}/api/stats/top-players`;
-        const topPlayersResponse = await fetch(topPlayersUrl, {
-          method: 'GET',
-          headers: buildHeaders(),
-        });
-
-        const topPlayersData = await topPlayersResponse.json().catch(() => ({}));
-
-        if (!topPlayersResponse.ok) {
-          throw new Error(
-            topPlayersData?.message ||
-              topPlayersData?.msg ||
-              topPlayersData?.error ||
-              `Error HTTP ${topPlayersResponse.status}`
-          );
-        }
-
-        const players = Array.isArray(topPlayersData)
-          ? topPlayersData
-          : Array.isArray(topPlayersData?.players)
-            ? topPlayersData.players
-            : Array.isArray(topPlayersData?.data)
-              ? topPlayersData.data
-              : Array.isArray(topPlayersData?.rows)
-                ? topPlayersData.rows
-                : [];
-
-        const playerIndex = players.findIndex((player) => {
-          const playerId = player?.user_id || player?.id || player?.jugador_id;
-          return Number(playerId) === Number(userId);
-        });
-
-        const playerStats = playerIndex >= 0 ? players[playerIndex] : null;
-        nextStats = playerStats ? normalizePlayerStats(playerStats, playerIndex) : { goals: 0, assists: 0, rank: null };
-      }
-
-      setStats(nextStats);
-      await AsyncStorage.setItem(`user_stats_${statsMonthKey}`, JSON.stringify(nextStats));
-    } catch (err) {
-      console.log('Error cargando estadísticas en HomeScreen:', err?.message || err);
-
-      const statsMonthKey = getStatsMonthKey();
-      const cachedStats = JSON.parse((await AsyncStorage.getItem(`user_stats_${statsMonthKey}`)) || '{}');
-
-      setStats({
-        goals: Number.isFinite(+cachedStats?.goals) ? +cachedStats.goals : 0,
-        assists: Number.isFinite(+cachedStats?.assists) ? +cachedStats.assists : 0,
-        rank: Number.isFinite(+cachedStats?.rank) ? +cachedStats.rank : null,
-      });
-    } finally {
-      setStatsLoading(false);
-    }
-  };
 
   const requireAuth = (targetScreen) => {
     if (isLogged) {
@@ -215,14 +84,12 @@ export default function HomeScreen({ navigation }) {
       setIsAdmin(adminFlag);
       setAvatar(u?.avatar_url || u?.avatar || null);
       setDisplayName(u?.username || u?.name || '');
-      await loadStatsPreview(token, u);
     } catch (err) {
       console.log('Error leyendo sesión en HomeScreen:', err);
       setIsLogged(false);
       setIsAdmin(false);
       setAvatar(null);
       setDisplayName('');
-      setStats({ goals: null, assists: null, rank: null });
     }
   }, []);
 
@@ -232,12 +99,6 @@ export default function HomeScreen({ navigation }) {
   const onPressAvatar = () => menuController.open?.();
   const onLongPressAvatar = () => navigation.navigate(isLogged ? 'Profile' : 'Access');
 
-  const StatChip = ({ label, value }) => (
-    <View style={styles.statChip}>
-      <Text style={styles.statValue}>{value ?? '—'}</Text>
-      <Text style={styles.statLabel}>{label}</Text>
-    </View>
-  );
 
   const SectionCard = ({ title, bgSource, onPress, children }) => (
     <TouchableOpacity activeOpacity={0.9} onPress={onPress} style={styles.sectionWrapper}>
@@ -339,25 +200,9 @@ export default function HomeScreen({ navigation }) {
           bgSource={BG.stats}
           onPress={() => navigation.navigate('Stats')}
         >
-          <View style={styles.statsPreviewBox}>
-            <Text style={styles.statsPreviewBadge}>PREVIEW</Text>
-            <Text style={styles.statsPreviewText}>
-              Tus números principales de este mes sin entrar en la sección completa.
-            </Text>
-
-            {statsLoading ? (
-              <View style={styles.statsLoadingRow}>
-                <ActivityIndicator size="small" color="#fff" />
-                <Text style={styles.statsLoadingText}>Cargando estadísticas...</Text>
-              </View>
-            ) : (
-              <View style={styles.statsRow}>
-                <StatChip label="Goles" value={stats.goals ?? 0} />
-                <StatChip label="Asist." value={stats.assists ?? 0} />
-                <StatChip label="Ranking mes" value={stats.rank ? `#${stats.rank}` : '—'} />
-              </View>
-            )}
-          </View>
+          <Text style={{ color: '#fff', fontSize: 13, opacity: 0.9 }}>
+            Consulta tus goles, asistencias, MVP y rankings completos.
+          </Text>
         </SectionCard>
         <SectionCard
           title="EasyPass"
@@ -408,38 +253,6 @@ const styles = StyleSheet.create({
   avatarPlaceholder: { flex: 1, backgroundColor: '#0f1114', alignItems: 'center', justifyContent: 'center' },
   avatarInitial: { color: '#fff', fontWeight: '800', fontSize: 16 },
 
-  statsPreviewBox: {
-    backgroundColor: 'rgba(0,0,0,0.35)',
-    borderRadius: 16,
-    padding: 12,
-    borderWidth: 1,
-    borderColor: 'rgba(255,90,0,0.45)',
-    gap: 8,
-  },
-  statsPreviewBadge: {
-    alignSelf: 'flex-start',
-    color: ORANGE,
-    fontSize: 11,
-    fontWeight: '900',
-    letterSpacing: 0.8,
-  },
-  statsPreviewText: {
-    color: '#fff',
-    fontSize: 13,
-    opacity: 0.92,
-    lineHeight: 18,
-  },
-  statsLoadingRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    marginTop: 2,
-  },
-  statsLoadingText: {
-    color: '#fff',
-    fontSize: 12,
-    opacity: 0.85,
-  },
 
   // Stack
   stack: { paddingHorizontal: spacing(2), paddingTop: spacing(0.5), paddingBottom: spacing(2), gap: 14 },
@@ -470,17 +283,4 @@ const styles = StyleSheet.create({
   },
   ctaText: { color: '#fff', fontWeight: '800', letterSpacing: 0.4 },
 
-  // Stats chips
-  statsRow: { flexDirection: 'row', gap: 10, marginTop: 2, flexWrap: 'wrap' },
-  statChip: {
-    minWidth: 72,
-    backgroundColor: 'rgba(255,90,0,0.18)',
-    borderRadius: 12,
-    paddingVertical: 8,
-    paddingHorizontal: 10,
-    borderWidth: 1,
-    borderColor: 'rgba(255,90,0,0.45)',
-  },
-  statValue: { color: '#fff', fontWeight: '800', fontSize: 16, textAlign: 'center' },
-  statLabel: { color: '#fff', fontSize: 11, textAlign: 'center' }, // ← blanco
 });
