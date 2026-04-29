@@ -1,6 +1,44 @@
 import { pool } from '../config/db.js';
 import { checkAndUnlockAchievements, awardReward } from '../services/achievementsService.js';
 
+async function getUserAchievementsSnapshot(userId) {
+  const [[userRow]] = await pool.query(
+    `SELECT achievement_points
+     FROM users
+     WHERE id = ?
+     LIMIT 1`,
+    [userId]
+  );
+
+  const [[achievementsRow]] = await pool.query(
+    `SELECT COUNT(*) AS total
+     FROM user_achievements
+     WHERE user_id = ?`,
+    [userId]
+  );
+
+  const [[rewardsRow]] = await pool.query(
+    `SELECT COUNT(*) AS total
+     FROM user_rewards
+     WHERE user_id = ?`,
+    [userId]
+  );
+
+  const [[ledgerRow]] = await pool.query(
+    `SELECT COUNT(*) AS total
+     FROM points_ledger
+     WHERE user_id = ?`,
+    [userId]
+  );
+
+  return {
+    points: Number(userRow?.achievement_points || 0),
+    achievements: Number(achievementsRow?.total || 0),
+    rewards: Number(rewardsRow?.total || 0),
+    ledger: Number(ledgerRow?.total || 0),
+  };
+}
+
 async function recalculateMatchMvpReward(userId, matchId) {
   const [[mpsRow]] = await pool.query(
     `SELECT is_mvp
@@ -43,8 +81,16 @@ async function recalculateMatchMvpReward(userId, matchId) {
 }
 
 async function recalculateUserMatch(userId, matchId) {
+  const before = await getUserAchievementsSnapshot(userId);
+
   await checkAndUnlockAchievements(userId, matchId);
   await recalculateMatchMvpReward(userId, matchId);
+
+  const after = await getUserAchievementsSnapshot(userId);
+
+  console.log(
+    `[DEBUG] user=${userId} match=${matchId} | points ${before.points} -> ${after.points} | achievements ${before.achievements} -> ${after.achievements} | rewards ${before.rewards} -> ${after.rewards} | ledger ${before.ledger} -> ${after.ledger}`
+  );
 }
 
 async function main() {

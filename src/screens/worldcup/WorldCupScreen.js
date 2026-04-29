@@ -35,6 +35,7 @@ function getTeamInfo(teamId) {
 export default function WorldCupScreen({ navigation }) {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [myUserId, setMyUserId] = useState(null);
   const [myTeamId, setMyTeamId] = useState(null);
   const [ranking, setRanking] = useState([]);
   const [playersRanking, setPlayersRanking] = useState([]);
@@ -45,6 +46,21 @@ export default function WorldCupScreen({ navigation }) {
   const myTeamRanking = useMemo(
     () => ranking.find((item) => item.team === myTeamId),
     [ranking, myTeamId]
+  );
+
+  const myTeamPosition = useMemo(() => {
+    const index = ranking.findIndex((item) => item.team === myTeamId);
+    return index >= 0 ? index + 1 : null;
+  }, [ranking, myTeamId]);
+
+  const myPlayerStats = useMemo(
+    () => playersRanking.find((player) => String(player.id) === String(myUserId)),
+    [playersRanking, myUserId]
+  );
+
+  const myTeamPlayers = useMemo(
+    () => playersRanking.filter((player) => player.team === myTeamId),
+    [playersRanking, myTeamId]
   );
 
   const loadWorldCup = useCallback(async ({ silent = false } = {}) => {
@@ -65,6 +81,7 @@ export default function WorldCupScreen({ navigation }) {
       setRanking(rankingResponse?.data?.teamsRanking || []);
       setPlayersRanking(rankingResponse?.data?.playersRanking || []);
       setPointsRules(rankingResponse?.data?.points || null);
+      setMyUserId(meResponse?.data?.id || null);
       setMyTeamId(meResponse?.data?.worldcup_team || null);
     } catch (error) {
       const message =
@@ -118,47 +135,6 @@ export default function WorldCupScreen({ navigation }) {
           </Text>
         </View>
 
-        {myTeamId ? (
-          <View style={styles.myTeamCard}>
-            <Text style={styles.myTeamLabel}>Tu selección</Text>
-            <View style={styles.myTeamHeader}>
-              <Text style={styles.myTeamFlag}>{myTeamInfo.flag}</Text>
-              <View style={styles.myTeamTextBox}>
-                <Text style={styles.myTeamName}>{myTeamInfo.name}</Text>
-                <Text style={styles.myTeamSubtitle}>
-                  {myTeamRanking
-                    ? `${Number(myTeamRanking.average_points || 0).toFixed(2)} pts de media · ${myTeamRanking.players} jugadores`
-                    : 'Todavía no tiene puntos registrados en el Mundial'}
-                </Text>
-              </View>
-            </View>
-          </View>
-        ) : (
-          <View style={styles.chooseCard}>
-            <Text style={styles.chooseTitle}>Todavía no tienes selección</Text>
-            <Text style={styles.chooseText}>
-              Elige el país que vas a representar durante el Mundial EasyFutbol.
-            </Text>
-            <TouchableOpacity
-              style={styles.chooseButton}
-              onPress={() => navigation.navigate('WorldCupSelectTeam')}
-              activeOpacity={0.9}
-            >
-              <Text style={styles.chooseButtonText}>Elegir selección</Text>
-            </TouchableOpacity>
-          </View>
-        )}
-
-        <View style={styles.rulesCard}>
-          <Text style={styles.rulesTitle}>Sistema de puntos</Text>
-          <View style={styles.rulesGrid}>
-            <Text style={styles.ruleItem}>⚽ Gol: +{pointsRules?.goal ?? 1}</Text>
-            <Text style={styles.ruleItem}>🎯 Asistencia: +{pointsRules?.assist ?? 1}</Text>
-            <Text style={styles.ruleItem}>🏆 MVP: +{pointsRules?.mvp ?? 3}</Text>
-            <Text style={styles.ruleItem}>✅ Victoria: +{pointsRules?.win ?? 2}</Text>
-          </View>
-        </View>
-
         <Text style={styles.sectionTitle}>Clasificación de países</Text>
 
         {ranking.length === 0 ? (
@@ -202,6 +178,149 @@ export default function WorldCupScreen({ navigation }) {
             );
           })
         )}
+
+        {myTeamId ? (
+          <View style={styles.myTeamCard}>
+            <Text style={styles.myTeamLabel}>Tu selección</Text>
+            <View style={styles.myTeamHeader}>
+              <Text style={styles.myTeamFlag}>{myTeamInfo.flag}</Text>
+              <View style={styles.myTeamTextBox}>
+                <Text style={styles.myTeamName}>{myTeamInfo.name}</Text>
+                <Text style={styles.myTeamSubtitle}>
+                  {myTeamRanking
+                    ? `#${myTeamPosition} del ranking · ${Number(myTeamRanking.average_points || 0).toFixed(2)} pts de media · ${myTeamRanking.players} jugadores`
+                    : 'Todavía no tiene puntos registrados en el Mundial'}
+                </Text>
+              </View>
+            </View>
+          </View>
+        ) : (
+          <View style={styles.chooseCard}>
+            <Text style={styles.chooseTitle}>Todavía no tienes selección</Text>
+            <Text style={styles.chooseText}>
+              Elige el país que vas a representar durante el Mundial EasyFutbol.
+            </Text>
+            <TouchableOpacity
+              style={styles.chooseButton}
+              onPress={() => navigation.navigate('WorldCupSelectTeam')}
+              activeOpacity={0.9}
+            >
+              <Text style={styles.chooseButtonText}>Elegir selección</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+
+        {myTeamId && (
+          <View style={styles.teamStatsCard}>
+            <View style={styles.teamStatsHeader}>
+              <View>
+                <Text style={styles.teamStatsLabel}>Datos de mi selección</Text>
+                <Text style={styles.teamStatsTitle}>{myTeamInfo.name} {myTeamInfo.flag}</Text>
+              </View>
+              {myTeamPosition && (
+                <View style={styles.teamPositionBadge}>
+                  <Text style={styles.teamPositionText}>#{myTeamPosition}</Text>
+                </View>
+              )}
+            </View>
+
+            {myTeamRanking ? (
+              <>
+                <View style={styles.teamStatsGrid}>
+                  <View style={styles.teamStatItem}>
+                    <Text style={styles.teamStatValue}>{Number(myTeamRanking.average_points || 0).toFixed(2)}</Text>
+                    <Text style={styles.teamStatLabel}>Media</Text>
+                  </View>
+                  <View style={styles.teamStatItem}>
+                    <Text style={styles.teamStatValue}>{myTeamRanking.total_points || 0}</Text>
+                    <Text style={styles.teamStatLabel}>Puntos</Text>
+                  </View>
+                  <View style={styles.teamStatItem}>
+                    <Text style={styles.teamStatValue}>{myTeamRanking.players || 0}</Text>
+                    <Text style={styles.teamStatLabel}>Jugadores</Text>
+                  </View>
+                  <View style={styles.teamStatItem}>
+                    <Text style={styles.teamStatValue}>{myTeamRanking.wins || 0}</Text>
+                    <Text style={styles.teamStatLabel}>Victorias</Text>
+                  </View>
+                </View>
+
+                <View style={styles.teamTotalsRow}>
+                  <Text style={styles.teamTotalsText}>⚽ {myTeamRanking.goals || 0} goles</Text>
+                  <Text style={styles.teamTotalsText}>🎯 {myTeamRanking.assists || 0} asistencias</Text>
+                  <Text style={styles.teamTotalsText}>🏆 {myTeamRanking.mvps || 0} MVP</Text>
+                </View>
+
+                {myTeamPlayers.length > 0 && (
+                  <View style={styles.teamPlayersBox}>
+                    <Text style={styles.teamPlayersTitle}>Jugadores de {myTeamInfo.name}</Text>
+                    {myTeamPlayers.slice(0, 5).map((player, index) => (
+                      <View key={`${player.id}-my-team`} style={styles.teamPlayerRow}>
+                        <Text style={styles.teamPlayerName}>#{index + 1} {player.name}</Text>
+                        <Text style={styles.teamPlayerPoints}>{player.points || 0} pts</Text>
+                      </View>
+                    ))}
+                  </View>
+                )}
+              </>
+            ) : (
+              <Text style={styles.teamStatsEmpty}>
+                Tu selección todavía no tiene estadísticas registradas durante el Mundial.
+              </Text>
+            )}
+          </View>
+        )}
+
+        {myTeamId && (
+          <View style={styles.contributionCard}>
+            <Text style={styles.contributionTitle}>Tu aportación al Mundial</Text>
+            {myPlayerStats ? (
+              <>
+                <View style={styles.contributionGrid}>
+                  <View style={styles.contributionItem}>
+                    <Text style={styles.contributionValue}>{myPlayerStats.goals || 0}</Text>
+                    <Text style={styles.contributionLabel}>Goles</Text>
+                  </View>
+                  <View style={styles.contributionItem}>
+                    <Text style={styles.contributionValue}>{myPlayerStats.assists || 0}</Text>
+                    <Text style={styles.contributionLabel}>Asistencias</Text>
+                  </View>
+                  <View style={styles.contributionItem}>
+                    <Text style={styles.contributionValue}>{myPlayerStats.mvps || 0}</Text>
+                    <Text style={styles.contributionLabel}>MVP</Text>
+                  </View>
+                  <View style={styles.contributionItem}>
+                    <Text style={styles.contributionValue}>{myPlayerStats.wins || 0}</Text>
+                    <Text style={styles.contributionLabel}>Victorias</Text>
+                  </View>
+                </View>
+                <Text style={styles.contributionPoints}>{myPlayerStats.points || 0} puntos aportados</Text>
+              </>
+            ) : (
+              <Text style={styles.contributionEmpty}>
+                Cuando tengas estadísticas registradas durante el Mundial, verás aquí tu aportación individual.
+              </Text>
+            )}
+          </View>
+        )}
+
+        <View style={styles.prizeCard}>
+          <Text style={styles.prizeTitle}>Premio final</Text>
+          <Text style={styles.prizeText}>
+            La selección ganadora recibirá recompensa EasyFutbol al terminar el Mundial. Para optar al premio será necesario haber jugado al menos 2 partidos durante la competición.
+          </Text>
+        </View>
+
+        <View style={styles.rulesCard}>
+          <Text style={styles.rulesTitle}>Sistema de puntos</Text>
+          <View style={styles.rulesGrid}>
+            <Text style={styles.ruleItem}>⚽ Gol: +{pointsRules?.goal ?? 1}</Text>
+            <Text style={styles.ruleItem}>🎯 Asistencia: +{pointsRules?.assist ?? 1}</Text>
+            <Text style={styles.ruleItem}>🏆 MVP: +{pointsRules?.mvp ?? 3}</Text>
+            <Text style={styles.ruleItem}>✅ Victoria: +{pointsRules?.win ?? 2}</Text>
+          </View>
+        </View>
+
 
         {playersRanking.length > 0 && (
           <>
@@ -344,6 +463,188 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '900',
   },
+  teamStatsCard: {
+    backgroundColor: CARD,
+    borderRadius: 22,
+    padding: 18,
+    borderWidth: 1,
+    borderColor: BORDER,
+    marginBottom: 16,
+  },
+  teamStatsHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 16,
+  },
+  teamStatsLabel: {
+    color: BRAND_ORANGE,
+    fontSize: 12,
+    fontWeight: '900',
+    letterSpacing: 1,
+    textTransform: 'uppercase',
+    marginBottom: 4,
+  },
+  teamStatsTitle: {
+    color: '#fff',
+    fontSize: 22,
+    fontWeight: '900',
+  },
+  teamPositionBadge: {
+    backgroundColor: BRAND_ORANGE,
+    borderRadius: 999,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+  },
+  teamPositionText: {
+    color: '#fff',
+    fontWeight: '900',
+    fontSize: 15,
+  },
+  teamStatsGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'space-between',
+    rowGap: 10,
+    marginBottom: 14,
+  },
+  teamStatItem: {
+    width: '48%',
+    backgroundColor: '#0b0b0b',
+    borderRadius: 16,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: BORDER,
+  },
+  teamStatValue: {
+    color: BRAND_ORANGE,
+    fontSize: 23,
+    fontWeight: '900',
+    marginBottom: 4,
+  },
+  teamStatLabel: {
+    color: '#fff',
+    fontSize: 13,
+    fontWeight: '800',
+  },
+  teamTotalsRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginBottom: 14,
+  },
+  teamTotalsText: {
+    color: '#e5e7eb',
+    backgroundColor: '#0b0b0b',
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    fontSize: 12,
+    fontWeight: '800',
+  },
+  teamPlayersBox: {
+    borderTopWidth: 1,
+    borderTopColor: BORDER,
+    paddingTop: 14,
+  },
+  teamPlayersTitle: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '900',
+    marginBottom: 10,
+  },
+  teamPlayerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 8,
+  },
+  teamPlayerName: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '800',
+    flex: 1,
+    marginRight: 8,
+  },
+  teamPlayerPoints: {
+    color: BRAND_ORANGE,
+    fontSize: 14,
+    fontWeight: '900',
+  },
+  teamStatsEmpty: {
+    color: MUTED,
+    fontSize: 14,
+    lineHeight: 21,
+  },
+  contributionCard: {
+    backgroundColor: CARD,
+    borderRadius: 22,
+    padding: 18,
+    borderWidth: 1,
+    borderColor: BORDER,
+    marginBottom: 16,
+  },
+  contributionTitle: {
+    color: '#fff',
+    fontSize: 19,
+    fontWeight: '900',
+    marginBottom: 14,
+  },
+  contributionGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'space-between',
+    rowGap: 10,
+  },
+  contributionItem: {
+    width: '48%',
+    backgroundColor: '#0b0b0b',
+    borderRadius: 16,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: BORDER,
+  },
+  contributionValue: {
+    color: BRAND_ORANGE,
+    fontSize: 24,
+    fontWeight: '900',
+    marginBottom: 4,
+  },
+  contributionLabel: {
+    color: '#fff',
+    fontSize: 13,
+    fontWeight: '800',
+  },
+  contributionPoints: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '900',
+    marginTop: 14,
+  },
+  contributionEmpty: {
+    color: MUTED,
+    fontSize: 14,
+    lineHeight: 21,
+  },
+  prizeCard: {
+    backgroundColor: 'rgba(255, 90, 0, 0.1)',
+    borderRadius: 20,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 90, 0, 0.4)',
+    marginBottom: 16,
+  },
+  prizeTitle: {
+    color: '#fff',
+    fontSize: 18,
+    fontWeight: '900',
+    marginBottom: 8,
+  },
+  prizeText: {
+    color: '#f3f4f6',
+    fontSize: 14,
+    lineHeight: 21,
+  },
   rulesCard: {
     backgroundColor: CARD,
     borderRadius: 20,
@@ -371,7 +672,7 @@ const styles = StyleSheet.create({
     fontSize: 21,
     fontWeight: '900',
     marginBottom: 12,
-    marginTop: 4,
+    marginTop: 8,
   },
   emptyCard: {
     backgroundColor: CARD,
@@ -379,6 +680,7 @@ const styles = StyleSheet.create({
     padding: 18,
     borderWidth: 1,
     borderColor: BORDER,
+    marginBottom: 16,
   },
   emptyTitle: {
     color: '#fff',

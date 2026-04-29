@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "144808550841",
+    "project_id": "easyfutbol-25747",
+    "storage_bucket": "easyfutbol-25747.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:144808550841:android:02e98d6ea2826ed9339668",
+        "android_client_info": {
+          "package_name": "es.easyfutbol.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCou1zz5gQ7uSR78Mf1Zq6Us6WWGa9PcNE"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

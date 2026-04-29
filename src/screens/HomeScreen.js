@@ -20,7 +20,7 @@ const BG = {
   myMatches: {
     uri: 'https://easyfutbol.es/wp-content/uploads/2024/10/siluetas-futbol-7.jpeg',
   },
-  leagues: {
+  worldCup: {
     uri: 'https://easyfutbol.es/wp-content/uploads/2025/02/grass-2616911_1280.jpg',
   },
   upcoming: {
@@ -200,12 +200,12 @@ export default function HomeScreen({ navigation }) {
           onPress={() => navigation.navigate('MyMatches')}
         />
         <SectionCard
-          title="Ligas"
-          bgSource={BG.leagues}
-          onPress={() => navigation.navigate('LeaguesHome')}
+          title="Mundial EasyFutbol"
+          bgSource={BG.worldCup}
+          onPress={() => navigation.navigate('WorldCup')}
         >
           <Text style={{ color: '#fff', fontSize: 13, opacity: 0.9 }}>
-            Compite con tu equipo, consulta calendario, clasificación, vídeos y estadísticas.
+            Elige tu selección, suma puntos con tus goles, asistencias, MVP y victorias, y compite por el ranking del Mundial.
           </Text>
         </SectionCard>
         <SectionCard

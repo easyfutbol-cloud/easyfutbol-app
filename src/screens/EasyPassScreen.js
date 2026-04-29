@@ -28,6 +28,7 @@ export default function EasyPassScreen() {
   const [easyPassBalance, setEasyPassBalance] = useState(0);
   const [loading, setLoading] = useState(true);
   const [buyingPackId, setBuyingPackId] = useState(null);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
   const navigation = useNavigation();
   const route = useRoute();
   const previousBalanceRef = useRef(null);
@@ -44,17 +45,37 @@ export default function EasyPassScreen() {
 
   const BASE = (api?.defaults?.baseURL || '').replace(/\/+$/, '');
 
-  const getAuthHeader = async () => {
+  const getStoredToken = async () => {
     const raw = await AsyncStorage.getItem('token');
     let token = raw;
-    try { const parsed = JSON.parse(raw || 'null'); token = parsed?.access_token || parsed?.token || raw; } catch {}
+    try {
+      const parsed = JSON.parse(raw || 'null');
+      token = parsed?.access_token || parsed?.token || raw;
+    } catch {}
+    return token || null;
+  };
+
+  const getAuthHeader = async () => {
+    const token = await getStoredToken();
     return token ? { Authorization: `Bearer ${token}` } : {};
   };
 
   const load = useCallback(async (showError = true) => {
     setLoading(true);
     try {
-      const headers = { Accept: 'application/json', ...(await getAuthHeader()) };
+      const token = await getStoredToken();
+
+      if (!token) {
+        setIsAuthenticated(false);
+        setEasyPassBalance(0);
+        setPacks([]);
+        previousBalanceRef.current = null;
+        purchaseInProgressRef.current = false;
+        return;
+      }
+
+      setIsAuthenticated(true);
+      const headers = { Accept: 'application/json', Authorization: `Bearer ${token}` };
 
       // créditos
       const r1 = await fetch(`${BASE}/me/credits`, { method: 'GET', headers });
@@ -135,6 +156,45 @@ export default function EasyPassScreen() {
     return (
       <View style={styles.loader}>
         <ActivityIndicator color={ORANGE} />
+      </View>
+    );
+  }
+
+  if (!isAuthenticated) {
+    return (
+      <View style={{ flex:1, backgroundColor: colors.black }}>
+        <ScrollView contentContainerStyle={{ padding: spacing(2), paddingBottom: spacing(6), flexGrow: 1 }}>
+          <View style={styles.heroHeader}>
+            <View style={styles.heroLogoWrap}>
+              <Image source={easypassLogo} style={styles.heroLogo} resizeMode="contain" />
+            </View>
+            <Text style={styles.title}>🎟️ EasyPass</Text>
+          </View>
+
+          <View style={styles.loginRequiredCard}>
+            <Text style={styles.loginRequiredEmoji}>🔐</Text>
+            <Text style={styles.loginRequiredTitle}>Inicia sesión para ver tus EasyPass</Text>
+            <Text style={styles.loginRequiredText}>
+              Accede a tu cuenta o regístrate para consultar tus EasyPass, comprar nuevos packs y apuntarte a partidos.
+            </Text>
+
+            <TouchableOpacity
+              style={styles.loginPrimaryBtn}
+              onPress={() => navigation.navigate('Login')}
+              activeOpacity={0.85}
+            >
+              <Text style={styles.loginPrimaryBtnText}>Iniciar sesión</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.loginSecondaryBtn}
+              onPress={() => navigation.navigate('Register')}
+              activeOpacity={0.85}
+            >
+              <Text style={styles.loginSecondaryBtnText}>Crear cuenta</Text>
+            </TouchableOpacity>
+          </View>
+        </ScrollView>
       </View>
     );
   }
@@ -224,6 +284,23 @@ const styles = StyleSheet.create({
   balanceLabel:{ color:'#bbb', fontWeight:'800' },
   balanceValue:{ color:'#fff', fontSize:34, fontWeight:'900', marginTop: 6 },
   balanceHint:{ color:'#9f9f9f', marginTop: 6, fontWeight:'700', fontSize:12 },
+
+  loginRequiredCard:{
+    backgroundColor:'rgba(17,17,17,0.96)',
+    borderRadius:18,
+    padding: 20,
+    borderWidth:1,
+    borderColor:'rgba(255,90,0,0.32)',
+    marginTop: 10,
+    alignItems:'center',
+  },
+  loginRequiredEmoji:{ fontSize:34, marginBottom: 10 },
+  loginRequiredTitle:{ color:'#fff', fontSize:20, fontWeight:'900', textAlign:'center' },
+  loginRequiredText:{ color:'#bdbdbd', marginTop: 10, fontSize:14, fontWeight:'700', textAlign:'center', lineHeight:20 },
+  loginPrimaryBtn:{ width:'100%', marginTop: 18, backgroundColor: ORANGE, paddingVertical:13, borderRadius:14, alignItems:'center' },
+  loginPrimaryBtnText:{ color:'#000', fontWeight:'900', fontSize:15 },
+  loginSecondaryBtn:{ width:'100%', marginTop: 10, backgroundColor:'#1b1b1b', borderWidth:1, borderColor:'rgba(255,255,255,0.14)', paddingVertical:13, borderRadius:14, alignItems:'center' },
+  loginSecondaryBtnText:{ color:'#fff', fontWeight:'900', fontSize:15 },
 
   backToMatchBtn:{
     marginBottom: 18,

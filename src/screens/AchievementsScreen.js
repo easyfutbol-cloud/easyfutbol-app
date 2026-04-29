@@ -6,7 +6,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 const ORANGE = '#ff5a00';
 const API_BASE_URL =
   (typeof process !== 'undefined' && process?.env?.EXPO_PUBLIC_API_URL) ||
-  'https://easyfutbol.es';
+  'https://api.easyfutbol.es';
 
 const ACHIEVEMENT_CATALOG = [
   { code: 'DEBUTANTE', title: 'Debutante', description: 'Juega tu primer partido en EasyFutbol.', points: 15, target: 1 },
@@ -161,11 +161,15 @@ export default function AchievementsScreen() {
 
     return ACHIEVEMENT_CATALOG.map((item) => {
       const apiItem = byCode.get(item.code);
+      const progress = Number(apiItem?.progress || 0);
+      const target = Number(apiItem?.target || item.target || 1);
+      const unlocked = Boolean(apiItem?.unlocked) || progress >= target;
+
       return {
         ...item,
-        unlocked: Boolean(apiItem?.unlocked),
-        progress: Number(apiItem?.progress || 0),
-        target: Number(apiItem?.target || item.target || 1),
+        unlocked,
+        progress,
+        target,
         points: Number(apiItem?.points || item.points || 0),
         description: apiItem?.description || item.description,
         title: apiItem?.title || item.title,
@@ -357,9 +361,9 @@ const styles = StyleSheet.create({
   achievementCard: {
     flexDirection: 'row',
     alignItems: 'flex-start',
-    backgroundColor: 'rgba(255,255,255,0.03)',
+    backgroundColor: 'rgba(255,90,0,0.12)',
     borderWidth: 1,
-    borderColor: 'rgba(255,90,0,0.2)',
+    borderColor: 'rgba(255,90,0,0.35)',
     borderRadius: 16,
     padding: 14,
     marginBottom: 12,
@@ -372,7 +376,7 @@ const styles = StyleSheet.create({
     width: 48,
     height: 48,
     borderRadius: 24,
-    backgroundColor: 'rgba(255,90,0,0.16)',
+    backgroundColor: 'rgba(255,90,0,0.22)',
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: 12,
@@ -403,7 +407,7 @@ const styles = StyleSheet.create({
     color: '#9a9aa1',
   },
   pointsPill: {
-    backgroundColor: 'rgba(255,90,0,0.16)',
+    backgroundColor: 'rgba(255,90,0,0.22)',
     borderRadius: 999,
     paddingHorizontal: 10,
     paddingVertical: 6,
@@ -429,9 +433,9 @@ const styles = StyleSheet.create({
     color: '#8a8a90',
   },
   achievementStatus: {
-    color: '#ffb182',
+    color: ORANGE,
     fontSize: 12,
-    fontWeight: '800',
+    fontWeight: '900',
   },
   achievementStatusLocked: {
     color: '#7f7f86',
@@ -444,7 +448,7 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   progressLabel: {
-    color: '#ffcfb3',
+    color: '#ffd7c2',
     fontSize: 12,
     fontWeight: '700',
   },
