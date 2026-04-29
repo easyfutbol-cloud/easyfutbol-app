@@ -12,6 +12,8 @@ import {
   Keyboard,
   TouchableWithoutFeedback,
   ScrollView,
+  ActivityIndicator,
+  Linking,
 } from 'react-native';
 import {
   NavigationContainer,
@@ -21,6 +23,7 @@ import {
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as Application from 'expo-application';
 import { api } from './src/api/client';
 
 // Screens
@@ -70,6 +73,87 @@ export const navigationRef = createNavigationContainerRef();
 
 // === Controlador global para abrir/cerrar el menú desde cualquier screen ===
 export const menuController = { open: () => {}, close: () => {} };
+
+function normalizeVersion(version) {
+  return String(version || '0')
+    .split('.')
+    .map((part) => Number.parseInt(part, 10) || 0);
+}
+
+function isVersionLower(currentVersion, minVersion) {
+  const current = normalizeVersion(currentVersion);
+  const minimum = normalizeVersion(minVersion);
+  const maxLength = Math.max(current.length, minimum.length);
+
+  for (let i = 0; i < maxLength; i += 1) {
+    const currentPart = current[i] || 0;
+    const minimumPart = minimum[i] || 0;
+
+    if (currentPart < minimumPart) return true;
+    if (currentPart > minimumPart) return false;
+  }
+
+  return false;
+}
+
+async function checkMinimumAppVersion() {
+  try {
+    const currentVersion = Application?.nativeApplicationVersion || '0.0.0';
+    const res = await api.get('/config/min-version');
+    const config = res?.data || {};
+    const minVersion = config?.minVersion || '0.0.0';
+
+    return {
+      needsUpdate: isVersionLower(currentVersion, minVersion),
+      currentVersion,
+      minVersion,
+      message:
+        config?.message ||
+        'Hay una nueva versión disponible. Actualiza EasyFutbol para continuar.',
+      storeUrl: Platform.OS === 'ios' ? config?.iosUrl : config?.androidUrl,
+    };
+  } catch (error) {
+    console.log('check minimum app version error:', error?.message || error);
+    return { needsUpdate: false };
+  }
+}
+
+function ForceUpdateScreen({ data }) {
+  const storeUrl = data?.storeUrl;
+
+  const openStore = async () => {
+    try {
+      if (storeUrl) {
+        await Linking.openURL(storeUrl);
+      }
+    } catch (error) {
+      console.log('open store error:', error?.message || error);
+      // eslint-disable-next-line no-alert
+      alert('No se pudo abrir la tienda. Busca EasyFutbol en App Store o Google Play.');
+    }
+  };
+
+  return (
+    <View style={forceUpdateStyles.container}>
+      <View style={forceUpdateStyles.card}>
+        <Text style={forceUpdateStyles.badge}>Nueva versión</Text>
+        <Text style={forceUpdateStyles.title}>Actualiza la app</Text>
+        <Text style={forceUpdateStyles.text}>
+          {data?.message ||
+            'Hay una nueva versión disponible. Actualiza EasyFutbol para continuar.'}
+        </Text>
+
+        <TouchableOpacity style={forceUpdateStyles.button} onPress={openStore} activeOpacity={0.85}>
+          <Text style={forceUpdateStyles.buttonText}>Actualizar ahora</Text>
+        </TouchableOpacity>
+
+        <Text style={forceUpdateStyles.footer}>
+          Versión instalada: {data?.currentVersion || '-'} · Versión mínima: {data?.minVersion || '-'}
+        </Text>
+      </View>
+    </View>
+  );
+}
 
 function VerifyEmailScreen({ navigation, route }) {
   const insets = useSafeAreaInsets();
@@ -577,6 +661,30 @@ function AppShell({ currentRouteName }) {
 
 export default function App() {
   const [currentRouteName, setCurrentRouteName] = useState(null);
+  const [checkingVersion, setCheckingVersion] = useState(true);
+  const [forceUpdateData, setForceUpdateData] = useState(null);
+
+  useEffect(() => {
+    let mounted = true;
+
+    const runVersionCheck = async () => {
+      const result = await checkMinimumAppVersion();
+
+      if (!mounted) return;
+
+      if (result?.needsUpdate) {
+        setForceUpdateData(result);
+      }
+
+      setCheckingVersion(false);
+    };
+
+    runVersionCheck();
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   useEffect(() => {
     if (!Notifications) return;
@@ -590,6 +698,25 @@ export default function App() {
       subResponse?.remove?.();
     };
   }, []);
+
+  if (checkingVersion) {
+    return (
+      <SafeAreaProvider>
+        <View style={forceUpdateStyles.loadingContainer}>
+          <ActivityIndicator size="large" color={ORANGE} />
+          <Text style={forceUpdateStyles.loadingText}>Cargando EasyFutbol...</Text>
+        </View>
+      </SafeAreaProvider>
+    );
+  }
+
+  if (forceUpdateData) {
+    return (
+      <SafeAreaProvider>
+        <ForceUpdateScreen data={forceUpdateData} />
+      </SafeAreaProvider>
+    );
+  }
 
   return (
     <SafeAreaProvider>
@@ -734,5 +861,81 @@ const privacyStyles = StyleSheet.create({
     fontSize: 15,
     lineHeight: 24,
     marginBottom: 10,
+  },
+});
+
+const forceUpdateStyles = StyleSheet.create({
+  loadingContainer: {
+    flex: 1,
+    backgroundColor: '#0b0b0d',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 12,
+  },
+  loadingText: {
+    color: '#cfcfcf',
+    fontSize: 15,
+    fontWeight: '700',
+  },
+  container: {
+    flex: 1,
+    backgroundColor: '#0b0b0d',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 22,
+  },
+  card: {
+    width: '100%',
+    backgroundColor: '#131316',
+    borderRadius: 24,
+    padding: 24,
+    borderWidth: 1,
+    borderColor: 'rgba(255,90,0,0.6)',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOpacity: 0.35,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 8,
+  },
+  badge: {
+    color: ORANGE,
+    fontSize: 13,
+    fontWeight: '900',
+    textTransform: 'uppercase',
+    letterSpacing: 1,
+    marginBottom: 10,
+  },
+  title: {
+    color: '#fff',
+    fontSize: 28,
+    fontWeight: '900',
+    textAlign: 'center',
+    marginBottom: 12,
+  },
+  text: {
+    color: '#d0d0d0',
+    fontSize: 16,
+    lineHeight: 23,
+    textAlign: 'center',
+    marginBottom: 22,
+  },
+  button: {
+    width: '100%',
+    backgroundColor: ORANGE,
+    borderRadius: 14,
+    paddingVertical: 15,
+    alignItems: 'center',
+    marginBottom: 14,
+  },
+  buttonText: {
+    color: '#0b0b0d',
+    fontSize: 16,
+    fontWeight: '900',
+  },
+  footer: {
+    color: '#8f8f95',
+    fontSize: 12,
+    textAlign: 'center',
   },
 });
