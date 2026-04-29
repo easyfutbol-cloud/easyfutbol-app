@@ -19,7 +19,7 @@ const getStatsMonthKey = () => {
   return `${year}-${month}`;
 };
 
-const API_BASE_URL = 'https://easyfutbol.es/api';
+const API_BASE_URL = 'https://easyfutbol.es';
 
 // ✅ Logo en assets/ en la raíz del proyecto
 const APP_LOGO = require('../../assets/Logo.png');
@@ -56,7 +56,7 @@ export default function HomeScreen({ navigation }) {
   const [stats, setStats] = useState({ goals: null, assists: null, rank: null });
   const [statsLoading, setStatsLoading] = useState(false);
 
-  const loadStatsPreview = async (token) => {
+  const loadStatsPreview = async (token, user = {}) => {
     if (!token) {
       setStats({ goals: 0, assists: 0, rank: null });
       return;
@@ -66,8 +66,12 @@ export default function HomeScreen({ navigation }) {
 
     try {
       const statsMonthKey = getStatsMonthKey();
+      const userId = user?.id || user?.user_id || user?.jugador_id;
+      const queryString = userId ? `?user_id=${encodeURIComponent(userId)}` : '';
 
-      const response = await fetch(`${API_BASE_URL}/stats/me/month`, {
+      const statsUrl = `${API_BASE_URL}/api/stats/me/month${queryString}`;
+
+      const response = await fetch(statsUrl, {
         method: 'GET',
         headers: {
           Authorization: `Bearer ${token}`,
@@ -78,7 +82,7 @@ export default function HomeScreen({ navigation }) {
       const data = await response.json().catch(() => ({}));
 
       if (!response.ok) {
-        throw new Error(data?.message || data?.error || `Error HTTP ${response.status}`);
+        throw new Error(data?.message || data?.msg || data?.error || `Error HTTP ${response.status}`);
       }
 
       const nextStats = {
@@ -90,7 +94,7 @@ export default function HomeScreen({ navigation }) {
       setStats(nextStats);
       await AsyncStorage.setItem(`user_stats_${statsMonthKey}`, JSON.stringify(nextStats));
     } catch (err) {
-      console.log('Error cargando estadísticas mensuales en HomeScreen:', err?.message || err);
+      console.log('Error cargando estadísticas mensuales en HomeScreen desde /api/stats/me/month:', err?.message || err);
 
       const statsMonthKey = getStatsMonthKey();
       const cachedStats = JSON.parse((await AsyncStorage.getItem(`user_stats_${statsMonthKey}`)) || '{}');
@@ -143,7 +147,7 @@ export default function HomeScreen({ navigation }) {
       setIsAdmin(adminFlag);
       setAvatar(u?.avatar_url || u?.avatar || null);
       setDisplayName(u?.username || u?.name || '');
-      await loadStatsPreview(token);
+      await loadStatsPreview(token, u);
     } catch (err) {
       console.log('Error leyendo sesión en HomeScreen:', err);
       setIsLogged(false);
