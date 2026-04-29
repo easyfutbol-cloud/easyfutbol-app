@@ -57,7 +57,9 @@ export default function HomeScreen({ navigation }) {
   const [statsLoading, setStatsLoading] = useState(false);
 
   const loadStatsPreview = async (token, user = {}) => {
-    if (!token) {
+    const userId = user?.id || user?.user_id || user?.jugador_id;
+
+    if (!token || !userId) {
       setStats({ goals: 0, assists: 0, rank: null });
       return;
     }
@@ -66,35 +68,101 @@ export default function HomeScreen({ navigation }) {
 
     try {
       const statsMonthKey = getStatsMonthKey();
-      const userId = user?.id || user?.user_id || user?.jugador_id;
-      const queryString = userId ? `?user_id=${encodeURIComponent(userId)}` : '';
 
-      const statsUrl = `${API_BASE_URL}/api/stats/me/month${queryString}`;
-
-      const response = await fetch(statsUrl, {
-        method: 'GET',
-        headers: {
-          Authorization: `Bearer ${token}`,
-          Accept: 'application/json',
-        },
+      const buildHeaders = () => ({
+        Authorization: `Bearer ${token}`,
+        Accept: 'application/json',
       });
 
-      const data = await response.json().catch(() => ({}));
+      const normalizePlayerStats = (player, index = null) => ({
+        goals: Number.isFinite(+player?.goals)
+          ? +player.goals
+          : Number.isFinite(+player?.goles)
+            ? +player.goles
+            : Number.isFinite(+player?.total_goals)
+              ? +player.total_goals
+              : 0,
+        assists: Number.isFinite(+player?.assists)
+          ? +player.assists
+          : Number.isFinite(+player?.asistencias)
+            ? +player.asistencias
+            : Number.isFinite(+player?.total_assists)
+              ? +player.total_assists
+              : 0,
+        rank: Number.isFinite(+player?.rank)
+          ? +player.rank
+          : Number.isFinite(+player?.position)
+            ? +player.position
+            : Number.isFinite(+player?.ranking)
+              ? +player.ranking
+              : index !== null
+                ? index + 1
+                : null,
+      });
 
-      if (!response.ok) {
-        throw new Error(data?.message || data?.msg || data?.error || `Error HTTP ${response.status}`);
+      let nextStats = null;
+
+      // Ruta mensual ideal para el Home. Cuando exista en backend, será la fuente principal.
+      const monthlyUrl = `${API_BASE_URL}/api/stats/me/month?user_id=${encodeURIComponent(userId)}`;
+      const monthlyResponse = await fetch(monthlyUrl, {
+        method: 'GET',
+        headers: buildHeaders(),
+      });
+
+      const monthlyData = await monthlyResponse.json().catch(() => ({}));
+
+      if (monthlyResponse.ok) {
+        nextStats = normalizePlayerStats(monthlyData);
+      } else {
+        console.log(
+          'No carga /api/stats/me/month, usando fallback /api/stats/top-players:',
+          monthlyData?.message || monthlyData?.msg || monthlyData?.error || monthlyResponse.status
+        );
       }
 
-      const nextStats = {
-        goals: Number.isFinite(+data?.goals) ? +data.goals : 0,
-        assists: Number.isFinite(+data?.assists) ? +data.assists : 0,
-        rank: Number.isFinite(+data?.rank) ? +data.rank : null,
-      };
+      // Fallback a la ruta que ya existe en stats.js.
+      // Ojo: si top-players no filtra por mes en backend, esta parte no será mensual.
+      if (!nextStats) {
+        const topPlayersUrl = `${API_BASE_URL}/api/stats/top-players`;
+        const topPlayersResponse = await fetch(topPlayersUrl, {
+          method: 'GET',
+          headers: buildHeaders(),
+        });
+
+        const topPlayersData = await topPlayersResponse.json().catch(() => ({}));
+
+        if (!topPlayersResponse.ok) {
+          throw new Error(
+            topPlayersData?.message ||
+              topPlayersData?.msg ||
+              topPlayersData?.error ||
+              `Error HTTP ${topPlayersResponse.status}`
+          );
+        }
+
+        const players = Array.isArray(topPlayersData)
+          ? topPlayersData
+          : Array.isArray(topPlayersData?.players)
+            ? topPlayersData.players
+            : Array.isArray(topPlayersData?.data)
+              ? topPlayersData.data
+              : Array.isArray(topPlayersData?.rows)
+                ? topPlayersData.rows
+                : [];
+
+        const playerIndex = players.findIndex((player) => {
+          const playerId = player?.user_id || player?.id || player?.jugador_id;
+          return Number(playerId) === Number(userId);
+        });
+
+        const playerStats = playerIndex >= 0 ? players[playerIndex] : null;
+        nextStats = playerStats ? normalizePlayerStats(playerStats, playerIndex) : { goals: 0, assists: 0, rank: null };
+      }
 
       setStats(nextStats);
       await AsyncStorage.setItem(`user_stats_${statsMonthKey}`, JSON.stringify(nextStats));
     } catch (err) {
-      console.log('Error cargando estadísticas mensuales en HomeScreen desde /api/stats/me/month:', err?.message || err);
+      console.log('Error cargando estadísticas en HomeScreen:', err?.message || err);
 
       const statsMonthKey = getStatsMonthKey();
       const cachedStats = JSON.parse((await AsyncStorage.getItem(`user_stats_${statsMonthKey}`)) || '{}');
