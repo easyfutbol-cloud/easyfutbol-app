@@ -1,5 +1,5 @@
 // src/screens/HomeScreen.js
-import { View, Text, StyleSheet, StatusBar, TouchableOpacity, ImageBackground, Image, ScrollView, Alert } from 'react-native';
+import { View, Text, StyleSheet, StatusBar, TouchableOpacity, ImageBackground, Image, ScrollView, Alert, ActivityIndicator } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import { colors, spacing } from '../theme';
@@ -11,6 +11,15 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { menuController } from '../../App';
 
 const ORANGE = '#ff5a00';
+
+const getStatsMonthKey = () => {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, '0');
+  return `${year}-${month}`;
+};
+
+const API_BASE_URL = 'https://easyfutbol.es/api';
 
 // ✅ Logo en assets/ en la raíz del proyecto
 const APP_LOGO = require('../../assets/Logo.png');
@@ -45,6 +54,56 @@ export default function HomeScreen({ navigation }) {
   const [avatar, setAvatar]       = useState(null);
   const [displayName, setDisplayName] = useState('');
   const [stats, setStats] = useState({ goals: null, assists: null, rank: null });
+  const [statsLoading, setStatsLoading] = useState(false);
+
+  const loadStatsPreview = async (token) => {
+    if (!token) {
+      setStats({ goals: 0, assists: 0, rank: null });
+      return;
+    }
+
+    setStatsLoading(true);
+
+    try {
+      const statsMonthKey = getStatsMonthKey();
+
+      const response = await fetch(`${API_BASE_URL}/stats/me/month`, {
+        method: 'GET',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          Accept: 'application/json',
+        },
+      });
+
+      const data = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        throw new Error(data?.message || data?.error || `Error HTTP ${response.status}`);
+      }
+
+      const nextStats = {
+        goals: Number.isFinite(+data?.goals) ? +data.goals : 0,
+        assists: Number.isFinite(+data?.assists) ? +data.assists : 0,
+        rank: Number.isFinite(+data?.rank) ? +data.rank : null,
+      };
+
+      setStats(nextStats);
+      await AsyncStorage.setItem(`user_stats_${statsMonthKey}`, JSON.stringify(nextStats));
+    } catch (err) {
+      console.log('Error cargando estadísticas mensuales en HomeScreen:', err?.message || err);
+
+      const statsMonthKey = getStatsMonthKey();
+      const cachedStats = JSON.parse((await AsyncStorage.getItem(`user_stats_${statsMonthKey}`)) || '{}');
+
+      setStats({
+        goals: Number.isFinite(+cachedStats?.goals) ? +cachedStats.goals : 0,
+        assists: Number.isFinite(+cachedStats?.assists) ? +cachedStats.assists : 0,
+        rank: Number.isFinite(+cachedStats?.rank) ? +cachedStats.rank : null,
+      });
+    } finally {
+      setStatsLoading(false);
+    }
+  };
 
   const requireAuth = (targetScreen) => {
     if (isLogged) {
@@ -84,12 +143,7 @@ export default function HomeScreen({ navigation }) {
       setIsAdmin(adminFlag);
       setAvatar(u?.avatar_url || u?.avatar || null);
       setDisplayName(u?.username || u?.name || '');
-      const s = JSON.parse((await AsyncStorage.getItem('user_stats')) || '{}');
-      setStats({
-        goals: Number.isFinite(+s?.goals) ? +s.goals : null,
-        assists: Number.isFinite(+s?.assists) ? +s.assists : null,
-        rank: Number.isFinite(+s?.rank) ? +s.rank : null,
-      });
+      await loadStatsPreview(token);
     } catch (err) {
       console.log('Error leyendo sesión en HomeScreen:', err);
       setIsLogged(false);
@@ -213,10 +267,24 @@ export default function HomeScreen({ navigation }) {
           bgSource={BG.stats}
           onPress={() => navigation.navigate('Stats')}
         >
-          <View style={styles.statsRow}>
-            <StatChip label="Goles" value={stats.goals} />
-            <StatChip label="Asist." value={stats.assists} />
-            <StatChip label="Ranking" value={stats.rank} />
+          <View style={styles.statsPreviewBox}>
+            <Text style={styles.statsPreviewBadge}>PREVIEW</Text>
+            <Text style={styles.statsPreviewText}>
+              Tus números principales de este mes sin entrar en la sección completa.
+            </Text>
+
+            {statsLoading ? (
+              <View style={styles.statsLoadingRow}>
+                <ActivityIndicator size="small" color="#fff" />
+                <Text style={styles.statsLoadingText}>Cargando estadísticas...</Text>
+              </View>
+            ) : (
+              <View style={styles.statsRow}>
+                <StatChip label="Goles" value={stats.goals ?? 0} />
+                <StatChip label="Asist." value={stats.assists ?? 0} />
+                <StatChip label="Ranking mes" value={stats.rank ? `#${stats.rank}` : '—'} />
+              </View>
+            )}
           </View>
         </SectionCard>
         <SectionCard
@@ -268,6 +336,39 @@ const styles = StyleSheet.create({
   avatarPlaceholder: { flex: 1, backgroundColor: '#0f1114', alignItems: 'center', justifyContent: 'center' },
   avatarInitial: { color: '#fff', fontWeight: '800', fontSize: 16 },
 
+  statsPreviewBox: {
+    backgroundColor: 'rgba(0,0,0,0.35)',
+    borderRadius: 16,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(255,90,0,0.45)',
+    gap: 8,
+  },
+  statsPreviewBadge: {
+    alignSelf: 'flex-start',
+    color: ORANGE,
+    fontSize: 11,
+    fontWeight: '900',
+    letterSpacing: 0.8,
+  },
+  statsPreviewText: {
+    color: '#fff',
+    fontSize: 13,
+    opacity: 0.92,
+    lineHeight: 18,
+  },
+  statsLoadingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 2,
+  },
+  statsLoadingText: {
+    color: '#fff',
+    fontSize: 12,
+    opacity: 0.85,
+  },
+
   // Stack
   stack: { paddingHorizontal: spacing(2), paddingTop: spacing(0.5), paddingBottom: spacing(2), gap: 14 },
 
@@ -298,12 +399,15 @@ const styles = StyleSheet.create({
   ctaText: { color: '#fff', fontWeight: '800', letterSpacing: 0.4 },
 
   // Stats chips
-  statsRow: { flexDirection: 'row', gap: 10, marginTop: 2 },
+  statsRow: { flexDirection: 'row', gap: 10, marginTop: 2, flexWrap: 'wrap' },
   statChip: {
-    backgroundColor: 'rgba(0,0,0,0.28)',
+    minWidth: 72,
+    backgroundColor: 'rgba(255,90,0,0.18)',
     borderRadius: 12,
-    paddingVertical: 6,
+    paddingVertical: 8,
     paddingHorizontal: 10,
+    borderWidth: 1,
+    borderColor: 'rgba(255,90,0,0.45)',
   },
   statValue: { color: '#fff', fontWeight: '800', fontSize: 16, textAlign: 'center' },
   statLabel: { color: '#fff', fontSize: 11, textAlign: 'center' }, // ← blanco

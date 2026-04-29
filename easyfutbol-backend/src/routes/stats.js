@@ -59,4 +59,67 @@ router.get('/stats/top-players', async (req, res) => {
   }
 });
 
+
+router.get('/stats/me/month', async (req, res) => {
+  try {
+    const userId = req.user?.id || req.userId || req.query.user_id;
+
+    if (!userId) {
+      return res.status(401).json({
+        ok: false,
+        msg: 'Usuario no autenticado',
+      });
+    }
+
+    const sql = `
+      SELECT
+        ranked.user_id,
+        ranked.goals,
+        ranked.assists,
+        ranked.total,
+        ranked.position
+      FROM (
+        SELECT
+          totals.user_id,
+          totals.goals,
+          totals.assists,
+          totals.total,
+          DENSE_RANK() OVER (
+            ORDER BY totals.total DESC, totals.goals DESC, totals.assists DESC
+          ) AS position
+        FROM (
+          SELECT
+            mps.user_id,
+            COALESCE(SUM(mps.goals), 0) AS goals,
+            COALESCE(SUM(mps.assists), 0) AS assists,
+            COALESCE(SUM(mps.goals + mps.assists), 0) AS total
+          FROM match_player_stats mps
+          JOIN matches m ON m.id = mps.match_id
+          WHERE m.starts_at >= DATE_FORMAT(NOW(), '%Y-%m-01')
+            AND m.starts_at < DATE_FORMAT(DATE_ADD(NOW(), INTERVAL 1 MONTH), '%Y-%m-01')
+          GROUP BY mps.user_id
+          HAVING total > 0
+        ) totals
+      ) ranked
+      WHERE ranked.user_id = ?
+    `;
+
+    const [rows] = await pool.query(sql, [userId]);
+    const row = rows[0];
+
+    return res.json({
+      ok: true,
+      goals: Number(row?.goals || 0),
+      assists: Number(row?.assists || 0),
+      rank: row?.position ? Number(row.position) : null,
+    });
+  } catch (e) {
+    console.error('Error en /stats/me/month:', e);
+    return res.status(500).json({
+      ok: false,
+      msg: 'Error cargando estadísticas mensuales',
+    });
+  }
+});
+
 export default router;
