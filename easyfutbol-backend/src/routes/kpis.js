@@ -1,6 +1,6 @@
 import express from 'express';
 const router = express.Router();
-import db from '../db.js'; // tu conexión mysql
+import db from '../config/db.js'; // tu conexión mysql
 
 router.get('/dashboard', async (req, res) => {
   try {
