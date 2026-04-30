@@ -1,84 +1,120 @@
 import express from 'express';
-const router = express.Router();
-import * as dbModule from '../config/db.js'; // tu conexión mysql
+import * as dbModule from '../config/db.js';
 
+const router = express.Router();
 const db = dbModule.default || dbModule.pool || dbModule.db || dbModule.connection;
 
-router.get('/dashboard', async (req, res) => {
+function getPeriodSql(period) {
+  if (period === 'month') {
+    return `YEAR(mps.created_at) = YEAR(CURDATE()) AND MONTH(mps.created_at) = MONTH(CURDATE())`;
+  }
+
+  return `YEARWEEK(mps.created_at, 1) = YEARWEEK(CURDATE(), 1)`;
+}
+
+function ensureDb(res) {
   if (!db || typeof db.query !== 'function') {
     console.error('DB no disponible en KPIs. Revisa exports de config/db.js:', Object.keys(dbModule));
-    return res.status(500).json({ error: 'DB no disponible para KPIs' });
+    res.status(500).json({ error: 'DB no disponible para KPIs' });
+    return false;
   }
+
+  return true;
+}
+
+router.get('/dashboard', async (req, res) => {
+  if (!ensureDb(res)) return;
+
   try {
-    // 📅 Semana actual
-    const [usuarios] = await db.query(`
-      SELECT COUNT(DISTINCT user_id) as total
-      FROM inscriptions
-      WHERE status = 'confirmed'
-      AND YEARWEEK(created_at, 1) = YEARWEEK(CURDATE(), 1)
+    const period = req.query.period === 'month' ? 'month' : 'week';
+    const periodSql = getPeriodSql(period);
+
+    const [summaryRows] = await db.query(`
+      SELECT
+        COUNT(*) AS total_registros,
+        COUNT(DISTINCT mps.user_id) AS usuarios_unicos,
+        COUNT(DISTINCT mps.match_id) AS partidos_jugados,
+        COALESCE(SUM(mps.goals), 0) AS goles,
+        COALESCE(SUM(mps.assists), 0) AS asistencias,
+        COALESCE(SUM(CASE WHEN mps.mvp = 1 THEN 1 ELSE 0 END), 0) AS mvps
+      FROM match_player_stats mps
+      WHERE ${periodSql}
     `);
 
-    const [frecuencia] = await db.query(`
-      SELECT COUNT(*) / COUNT(DISTINCT user_id) as frecuencia
-      FROM inscriptions
-      WHERE status = 'confirmed'
-      AND YEARWEEK(created_at, 1) = YEARWEEK(CURDATE(), 1)
-    `);
-
-    const [repeat] = await db.query(`
-      SELECT COUNT(*) as repetidores FROM (
-        SELECT user_id
-        FROM inscriptions
-        WHERE status = 'confirmed'
-        AND YEARWEEK(created_at, 1) = YEARWEEK(CURDATE(), 1)
-        GROUP BY user_id
-        HAVING COUNT(*) >= 2
+    const [repeatRows] = await db.query(`
+      SELECT COUNT(*) AS repetidores
+      FROM (
+        SELECT mps.user_id
+        FROM match_player_stats mps
+        WHERE ${periodSql}
+        GROUP BY mps.user_id
+        HAVING COUNT(DISTINCT mps.match_id) >= 2
       ) t
     `);
 
-    const [totalUsuarios] = await db.query(`
-      SELECT COUNT(DISTINCT user_id) as total
-      FROM inscriptions
-      WHERE status = 'confirmed'
-      AND YEARWEEK(created_at, 1) = YEARWEEK(CURDATE(), 1)
-    `);
-
-    const repeatRate = totalUsuarios[0].total > 0
-      ? (repeat[0].repetidores / totalUsuarios[0].total)
-      : 0;
-
-    const [ocupacion] = await db.query(`
-      SELECT AVG(jugadores) as ocupacion FROM (
-        SELECT match_id, COUNT(*) as jugadores
-        FROM inscriptions
-        WHERE status = 'confirmed'
-        AND YEARWEEK(created_at, 1) = YEARWEEK(CURDATE(), 1)
-        GROUP BY match_id
-      ) t
-    `);
-
-    const [topJugadores] = await db.query(`
-      SELECT u.id, u.name, COUNT(*) as partidos
-      FROM inscriptions i
-      JOIN users u ON u.id = i.user_id
-      WHERE i.status = 'confirmed'
-      AND YEARWEEK(i.created_at, 1) = YEARWEEK(CURDATE(), 1)
-      GROUP BY u.id
-      ORDER BY partidos DESC
+    const [topRows] = await db.query(`
+      SELECT
+        u.id,
+        u.name,
+        COUNT(DISTINCT mps.match_id) AS partidos,
+        COALESCE(SUM(mps.goals), 0) AS goles,
+        COALESCE(SUM(mps.assists), 0) AS asistencias,
+        COALESCE(SUM(CASE WHEN mps.mvp = 1 THEN 1 ELSE 0 END), 0) AS mvps
+      FROM match_player_stats mps
+      JOIN users u ON u.id = mps.user_id
+      WHERE ${periodSql}
+      GROUP BY u.id, u.name
+      ORDER BY partidos DESC, goles DESC, asistencias DESC
       LIMIT 10
     `);
 
-    res.json({
-      usuarios_unicos: usuarios[0].total,
-      frecuencia_media: frecuencia[0].frecuencia || 0,
-      repeat_rate: repeatRate,
-      ocupacion_media: ocupacion[0].ocupacion || 0,
-      top_jugadores: topJugadores
-    });
+    const summary = summaryRows[0] || {};
+    const usuariosUnicos = Number(summary.usuarios_unicos || 0);
+    const totalRegistros = Number(summary.total_registros || 0);
+    const repetidores = Number(repeatRows?.[0]?.repetidores || 0);
 
+    res.json({
+      period,
+      usuarios_unicos: usuariosUnicos,
+      partidos_jugados: Number(summary.partidos_jugados || 0),
+      frecuencia_media: usuariosUnicos > 0 ? totalRegistros / usuariosUnicos : 0,
+      repeat_rate: usuariosUnicos > 0 ? repetidores / usuariosUnicos : 0,
+      goles: Number(summary.goles || 0),
+      asistencias: Number(summary.asistencias || 0),
+      mvps: Number(summary.mvps || 0),
+      top_jugadores: topRows,
+    });
   } catch (error) {
-    console.error(error);
-    res.status(500).json({ error: 'Error obteniendo KPIs' });
+    console.error('Error obteniendo dashboard KPIs:', error);
+    res.status(500).json({ error: 'Error obteniendo dashboard KPIs' });
+  }
+});
+
+router.get('/players', async (req, res) => {
+  if (!ensureDb(res)) return;
+
+  try {
+    const [players] = await db.query(`
+      SELECT
+        u.id,
+        u.name,
+        COUNT(DISTINCT mps.match_id) AS partidos,
+        COALESCE(SUM(mps.goals), 0) AS goles,
+        COALESCE(SUM(mps.assists), 0) AS asistencias,
+        COALESCE(SUM(CASE WHEN mps.mvp = 1 THEN 1 ELSE 0 END), 0) AS mvps,
+        MIN(mps.created_at) AS primer_partido,
+        MAX(mps.created_at) AS ultimo_partido
+      FROM match_player_stats mps
+      JOIN users u ON u.id = mps.user_id
+      GROUP BY u.id, u.name
+      ORDER BY partidos DESC, goles DESC, asistencias DESC
+      LIMIT 50
+    `);
+
+    res.json({ players });
+  } catch (error) {
+    console.error('Error obteniendo ranking de jugadores KPIs:', error);
+    res.status(500).json({ error: 'Error obteniendo ranking de jugadores KPIs' });
   }
 });
 
