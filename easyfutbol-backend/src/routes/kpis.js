@@ -36,7 +36,7 @@ router.get('/dashboard', async (req, res) => {
         COUNT(DISTINCT mps.match_id) AS partidos_jugados,
         COALESCE(SUM(mps.goals), 0) AS goles,
         COALESCE(SUM(mps.assists), 0) AS asistencias,
-        COALESCE(SUM(CASE WHEN mps.mvp = 1 THEN 1 ELSE 0 END), 0) AS mvps
+        COALESCE(SUM(CASE WHEN mps.is_mvp = 1 THEN 1 ELSE 0 END), 0) AS mvps
       FROM match_player_stats mps
       WHERE ${periodSql}
     `);
@@ -59,7 +59,7 @@ router.get('/dashboard', async (req, res) => {
         COUNT(DISTINCT mps.match_id) AS partidos,
         COALESCE(SUM(mps.goals), 0) AS goles,
         COALESCE(SUM(mps.assists), 0) AS asistencias,
-        COALESCE(SUM(CASE WHEN mps.mvp = 1 THEN 1 ELSE 0 END), 0) AS mvps
+        COALESCE(SUM(CASE WHEN mps.is_mvp = 1 THEN 1 ELSE 0 END), 0) AS mvps
       FROM match_player_stats mps
       JOIN users u ON u.id = mps.user_id
       WHERE ${periodSql}
@@ -101,7 +101,7 @@ router.get('/players', async (req, res) => {
         COUNT(DISTINCT mps.match_id) AS partidos,
         COALESCE(SUM(mps.goals), 0) AS goles,
         COALESCE(SUM(mps.assists), 0) AS asistencias,
-        COALESCE(SUM(CASE WHEN mps.mvp = 1 THEN 1 ELSE 0 END), 0) AS mvps,
+        COALESCE(SUM(CASE WHEN mps.is_mvp = 1 THEN 1 ELSE 0 END), 0) AS mvps,
         MIN(mps.created_at) AS primer_partido,
         MAX(mps.created_at) AS ultimo_partido
       FROM match_player_stats mps
