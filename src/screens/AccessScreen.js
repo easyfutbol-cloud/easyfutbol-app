@@ -109,10 +109,23 @@ export default function AccessScreen({ navigation, route }) {
 
   async function registerPushTokenInBackend(authToken) {
     try {
-      const pushToken = await registerForPushNotificationsAsync();
-      if (!pushToken) return;
+      console.log('[PUSH] Entrando en registerPushTokenInBackend');
+      console.log('[PUSH] BASE:', BASE);
+      console.log('[PUSH] Platform en AccessScreen:', Platform.OS);
+      console.log('[PUSH] authToken existe:', !!authToken);
 
-      const response = await fetch(`${BASE}/api/push/register-token`, {
+      const pushToken = await registerForPushNotificationsAsync();
+      console.log('[PUSH] pushToken obtenido en AccessScreen:', pushToken);
+
+      if (!pushToken) {
+        console.log('[PUSH] No se obtuvo pushToken, no se envía al backend');
+        return;
+      }
+
+      const endpoint = `${BASE}/api/push/register-token`;
+      console.log('[PUSH] Enviando push token al backend:', endpoint);
+
+      const response = await fetch(endpoint, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -126,18 +139,19 @@ export default function AccessScreen({ navigation, route }) {
       });
 
       const json = await response.json().catch(() => ({}));
+      console.log('[PUSH] Respuesta backend register-token:', response.status, json);
 
       if (!response.ok) {
         console.log(
-          'No se pudo registrar el push token en backend:',
+          '[PUSH] No se pudo registrar el push token en backend:',
           json?.message || json?.error || response.status
         );
         return;
       }
 
-      console.log('Push token registrado en backend correctamente');
+      console.log('[PUSH] Push token registrado en backend correctamente');
     } catch (error) {
-      console.log('Error registrando push token en backend:', error?.message);
+      console.log('[PUSH] Error registrando push token en backend:', error?.message || error);
     }
   }
 
@@ -234,6 +248,7 @@ export default function AccessScreen({ navigation, route }) {
       if (!token) throw new Error('La API no devolvió token.');
 
       await persistSession(token, user);
+      console.log('[PUSH] Login correcto, voy a intentar registrar token push');
       await registerPushTokenInBackend(token);
       navigation.reset({ index: 0, routes: [{ name: 'Home' }] });
     } catch (e) {
@@ -347,6 +362,7 @@ export default function AccessScreen({ navigation, route }) {
       // Si el backend devuelve token (caso legacy), iniciamos sesión.
       if (token) {
         await persistSession(token, user);
+        console.log('[PUSH] Registro legacy correcto, voy a intentar registrar token push');
         await registerPushTokenInBackend(token);
         navigation.reset({ index: 0, routes: [{ name: 'Home' }] });
         return;

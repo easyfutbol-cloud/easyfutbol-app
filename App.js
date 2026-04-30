@@ -40,6 +40,7 @@ import AdminMatchesScreen from './src/screens/AdminMatchesScreen';
 import AdminMatchEditScreen from './src/screens/AdminMatchEditScreen';
 import AdminNotifyScreen from './src/screens/AdminNotifyScreen';
 import AdminEasyPassScreen from './src/screens/admineasypassscreen';
+import AdminDashboardScreen from './src/screens/AdminDashboardScreen';
 import EasyPassScreen from './src/screens/EasyPassScreen';
 import AchievementsScreen from './src/screens/AchievementsScreen';
 import LeaguesHomeScreen from './src/screens/leagues/LeaguesHomeScreen';
@@ -99,7 +100,7 @@ function isVersionLower(currentVersion, minVersion) {
 async function checkMinimumAppVersion() {
   try {
     const currentVersion = Application?.nativeApplicationVersion || '0.0.0';
-    const res = await api.get('/config/min-version');
+    const res = await api.get('/app-config/min-version');
     const config = res?.data || {};
     const minVersion = config?.minVersion || '0.0.0';
 
@@ -521,6 +522,7 @@ function AppMenu({ currentRouteName }) {
   ];
 
   const adminItems = [
+    { label: 'Dashboard KPIs (Admin)', screen: 'AdminDashboard' },
     { label: 'Administrar Partidos (Admin)', screen: 'AdminMatches' },
     { label: 'Crear Partido (Admin)', screen: 'AdminCreateMatch' },
     { label: 'Stats Partido (Admin)', screen: 'AdminMatchStats' },
@@ -646,6 +648,7 @@ function AppShell({ currentRouteName }) {
         <Stack.Screen name="WorldCupSelectTeam" component={WorldCupSelectTeamScreen} />
         <Stack.Screen name="Achievements" component={AchievementsScreen} />
         <Stack.Screen name="EasyPass" component={EasyPassScreen} />
+        <Stack.Screen name="AdminDashboard" component={AdminDashboardScreen} />
         <Stack.Screen name="AdminMatches" component={AdminMatchesScreen} />
         <Stack.Screen name="AdminMatchEdit" component={AdminMatchEditScreen} />
         <Stack.Screen name="AdminCreateMatch" component={AdminCreateMatchScreen} />
