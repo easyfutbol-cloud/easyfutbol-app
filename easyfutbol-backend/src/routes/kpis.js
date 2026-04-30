@@ -1,8 +1,14 @@
 import express from 'express';
 const router = express.Router();
-import db from '../config/db.js'; // tu conexión mysql
+import * as dbModule from '../config/db.js'; // tu conexión mysql
+
+const db = dbModule.default || dbModule.pool || dbModule.db || dbModule.connection;
 
 router.get('/dashboard', async (req, res) => {
+  if (!db || typeof db.query !== 'function') {
+    console.error('DB no disponible en KPIs. Revisa exports de config/db.js:', Object.keys(dbModule));
+    return res.status(500).json({ error: 'DB no disponible para KPIs' });
+  }
   try {
     // 📅 Semana actual
     const [usuarios] = await db.query(`
