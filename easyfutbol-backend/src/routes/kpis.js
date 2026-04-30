@@ -1,6 +1,6 @@
-const express = require('express');
+import express from 'express';
 const router = express.Router();
-const db = require('../db'); // tu conexión mysql
+import db from '../db.js'; // tu conexión mysql
 
 router.get('/dashboard', async (req, res) => {
   try {
@@ -76,4 +76,4 @@ router.get('/dashboard', async (req, res) => {
   }
 });
 
-module.exports = router;
+export default router;

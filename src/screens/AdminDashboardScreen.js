@@ -1,14 +1,26 @@
 import React, { useEffect, useState } from 'react';
 import { View, Text, FlatList, ActivityIndicator } from 'react-native';
-import axios from 'axios';
 
-export default function DashboardScreen() {
+export default function AdminDashboardScreen() {
   const [data, setData] = useState(null);
 
   useEffect(() => {
-    axios.get('https://TU_API/api/kpis/dashboard')
-      .then(res => setData(res.data))
-      .catch(err => console.log(err));
+    const loadDashboard = async () => {
+      try {
+        const response = await fetch('https://easyfutbol.es/api/kpis/dashboard');
+        const json = await response.json();
+
+        if (!response.ok) {
+          throw new Error(json?.error || 'Error cargando KPIs');
+        }
+
+        setData(json);
+      } catch (err) {  
+        console.log('Error cargando KPIs:', err.message);
+      }
+    };
+
+    loadDashboard();
   }, []);
 
   if (!data) return <ActivityIndicator size="large" color="#ff5a00" />;
