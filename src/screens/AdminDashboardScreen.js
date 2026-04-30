@@ -15,6 +15,7 @@ export default function AdminDashboardScreen() {
   const [weeklyData, setWeeklyData] = useState(null);
   const [monthlyData, setMonthlyData] = useState(null);
   const [playersData, setPlayersData] = useState([]);
+  const [weekdayData, setWeekdayData] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
@@ -46,15 +47,17 @@ export default function AdminDashboardScreen() {
       setLoading(true);
       setError(null);
 
-      const [week, month, players] = await Promise.all([
+      const [week, month, players, weekdays] = await Promise.all([
         fetchJson(`${API_BASE_URL}/dashboard?period=week`),
         fetchJson(`${API_BASE_URL}/dashboard?period=month`),
         fetchJson(`${API_BASE_URL}/players`),
+        fetchJson(`${API_BASE_URL}/weekday-repeat`),
       ]);
 
       setWeeklyData(week);
       setMonthlyData(month);
       setPlayersData(Array.isArray(players?.players) ? players.players : []);
+      setWeekdayData(Array.isArray(weekdays?.weekdays) ? weekdays.weekdays : []);
     } catch (err) {
       console.log('Error cargando KPIs:', err.message);
       setError(err.message);
@@ -166,6 +169,37 @@ export default function AdminDashboardScreen() {
     </View>
   );
 
+  const renderWeekdayRow = (item, index) => (
+    <View
+      key={`${item?.weekday_number || index}-${item?.weekday_name || 'dia'}`}
+      style={{
+        backgroundColor: '#111',
+        borderRadius: 12,
+        padding: 14,
+        marginBottom: 10,
+        borderWidth: 1,
+        borderColor: '#252525',
+      }}
+    >
+      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+        <Text style={{ color: '#fff', fontWeight: '900', fontSize: 17 }}>
+          {item?.weekday_name || 'Día'}
+        </Text>
+        <Text style={{ color: '#ff5a00', fontWeight: '900', fontSize: 16 }}>
+          {formatPercent(item?.repeat_rate)}
+        </Text>
+      </View>
+
+      <Text style={{ color: '#aaa', marginTop: 8, fontSize: 13 }}>
+        {item?.repetidores || 0} repetidores de {item?.usuarios_unicos || 0} jugadores únicos
+      </Text>
+
+      <Text style={{ color: '#777', marginTop: 5, fontSize: 12 }}>
+        {item?.registros || 0} participaciones registradas en stats
+      </Text>
+    </View>
+  );
+
   if (loading) {
     return (
       <View style={{ flex: 1, backgroundColor: '#000', justifyContent: 'center', alignItems: 'center' }}>
@@ -202,6 +236,7 @@ export default function AdminDashboardScreen() {
         {renderTabButton('week', 'Semanal')}
         {renderTabButton('month', 'Mensual')}
         {renderTabButton('players', 'Jugadores')}
+        {renderTabButton('weekdays', 'Días')}
       </View>
 
       {activeTab === 'week' && renderSummary(weeklyData, 'Resumen semanal')}
@@ -217,6 +252,20 @@ export default function AdminDashboardScreen() {
           }
           ListEmptyComponent={<Text style={{ color: '#aaa' }}>Todavía no hay jugadores para mostrar.</Text>}
           renderItem={({ item, index }) => renderPlayerRow(item, index)}
+          showsVerticalScrollIndicator={false}
+        />
+      )}
+      {activeTab === 'weekdays' && (
+        <FlatList
+          data={weekdayData}
+          keyExtractor={(item, index) => String(item?.weekday_number || index)}
+          ListHeaderComponent={
+            <Text style={{ color: '#fff', fontSize: 22, fontWeight: '800', marginBottom: 14 }}>
+              Repetición por día
+            </Text>
+          }
+          ListEmptyComponent={<Text style={{ color: '#aaa' }}>Todavía no hay datos por día para mostrar.</Text>}
+          renderItem={({ item, index }) => renderWeekdayRow(item, index)}
           showsVerticalScrollIndicator={false}
         />
       )}

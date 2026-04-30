@@ -54,9 +54,10 @@ router.get('/dashboard', async (req, res) => {
 
     const [topRows] = await db.query(`
       SELECT
-        u.id,
+        u.id AS jugador_id,
         u.name,
         COUNT(DISTINCT mps.match_id) AS partidos,
+        GROUP_CONCAT(DISTINCT mps.match_id ORDER BY mps.match_id ASC SEPARATOR ', ') AS match_ids,
         COALESCE(SUM(mps.goals), 0) AS goles,
         COALESCE(SUM(mps.assists), 0) AS asistencias,
         COALESCE(SUM(CASE WHEN mps.is_mvp = 1 THEN 1 ELSE 0 END), 0) AS mvps
@@ -96,9 +97,10 @@ router.get('/players', async (req, res) => {
   try {
     const [players] = await db.query(`
       SELECT
-        u.id,
+        u.id AS jugador_id,
         u.name,
         COUNT(DISTINCT mps.match_id) AS partidos,
+        GROUP_CONCAT(DISTINCT mps.match_id ORDER BY mps.match_id ASC SEPARATOR ', ') AS match_ids,
         COALESCE(SUM(mps.goals), 0) AS goles,
         COALESCE(SUM(mps.assists), 0) AS asistencias,
         COALESCE(SUM(CASE WHEN mps.is_mvp = 1 THEN 1 ELSE 0 END), 0) AS mvps,
@@ -115,6 +117,46 @@ router.get('/players', async (req, res) => {
   } catch (error) {
     console.error('Error obteniendo ranking de jugadores KPIs:', error);
     res.status(500).json({ error: 'Error obteniendo ranking de jugadores KPIs' });
+  }
+});
+
+router.get('/weekday-repeat', async (req, res) => {
+  if (!ensureDb(res)) return;
+
+  try {
+    const [weekdays] = await db.query(`
+      SELECT
+        weekday_number,
+        weekday_name,
+        COUNT(*) AS usuarios_unicos,
+        SUM(CASE WHEN partidos >= 2 THEN 1 ELSE 0 END) AS repetidores,
+        COALESCE(SUM(CASE WHEN partidos >= 2 THEN 1 ELSE 0 END) / NULLIF(COUNT(*), 0), 0) AS repeat_rate,
+        SUM(partidos) AS registros
+      FROM (
+        SELECT
+          mps.user_id,
+          WEEKDAY(mps.created_at) AS weekday_number,
+          CASE WEEKDAY(mps.created_at)
+            WHEN 0 THEN 'Lunes'
+            WHEN 1 THEN 'Martes'
+            WHEN 2 THEN 'Miércoles'
+            WHEN 3 THEN 'Jueves'
+            WHEN 4 THEN 'Viernes'
+            WHEN 5 THEN 'Sábado'
+            WHEN 6 THEN 'Domingo'
+          END AS weekday_name,
+          COUNT(DISTINCT mps.match_id) AS partidos
+        FROM match_player_stats mps
+        GROUP BY mps.user_id, WEEKDAY(mps.created_at)
+      ) t
+      GROUP BY weekday_number, weekday_name
+      ORDER BY weekday_number ASC
+    `);
+
+    res.json({ weekdays });
+  } catch (error) {
+    console.error('Error obteniendo repetición por día:', error);
+    res.status(500).json({ error: 'Error obteniendo repetición por día' });
   }
 });
 
