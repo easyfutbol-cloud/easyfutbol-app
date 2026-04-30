@@ -126,31 +126,30 @@ router.get('/weekday-repeat', async (req, res) => {
   try {
     const [weekdays] = await db.query(`
       SELECT
-        weekday_number,
-        weekday_name,
+        t.weekday_number,
+        CASE t.weekday_number
+          WHEN 0 THEN 'Lunes'
+          WHEN 1 THEN 'Martes'
+          WHEN 2 THEN 'Miércoles'
+          WHEN 3 THEN 'Jueves'
+          WHEN 4 THEN 'Viernes'
+          WHEN 5 THEN 'Sábado'
+          WHEN 6 THEN 'Domingo'
+        END AS weekday_name,
         COUNT(*) AS usuarios_unicos,
-        SUM(CASE WHEN partidos >= 2 THEN 1 ELSE 0 END) AS repetidores,
-        COALESCE(SUM(CASE WHEN partidos >= 2 THEN 1 ELSE 0 END) / NULLIF(COUNT(*), 0), 0) AS repeat_rate,
-        SUM(partidos) AS registros
+        SUM(CASE WHEN t.partidos >= 2 THEN 1 ELSE 0 END) AS repetidores,
+        COALESCE(SUM(CASE WHEN t.partidos >= 2 THEN 1 ELSE 0 END) / NULLIF(COUNT(*), 0), 0) AS repeat_rate,
+        SUM(t.partidos) AS registros
       FROM (
         SELECT
           mps.user_id,
           WEEKDAY(mps.created_at) AS weekday_number,
-          CASE WEEKDAY(mps.created_at)
-            WHEN 0 THEN 'Lunes'
-            WHEN 1 THEN 'Martes'
-            WHEN 2 THEN 'Miércoles'
-            WHEN 3 THEN 'Jueves'
-            WHEN 4 THEN 'Viernes'
-            WHEN 5 THEN 'Sábado'
-            WHEN 6 THEN 'Domingo'
-          END AS weekday_name,
           COUNT(DISTINCT mps.match_id) AS partidos
         FROM match_player_stats mps
         GROUP BY mps.user_id, WEEKDAY(mps.created_at)
       ) t
-      GROUP BY weekday_number, weekday_name
-      ORDER BY weekday_number ASC
+      GROUP BY t.weekday_number
+      ORDER BY t.weekday_number ASC
     `);
 
     res.json({ weekdays });
