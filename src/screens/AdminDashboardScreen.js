@@ -149,7 +149,7 @@ export default function AdminDashboardScreen() {
     >
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
         <Text style={{ color: '#fff', fontWeight: '800', fontSize: 15 }}>
-          #{index + 1} {item?.name || 'Jugador'}
+          #{index + 1} {item?.name || 'Jugador'} · ID {item?.jugador_id || item?.id || '-'}
         </Text>
         <Text style={{ color: '#ff5a00', fontWeight: '800' }}>
           {item?.partidos || 0} partidos
@@ -158,6 +158,10 @@ export default function AdminDashboardScreen() {
 
       <Text style={{ color: '#aaa', marginTop: 6, fontSize: 13 }}>
         {item?.goles || 0} G · {item?.asistencias || 0} A · {item?.mvps || 0} MVP
+      </Text>
+
+      <Text style={{ color: '#777', marginTop: 5, fontSize: 12 }}>
+        Partidos jugados: {item?.match_ids || 'Sin partidos'}
       </Text>
     </View>
   );
@@ -205,7 +209,7 @@ export default function AdminDashboardScreen() {
       {activeTab === 'players' && (
         <FlatList
           data={playersData}
-          keyExtractor={(item, index) => String(item?.id || index)}
+          keyExtractor={(item, index) => String(item?.jugador_id || item?.id || index)}
           ListHeaderComponent={
             <Text style={{ color: '#fff', fontSize: 22, fontWeight: '800', marginBottom: 14 }}>
               Jugadores con más partidos
