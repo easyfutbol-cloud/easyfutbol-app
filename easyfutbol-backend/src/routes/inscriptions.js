@@ -308,8 +308,15 @@ router.post('/matches/:id/cancel', requireAuth, async (req, res) => {
     // Si estaba confirmado, calcular política
     if (row.status === 'confirmed') {
 
-      // --- Caso nuevo: inscripción pagada con EasyPass ---
-      if (!row.stripe_session_id && (row.payment_type === 'easypass' || row.ticket_type === 'credit' || row.ticket_type === 'easypass')) {
+      const isEasyPassInscription = !row.stripe_session_id && (
+        row.payment_type === 'easypass' ||
+        row.ticket_type === 'credit' ||
+        row.ticket_type === 'easypass' ||
+        row.ticket_type === 'white' ||
+        row.ticket_type === 'black'
+      );
+
+      if (isEasyPassInscription) {
         const pct = refundPercent(row.starts_at);
         if (pct === 0) {
           return res.status(400).json({ ok:false, msg:'Solo se devuelve el EasyPass si cancelas con más de 6 horas de antelación' });
@@ -350,6 +357,12 @@ router.post('/matches/:id/cancel', requireAuth, async (req, res) => {
           [userId, matchId]
         );
 
+        // liberar plaza del partido
+        await conn.query(
+          'UPDATE matches SET spots_taken = GREATEST(spots_taken - ?, 0) WHERE id=?',
+          [inscriptionCount, matchId]
+        );
+
         const [[updatedUser]] = await conn.query(
           'SELECT easypass_balance AS easyPassBalance FROM users WHERE id=? LIMIT 1',
           [userId]
@@ -370,11 +383,19 @@ router.post('/matches/:id/cancel', requireAuth, async (req, res) => {
       }
 
       const pct = refundPercent(row.starts_at);
+      if (!row.stripe_session_id) {
+        console.warn('Cancelación sin stripe_session_id y no detectada como EasyPass', {
+          userId,
+          matchId,
+          status: row.status,
+          payment_type: row.payment_type,
+          ticket_type: row.ticket_type,
+          inscriptionCount,
+        });
+        return res.status(400).json({ ok:false, msg:'No se encontró el pago en Stripe ni se pudo detectar como EasyPass' });
+      }
       if (pct === 0) {
         return res.status(400).json({ ok:false, msg:'Solo se devuelve el pago si cancelas con más de 6 horas de antelación' });
-      }
-      if (!row.stripe_session_id) {
-        return res.status(400).json({ ok:false, msg:'No se encontró el pago en Stripe' });
       }
 
       // Obtener charge desde la sesión
