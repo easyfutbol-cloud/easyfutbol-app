@@ -131,6 +131,7 @@ app.use('/api', admin);
 app.use('/api', stats);
 app.use('/api', adminStats);
 app.use('/api', profile);
+app.use('/api/easypass', easyPass);
 app.use('/api', easyPass);
 app.use('/api', adminNotify);
 app.use('/api/achievements', achievements);
