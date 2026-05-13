@@ -20,7 +20,37 @@ const STRIPE_CANCEL_URL =
 
 const MAX_TICKETS_PER_PURCHASE = 8;
 
+
 const router = Router();
+
+const normalizeCity = (value = '') => String(value || '').trim().toLowerCase();
+
+const getFallbackLocationFromCity = (city = '') => {
+  const normalized = normalizeCity(city);
+  if (['avilés', 'aviles', 'oviedo', 'gijón', 'gijon', 'asturias'].includes(normalized)) {
+    return { id: 2, name: 'Asturias', slug: 'asturias' };
+  }
+  return { id: 1, name: 'Valladolid', slug: 'valladolid' };
+};
+
+const decorateMatchLocation = (row) => {
+  const fallback = getFallbackLocationFromCity(row?.city);
+  const locationId = Number(row?.location_id || row?.locationId || fallback.id);
+  const locationName = row?.location_name || row?.locationName || fallback.name;
+  const locationSlug = row?.location_slug || row?.locationSlug || fallback.slug;
+
+  return {
+    ...row,
+    location_id: locationId,
+    locationId,
+    location_name: locationName,
+    locationName,
+    location_slug: locationSlug,
+    locationSlug,
+    easypass_cost: Number(row?.easypass_cost || 1),
+    easyPassCost: Number(row?.easypass_cost || 1),
+  };
+};
 
 /**
  * Listado de partidos abiertos
@@ -33,9 +63,13 @@ router.get('/matches', async (req, res) => {
       `SELECT m.id,
               m.title,
               m.city,
+              COALESCE(m.location_id, CASE WHEN LOWER(m.city) IN ('avilés','aviles','oviedo','gijón','gijon','asturias') THEN 2 ELSE 1 END) AS location_id,
+              COALESCE(l.name, CASE WHEN LOWER(m.city) IN ('avilés','aviles','oviedo','gijón','gijon','asturias') THEN 'Asturias' ELSE 'Valladolid' END) AS location_name,
+              COALESCE(l.slug, CASE WHEN LOWER(m.city) IN ('avilés','aviles','oviedo','gijón','gijon','asturias') THEN 'asturias' ELSE 'valladolid' END) AS location_slug,
               m.starts_at,
               m.duration_min,
               m.price_eur,
+              COALESCE(m.easypass_cost, 1) AS easypass_cost,
               m.capacity,
               m.spots_taken,
               m.status,
@@ -45,15 +79,19 @@ router.get('/matches', async (req, res) => {
               f.name AS field_name
        FROM matches m
        JOIN fields f ON f.id = m.field_id
+       LEFT JOIN locations l ON l.id = m.location_id
        ${onlyOpen ? "WHERE m.status IN ('scheduled','open')" : ''}
        ORDER BY m.starts_at ASC`
     );
 
-    const data = rows.map((row) => ({
-      ...row,
-      spots_remaining: Math.max(0, Number(row.spots_remaining) || 0),
-      is_full: Number(row.is_full) === 1,
-    }));
+    const data = rows.map((row) => {
+      const decorated = decorateMatchLocation(row);
+      return {
+        ...decorated,
+        spots_remaining: Math.max(0, Number(row.spots_remaining) || 0),
+        is_full: Number(row.is_full) === 1,
+      };
+    });
 
     return res.json({ ok: true, data });
   } catch (e) {
@@ -119,9 +157,13 @@ router.get('/matches/:id/attendees', async (req, res) => {
       `SELECT m.id,
               m.title,
               m.city,
+              COALESCE(m.location_id, CASE WHEN LOWER(m.city) IN ('avilés','aviles','oviedo','gijón','gijon','asturias') THEN 2 ELSE 1 END) AS location_id,
+              COALESCE(l.name, CASE WHEN LOWER(m.city) IN ('avilés','aviles','oviedo','gijón','gijon','asturias') THEN 'Asturias' ELSE 'Valladolid' END) AS location_name,
+              COALESCE(l.slug, CASE WHEN LOWER(m.city) IN ('avilés','aviles','oviedo','gijón','gijon','asturias') THEN 'asturias' ELSE 'valladolid' END) AS location_slug,
               m.starts_at,
               m.duration_min,
               m.price_eur,
+              COALESCE(m.easypass_cost, 1) AS easypass_cost,
               m.capacity,
               m.spots_taken,
               m.status,
@@ -131,6 +173,7 @@ router.get('/matches/:id/attendees', async (req, res) => {
               f.name AS field_name
        FROM matches m
        JOIN fields f ON f.id = m.field_id
+       LEFT JOIN locations l ON l.id = m.location_id
        WHERE m.id=?`,
       [id]
     );
@@ -141,7 +184,7 @@ router.get('/matches/:id/attendees', async (req, res) => {
         .json({ ok: false, msg: 'Partido no encontrado' });
     }
 
-    const match = rows[0];
+    const match = decorateMatchLocation(rows[0]);
 
     match.spots_remaining = Math.max(0, Number(match.spots_remaining) || 0);
     match.is_full = Number(match.is_full) === 1;
@@ -212,9 +255,11 @@ router.post('/matches/:id/pay', requireAuth, async (req, res) => {
       `SELECT id,
               title,
               city,
+              COALESCE(location_id, CASE WHEN LOWER(city) IN ('avilés','aviles','oviedo','gijón','gijon','asturias') THEN 2 ELSE 1 END) AS location_id,
               starts_at,
               duration_min,
               price_eur,
+              COALESCE(easypass_cost, 1) AS easypass_cost,
               capacity,
               spots_taken,
               status
@@ -269,12 +314,10 @@ router.post('/matches/:id/pay', requireAuth, async (req, res) => {
     }
 
     const price = Number(match.price_eur ?? 0);
-    if (!Number.isFinite(price) || price <= 0) {
-      await conn.rollback();
-      return res
-        .status(400)
-        .json({ ok: false, msg: 'Precio inválido para este partido' });
-    }
+    const easyPassCost = Math.max(1, Number(match.easypass_cost || 1));
+    const matchLocation = getFallbackLocationFromCity(match.city);
+    const locationId = Number(match.location_id || matchLocation.id);
+    const locationName = locationId === 2 ? 'Asturias' : matchLocation.name;
 
     // Comprobar límite de plazas por color (mitad de la capacidad para cada color)
     const [[colorRow]] = await conn.query(
@@ -299,6 +342,94 @@ router.post('/matches/:id/pay', requireAuth, async (req, res) => {
           finalTicketType === 'white'
             ? 'No quedan plazas suficientes con camiseta blanca para este partido'
             : 'No quedan plazas suficientes con camiseta negra para este partido',
+      });
+    }
+
+    // Si el partido cuesta EasyPass, el saldo debe ser de la misma localización del partido.
+    // Esto evita que alguien use EasyPass de Valladolid para apuntarse a un partido de Asturias, o al revés.
+    if (!Number.isFinite(price) || price <= 0) {
+      const totalEasyPassCost = easyPassCost * safeQuantity;
+
+      const [[balanceRow]] = await conn.query(
+        `SELECT balance
+         FROM user_easypass_balances
+         WHERE user_id = ?
+           AND location_id = ?
+         FOR UPDATE`,
+        [userId, locationId]
+      );
+
+      const currentLocationBalance = Number(balanceRow?.balance || 0);
+      if (currentLocationBalance < totalEasyPassCost) {
+        await conn.rollback();
+        return res.status(400).json({
+          ok: false,
+          msg: `No tienes EasyPass suficientes de ${locationName}. Este partido solo acepta EasyPass de ${locationName}.`,
+          location_id: locationId,
+          locationId,
+          locationName,
+          requiredEasyPass: totalEasyPassCost,
+          currentEasyPass: currentLocationBalance,
+        });
+      }
+
+      await conn.query(
+        `UPDATE user_easypass_balances
+         SET balance = balance - ?
+         WHERE user_id = ?
+           AND location_id = ?`,
+        [totalEasyPassCost, userId, locationId]
+      );
+
+      await conn.query(
+        `UPDATE users
+         SET easypass_balance = GREATEST(COALESCE(easypass_balance, 0) - ?, 0)
+         WHERE id = ?`,
+        [totalEasyPassCost, userId]
+      );
+
+      const inscriptionIds = [];
+      for (let i = 0; i < safeQuantity; i += 1) {
+        const [insertRes] = await conn.query(
+          `INSERT INTO inscriptions (user_id, match_id, status, ticket_type)
+           VALUES (?,?, 'confirmed', ?)`,
+          [userId, matchId, finalTicketType]
+        );
+        inscriptionIds.push(insertRes.insertId);
+      }
+
+      await conn.query(
+        `UPDATE matches
+         SET spots_taken = spots_taken + ?
+         WHERE id = ?`,
+        [safeQuantity, matchId]
+      );
+
+      await conn.query(
+        `INSERT INTO easypass_transactions
+          (user_id, type, amount, description, event_id, payment_reference, created_at)
+         VALUES (?, 'spend', ?, ?, ?, ?, NOW())`,
+        [
+          userId,
+          -totalEasyPassCost,
+          `Inscripción partido ${match.title || `#${matchId}`} - EasyPass ${locationName}`,
+          matchId,
+          `match_${matchId}_${userId}_${Date.now()}`,
+        ]
+      );
+
+      await conn.commit();
+
+      return res.json({
+        ok: true,
+        paidWithEasyPass: true,
+        inscription_ids: inscriptionIds,
+        inscription_id: inscriptionIds[0] || null,
+        easyPassSpent: totalEasyPassCost,
+        location_id: locationId,
+        locationId,
+        locationName,
+        msg: `Te has apuntado usando ${totalEasyPassCost} EasyPass de ${locationName}`,
       });
     }
 
@@ -338,6 +469,8 @@ router.post('/matches/:id/pay', requireAuth, async (req, res) => {
         inscription_id: String(inscriptionId),
         ticket_type: finalTicketType,
         quantity: String(safeQuantity),
+        location_id: String(locationId),
+        locationName: String(locationName),
       },
       success_url: STRIPE_SUCCESS_URL,
       cancel_url: STRIPE_CANCEL_URL,
