@@ -29,6 +29,22 @@ function formatMatchDateTime(startsAtISO) {
   return `${day} ${dayNumber} de ${month} a las ${time}`;
 }
 
+function getFallbackLocationFromCity(city = '') {
+  const normalized = String(city || '').trim().toLowerCase();
+  if (['avilés', 'aviles', 'oviedo', 'gijón', 'gijon', 'asturias'].includes(normalized)) {
+    return { id: 2, name: 'Asturias', slug: 'asturias' };
+  }
+  return { id: 1, name: 'Valladolid', slug: 'valladolid' };
+}
+
+async function getLocationName(conn, locationId, fallbackName) {
+  const [[locationRow]] = await conn.query(
+    `SELECT name FROM locations WHERE id = ? LIMIT 1`,
+    [locationId]
+  );
+  return locationRow?.name || fallbackName;
+}
+
 
 // --- Mis inscripciones (para la app) ---
 router.get('/me/inscriptions', requireAuth, async (req, res) => {
@@ -262,12 +278,16 @@ router.post('/matches/:id/cancel', requireAuth, async (req, res) => {
               MAX(i.ticket_type) AS ticket_type,
               MAX(i.payment_type) AS payment_type,
               m.starts_at,
-              m.id AS match_id
+              m.id AS match_id,
+              m.title,
+              m.city,
+              COALESCE(m.location_id, CASE WHEN LOWER(m.city) IN ('avilés','aviles','oviedo','gijón','gijon','asturias') THEN 2 ELSE 1 END) AS location_id,
+              COALESCE(m.easypass_cost, 1) AS easypass_cost
        FROM inscriptions i
        JOIN matches m ON m.id = i.match_id
        WHERE i.user_id=?
          AND i.match_id=?
-         AND i.status <> 'cancelled'`,
+         AND i.status NOT IN ('cancelled','canceled')`,
       [userId, matchId]
     );
 
@@ -297,29 +317,37 @@ router.post('/matches/:id/cancel', requireAuth, async (req, res) => {
 
         await conn.beginTransaction();
 
-        // devolver EasyPass
+        const fallbackLocation = getFallbackLocationFromCity(row.city);
+        const locationId = Number(row.location_id || fallbackLocation.id);
+        const locationName = await getLocationName(conn, locationId, fallbackLocation.name);
+        const easyPassCost = Math.max(1, Number(row.easypass_cost || 1));
+        const refundAmount = easyPassCost * inscriptionCount;
+
+        // devolver EasyPass a la localización correcta del partido
         await conn.query(
-          'UPDATE users SET easypass_balance = easypass_balance + ? WHERE id=?',
-          [inscriptionCount, userId]
+          `INSERT INTO user_easypass_balances (user_id, location_id, balance)
+           VALUES (?, ?, ?)
+           ON DUPLICATE KEY UPDATE balance = balance + VALUES(balance)`,
+          [userId, locationId, refundAmount]
+        );
+
+        // mantener saldo global antiguo sincronizado como total visible/compatibilidad
+        await conn.query(
+          'UPDATE users SET easypass_balance = COALESCE(easypass_balance, 0) + ? WHERE id=?',
+          [refundAmount, userId]
         );
 
         // registrar devolución
         await conn.query(
           `INSERT INTO easypass_transactions (user_id, type, amount, description, event_id, created_at)
            VALUES (?, 'refund', ?, ?, ?, NOW())`,
-          [userId, inscriptionCount, `Cancelación con devolución de ${inscriptionCount} EasyPass`, matchId]
+          [userId, refundAmount, `Cancelación con devolución de ${refundAmount} EasyPass de ${locationName}`, matchId]
         );
 
         // cancelar inscripción
         await conn.query(
-          'UPDATE inscriptions SET status="cancelled" WHERE user_id=? AND match_id=? AND status!="cancelled"',
+          'UPDATE inscriptions SET status="cancelled" WHERE user_id=? AND match_id=? AND status NOT IN ("cancelled","canceled")',
           [userId, matchId]
-        );
-
-        // liberar plaza
-        await conn.query(
-          'UPDATE matches SET spots_taken = GREATEST(spots_taken - ?, 0) WHERE id=?',
-          [inscriptionCount, matchId]
         );
 
         const [[updatedUser]] = await conn.query(
@@ -331,8 +359,12 @@ router.post('/matches/:id/cancel', requireAuth, async (req, res) => {
 
         return res.json({
           ok:true,
-          msg:'Cancelada y EasyPass devuelto',
+          msg:`Cancelada y ${refundAmount} EasyPass de ${locationName} devuelto(s)`,
           pct,
+          refundedEasyPass: refundAmount,
+          location_id: locationId,
+          locationId,
+          locationName,
           easyPassBalance: Number(updatedUser?.easyPassBalance || 0),
         });
       }
@@ -360,7 +392,7 @@ router.post('/matches/:id/cancel', requireAuth, async (req, res) => {
       const refund = await stripe.refunds.create({ charge: charge.id, amount: refundAmount });
 
       // Marcar cancelada y liberar plaza
-      await conn.query('UPDATE inscriptions SET status="cancelled" WHERE user_id=? AND match_id=? AND status!="cancelled"', [userId, matchId]);
+      await conn.query('UPDATE inscriptions SET status="cancelled" WHERE user_id=? AND match_id=? AND status NOT IN ("cancelled","canceled")', [userId, matchId]);
       await conn.query(
         'UPDATE matches SET spots_taken = GREATEST(spots_taken - ?, 0) WHERE id=?',
         [inscriptionCount, matchId]
