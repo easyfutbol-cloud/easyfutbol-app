@@ -44,7 +44,11 @@ router.get('/me/profile', requireAuth, async (req, res) => {
          COALESCE(SUM(mps.goals), 0) AS goals,
          COALESCE(SUM(mps.assists), 0) AS assists,
          COALESCE(SUM(mps.is_mvp), 0) AS mvps,
-         COALESCE(SUM(mps.goals + mps.assists), 0) AS total
+         COALESCE(SUM(mps.goals + mps.assists), 0) AS total,
+         COALESCE(SUM(CASE WHEN mps.result = 'win' THEN 1 ELSE 0 END), 0) AS wins,
+         COALESCE(SUM(CASE WHEN mps.result = 'loss' THEN 1 ELSE 0 END), 0) AS losses,
+         COALESCE(SUM(CASE WHEN mps.result = 'draw' THEN 1 ELSE 0 END), 0) AS draws,
+         COUNT(DISTINCT CASE WHEN mps.result IS NOT NULL THEN mps.match_id END) AS matches_with_result
        FROM match_player_stats mps
        WHERE mps.user_id=?`,
       [userId]
@@ -107,6 +111,13 @@ router.get('/me/profile', requireAuth, async (req, res) => {
         },
         stats: {
           matches_played: Number(stats.matches_played || 0),
+          matches_with_result: Number(stats.matches_with_result || 0),
+          wins: Number(stats.wins || 0),
+          losses: Number(stats.losses || 0),
+          draws: Number(stats.draws || 0),
+          win_rate: Number(stats.matches_with_result || 0) > 0
+            ? Math.round((Number(stats.wins || 0) / Number(stats.matches_with_result || 0)) * 100)
+            : 0,
           goals: Number(stats.goals || 0),
           assists: Number(stats.assists || 0),
           mvps: Number(stats.mvps || 0),
