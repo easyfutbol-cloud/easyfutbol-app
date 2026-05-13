@@ -50,6 +50,51 @@ router.get('/me/profile', requireAuth, async (req, res) => {
       [userId]
     );
 
+    let easyPassBalances = [];
+    try {
+      const [balanceRows] = await pool.query(
+        `SELECT
+           l.id AS location_id,
+           l.name AS location_name,
+           l.slug AS location_slug,
+           COALESCE(ueb.balance, 0) AS balance
+         FROM locations l
+         LEFT JOIN user_easypass_balances ueb
+           ON ueb.location_id = l.id
+          AND ueb.user_id = ?
+         WHERE l.active = 1
+         ORDER BY l.id ASC`,
+        [userId]
+      );
+
+      easyPassBalances = balanceRows.map((row) => ({
+        location_id: Number(row.location_id),
+        locationId: Number(row.location_id),
+        location_name: row.location_name,
+        locationName: row.location_name,
+        location_slug: row.location_slug,
+        locationSlug: row.location_slug,
+        balance: Number(row.balance || 0),
+        easyPassBalance: Number(row.balance || 0),
+        credits: Number(row.balance || 0),
+      }));
+    } catch (balanceError) {
+      console.warn('[GET /me/profile] No se pudieron cargar balances por sede:', balanceError?.message || balanceError);
+      easyPassBalances = [
+        {
+          location_id: 1,
+          locationId: 1,
+          location_name: 'Valladolid',
+          locationName: 'Valladolid',
+          location_slug: 'valladolid',
+          locationSlug: 'valladolid',
+          balance: Number(user.easypass_balance || 0),
+          easyPassBalance: Number(user.easypass_balance || 0),
+          credits: Number(user.easypass_balance || 0),
+        },
+      ];
+    }
+
     res.json({
       ok: true,
       data: {
@@ -57,6 +102,8 @@ router.get('/me/profile', requireAuth, async (req, res) => {
           ...user,
           easyPassBalance: Number(user.easypass_balance || 0),
           credits: Number(user.easypass_balance || 0),
+          easyPassBalances,
+          easypass_balances: easyPassBalances,
         },
         stats: {
           matches_played: Number(stats.matches_played || 0),
@@ -89,10 +136,57 @@ router.get('/me/credits', requireAuth, async (req, res) => {
       return res.status(404).json({ ok:false, msg:'Usuario no encontrado' });
     }
 
+    let easyPassBalances = [];
+    try {
+      const [balanceRows] = await pool.query(
+        `SELECT
+           l.id AS location_id,
+           l.name AS location_name,
+           l.slug AS location_slug,
+           COALESCE(ueb.balance, 0) AS balance
+         FROM locations l
+         LEFT JOIN user_easypass_balances ueb
+           ON ueb.location_id = l.id
+          AND ueb.user_id = ?
+         WHERE l.active = 1
+         ORDER BY l.id ASC`,
+        [userId]
+      );
+
+      easyPassBalances = balanceRows.map((row) => ({
+        location_id: Number(row.location_id),
+        locationId: Number(row.location_id),
+        location_name: row.location_name,
+        locationName: row.location_name,
+        location_slug: row.location_slug,
+        locationSlug: row.location_slug,
+        balance: Number(row.balance || 0),
+        easyPassBalance: Number(row.balance || 0),
+        credits: Number(row.balance || 0),
+      }));
+    } catch (balanceError) {
+      console.warn('[GET /me/credits] No se pudieron cargar balances por sede:', balanceError?.message || balanceError);
+      easyPassBalances = [
+        {
+          location_id: 1,
+          locationId: 1,
+          location_name: 'Valladolid',
+          locationName: 'Valladolid',
+          location_slug: 'valladolid',
+          locationSlug: 'valladolid',
+          balance: Number(user.easypass_balance || 0),
+          easyPassBalance: Number(user.easypass_balance || 0),
+          credits: Number(user.easypass_balance || 0),
+        },
+      ];
+    }
+
     return res.json({
       ok: true,
       easyPassBalance: Number(user.easypass_balance || 0),
       credits: Number(user.easypass_balance || 0),
+      easyPassBalances,
+      easypass_balances: easyPassBalances,
     });
   } catch (e) {
     console.error('[GET /me/credits]', e);
