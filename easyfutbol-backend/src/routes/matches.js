@@ -231,6 +231,202 @@ router.get('/matches/:id/attendees', async (req, res) => {
  * Crea/actualiza una inscripción en estado "pending" y devuelve la URL de pago
  */
 router.post('/matches/:id/pay', requireAuth, async (req, res) => {
+/**
+ * Apuntarse con EasyPass respetando la localización del partido
+ */
+router.post('/matches/:id/join-with-easypass', requireAuth, async (req, res) => {
+  const userId = req.user.id;
+  const matchId = Number(req.params.id);
+
+  const { ticketType, ticket_type, shirtColor, quantity } = req.body || {};
+  const rawTicketType = ticketType || ticket_type || shirtColor || 'white';
+  const allowedTypes = ['white', 'black'];
+  const finalTicketType = allowedTypes.includes(rawTicketType) ? rawTicketType : 'white';
+
+  const rawQty = Number(quantity) || 1;
+  const safeQuantity = Math.max(1, Math.min(rawQty, MAX_TICKETS_PER_PURCHASE));
+
+  if (!Number.isInteger(matchId) || matchId <= 0) {
+    return res.status(400).json({ ok: false, msg: 'ID de partido inválido' });
+  }
+
+  const conn = await pool.getConnection();
+
+  try {
+    await conn.beginTransaction();
+
+    const [[match]] = await conn.query(
+      `SELECT id,
+              title,
+              city,
+              COALESCE(location_id, CASE WHEN LOWER(city) IN ('avilés','aviles','oviedo','gijón','gijon','asturias') THEN 2 ELSE 1 END) AS location_id,
+              COALESCE(easypass_cost, 1) AS easypass_cost,
+              capacity,
+              spots_taken,
+              status
+       FROM matches
+       WHERE id=?
+       FOR UPDATE`,
+      [matchId]
+    );
+
+    if (!match) {
+      await conn.rollback();
+      return res.status(404).json({ ok: false, msg: 'Partido no encontrado' });
+    }
+
+    const payableStatuses = ['scheduled', 'open'];
+    if (!payableStatuses.includes(match.status)) {
+      await conn.rollback();
+      return res.status(400).json({ ok: false, msg: 'El partido no está disponible' });
+    }
+
+    const capacity = Number(match.capacity) || 0;
+    const spotsTaken = Number(match.spots_taken) || 0;
+
+    if (!Number.isFinite(capacity) || capacity <= 0) {
+      await conn.rollback();
+      return res.status(400).json({ ok: false, msg: 'La capacidad de este partido no está configurada correctamente' });
+    }
+
+    if (spotsTaken >= capacity || spotsTaken + safeQuantity > capacity) {
+      await conn.rollback();
+      return res.status(400).json({ ok: false, msg: 'No hay plazas suficientes para este partido' });
+    }
+
+    const [[already]] = await conn.query(
+      `SELECT id
+       FROM inscriptions
+       WHERE user_id = ?
+         AND match_id = ?
+         AND status IN ('pending','confirmed')
+       LIMIT 1`,
+      [userId, matchId]
+    );
+
+    if (already) {
+      await conn.rollback();
+      return res.status(400).json({ ok: false, msg: 'Ya estás apuntado a este partido' });
+    }
+
+    const [[colorRow]] = await conn.query(
+      `SELECT COUNT(*) AS count
+       FROM inscriptions
+       WHERE match_id=?
+         AND ticket_type=?
+         AND status IN ('pending','confirmed')`,
+      [matchId, finalTicketType]
+    );
+
+    const perColorLimit = capacity ? Math.floor(capacity / 2) : 8;
+    const currentColorCount = Number(colorRow.count) || 0;
+    const remainingForColor = perColorLimit - currentColorCount;
+
+    if (remainingForColor <= 0 || safeQuantity > remainingForColor) {
+      await conn.rollback();
+      return res.status(400).json({
+        ok: false,
+        msg: finalTicketType === 'white'
+          ? 'No quedan plazas suficientes con camiseta blanca para este partido'
+          : 'No quedan plazas suficientes con camiseta negra para este partido',
+      });
+    }
+
+    const fallbackLocation = getFallbackLocationFromCity(match.city);
+    const locationId = Number(match.location_id || fallbackLocation.id);
+    const locationName = locationId === 2 ? 'Asturias' : fallbackLocation.name;
+    const easyPassCost = Math.max(1, Number(match.easypass_cost || 1));
+    const totalEasyPassCost = easyPassCost * safeQuantity;
+
+    const [[balanceRow]] = await conn.query(
+      `SELECT balance
+       FROM user_easypass_balances
+       WHERE user_id = ?
+         AND location_id = ?
+       FOR UPDATE`,
+      [userId, locationId]
+    );
+
+    const currentLocationBalance = Number(balanceRow?.balance || 0);
+    if (currentLocationBalance < totalEasyPassCost) {
+      await conn.rollback();
+      return res.status(400).json({
+        ok: false,
+        msg: `No tienes EasyPass suficientes de ${locationName}. Este partido solo acepta EasyPass de ${locationName}.`,
+        location_id: locationId,
+        locationId,
+        locationName,
+        requiredEasyPass: totalEasyPassCost,
+        currentEasyPass: currentLocationBalance,
+      });
+    }
+
+    await conn.query(
+      `UPDATE user_easypass_balances
+       SET balance = balance - ?
+       WHERE user_id = ?
+         AND location_id = ?`,
+      [totalEasyPassCost, userId, locationId]
+    );
+
+    await conn.query(
+      `UPDATE users
+       SET easypass_balance = GREATEST(COALESCE(easypass_balance, 0) - ?, 0)
+       WHERE id = ?`,
+      [totalEasyPassCost, userId]
+    );
+
+    const inscriptionIds = [];
+    for (let i = 0; i < safeQuantity; i += 1) {
+      const [insertRes] = await conn.query(
+        `INSERT INTO inscriptions (user_id, match_id, status, ticket_type)
+         VALUES (?,?, 'confirmed', ?)`,
+        [userId, matchId, finalTicketType]
+      );
+      inscriptionIds.push(insertRes.insertId);
+    }
+
+    await conn.query(
+      `UPDATE matches
+       SET spots_taken = spots_taken + ?
+       WHERE id = ?`,
+      [safeQuantity, matchId]
+    );
+
+    await conn.query(
+      `INSERT INTO easypass_transactions
+        (user_id, type, amount, description, event_id, payment_reference, created_at)
+       VALUES (?, 'spend', ?, ?, ?, ?, NOW())`,
+      [
+        userId,
+        -totalEasyPassCost,
+        `Inscripción partido ${match.title || `#${matchId}`} - EasyPass ${locationName}`,
+        matchId,
+        `match_${matchId}_${userId}_${Date.now()}`,
+      ]
+    );
+
+    await conn.commit();
+
+    return res.json({
+      ok: true,
+      paidWithEasyPass: true,
+      inscription_ids: inscriptionIds,
+      inscription_id: inscriptionIds[0] || null,
+      easyPassSpent: totalEasyPassCost,
+      location_id: locationId,
+      locationId,
+      locationName,
+      msg: `Te has apuntado usando ${totalEasyPassCost} EasyPass de ${locationName}`,
+    });
+  } catch (e) {
+    await conn.rollback();
+    console.error('Error apuntándose con EasyPass por localización', e);
+    return res.status(500).json({ ok: false, msg: 'Error apuntándose con EasyPass' });
+  } finally {
+    conn.release();
+  }
+});
   const userId = req.user.id;
   const matchId = Number(req.params.id);
 
