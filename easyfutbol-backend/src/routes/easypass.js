@@ -23,21 +23,75 @@ const APP_BASE_URL =
   'https://easyfutbol.es';
 
 /**
- * Packs de EasyPass disponibles
+ * Sedes disponibles para EasyPass
  */
-router.get('/packs', requireAuth, async (req, res) => {
+router.get('/locations', requireAuth, async (req, res) => {
   try {
     const [rows] = await pool.query(
-      `SELECT id, name, credits AS easyPassAmount, price_cents
-       FROM easypass_packs
-       WHERE is_active = 1
-       ORDER BY credits ASC`
+      `SELECT id, name, slug
+       FROM locations
+       WHERE active = 1
+       ORDER BY id ASC`
     );
 
     return res.json({
       ok: true,
       data: rows.map((row) => ({
+        id: Number(row.id),
+        name: row.name,
+        slug: row.slug,
+      })),
+    });
+  } catch (e) {
+    console.error('[GET /locations]', e);
+    return res.status(500).json({ ok:false, msg:'Error obteniendo sedes EasyPass' });
+  }
+});
+
+/**
+ * Packs de EasyPass disponibles
+ */
+router.get('/packs', requireAuth, async (req, res) => {
+  try {
+    const requestedLocationId = Number(req.query.location_id || req.query.locationId || 1);
+    const locationId = Number.isInteger(requestedLocationId) && requestedLocationId > 0
+      ? requestedLocationId
+      : 1;
+
+    const [[location]] = await pool.query(
+      `SELECT id, name, slug
+       FROM locations
+       WHERE id = ?
+         AND active = 1
+       LIMIT 1`,
+      [locationId]
+    );
+
+    if (!location) {
+      return res.status(404).json({ ok:false, msg:'Sede no encontrada' });
+    }
+
+    const [rows] = await pool.query(
+      `SELECT id, location_id, name, credits AS easyPassAmount, price_cents
+       FROM easypass_packs
+       WHERE is_active = 1
+         AND location_id = ?
+       ORDER BY credits ASC`,
+      [locationId]
+    );
+
+    return res.json({
+      ok: true,
+      location: {
+        id: Number(location.id),
+        name: location.name,
+        slug: location.slug,
+      },
+      data: rows.map((row) => ({
         ...row,
+        id: Number(row.id),
+        location_id: Number(row.location_id),
+        locationId: Number(row.location_id),
         easyPassAmount: Number(row.easyPassAmount || 0),
         credits: Number(row.easyPassAmount || 0),
         price_cents: Number(row.price_cents || 0),
@@ -98,9 +152,11 @@ router.post('/packs/:id/checkout', requireAuth, async (req, res) => {
     }
 
     const [[pack]] = await pool.query(
-      `SELECT id, name, credits AS easyPassAmount, price_cents, is_active
-       FROM easypass_packs
-       WHERE id = ?
+      `SELECT ep.id, ep.location_id, ep.name, ep.credits AS easyPassAmount, ep.price_cents, ep.is_active,
+              l.name AS locationName, l.slug AS locationSlug
+       FROM easypass_packs ep
+       LEFT JOIN locations l ON l.id = ep.location_id
+       WHERE ep.id = ?
        LIMIT 1`,
       [packId]
     );
@@ -123,7 +179,7 @@ router.post('/packs/:id/checkout', requireAuth, async (req, res) => {
             currency: 'eur',
             product_data: {
               name: pack.name || `${Number(pack.easyPassAmount || 0)} EasyPass`,
-              description: `Pack de ${Number(pack.easyPassAmount || 0)} EasyPass`,
+              description: `Pack de ${Number(pack.easyPassAmount || 0)} EasyPass - ${pack.locationName || 'EasyFutbol'}`,
             },
             unit_amount: Number(pack.price_cents || 0),
           },
@@ -134,6 +190,8 @@ router.post('/packs/:id/checkout', requireAuth, async (req, res) => {
         userId: String(userId),
         packId: String(pack.id),
         packEasyPassAmount: String(Number(pack.easyPassAmount || 0)),
+        locationId: String(pack.location_id || 1),
+        locationSlug: String(pack.locationSlug || 'valladolid'),
         kind: 'easypass_pack',
       },
       success_url: successUrl,
@@ -147,6 +205,9 @@ router.post('/packs/:id/checkout', requireAuth, async (req, res) => {
       session_id: session.id,
       pack: {
         id: Number(pack.id),
+        location_id: Number(pack.location_id || 1),
+        locationId: Number(pack.location_id || 1),
+        locationName: pack.locationName || null,
         name: pack.name,
         easyPassAmount: Number(pack.easyPassAmount || 0),
         credits: Number(pack.easyPassAmount || 0),
@@ -193,9 +254,11 @@ router.post('/packs/:id/confirm', requireAuth, async (req, res) => {
     }
 
     const [[pack]] = await conn.query(
-      `SELECT id, name, credits AS easyPassAmount, is_active
-       FROM easypass_packs
-       WHERE id=?
+      `SELECT ep.id, ep.location_id, ep.name, ep.credits AS easyPassAmount, ep.is_active,
+              l.name AS locationName, l.slug AS locationSlug
+       FROM easypass_packs ep
+       LEFT JOIN locations l ON l.id = ep.location_id
+       WHERE ep.id=?
        LIMIT 1`,
       [packId]
     );
@@ -218,7 +281,7 @@ router.post('/packs/:id/confirm', requireAuth, async (req, res) => {
       `INSERT INTO easypass_transactions
         (user_id, type, amount, description, pack_id, payment_reference, created_at)
        VALUES (?, 'purchase', ?, ?, ?, ?, NOW())`,
-      [userId, easyPassAmount, `Compra pack ${pack.name || `#${packId}`}`, packId, paymentReference]
+      [userId, easyPassAmount, `Compra pack ${pack.name || `#${packId}`} - ${pack.locationName || 'EasyFutbol'}`, packId, paymentReference]
     );
 
     const [[updatedUser]] = await conn.query(
