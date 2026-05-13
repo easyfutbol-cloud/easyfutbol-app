@@ -86,7 +86,7 @@ router.get('/stats/top-players', async (req, res) => {
       WHERE 1=1
       ${dateWhere}
       ${locationFilter.sql}
-      GROUP BY u.id, u.name, u.email, u.avatar_url, location_id, location_name, location_slug
+      GROUP BY u.id, u.name, u.email, u.avatar_url, m.location_id, m.city, l.name, l.slug
       HAVING total > 0
       ORDER BY total DESC, goals DESC, mvps DESC
       LIMIT 50
