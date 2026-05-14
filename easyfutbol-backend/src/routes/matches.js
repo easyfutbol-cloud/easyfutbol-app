@@ -255,16 +255,16 @@ router.post('/matches/:id/join-with-easypass', requireAuth, async (req, res) => 
       return res.status(400).json({ ok: false, msg: 'No hay plazas suficientes para este partido' });
     }
 
-    const [[already]] = await conn.query(
+    const [[pendingAlready]] = await conn.query(
       `SELECT id FROM inscriptions
-       WHERE user_id = ? AND match_id = ? AND status IN ('pending','confirmed')
+       WHERE user_id = ? AND match_id = ? AND status = 'pending'
        LIMIT 1`,
       [userId, matchId]
     );
 
-    if (already) {
+    if (pendingAlready) {
       await conn.rollback();
-      return res.status(400).json({ ok: false, msg: 'Ya estás apuntado a este partido' });
+      return res.status(400).json({ ok: false, msg: 'Tienes una inscripción pendiente para este partido' });
     }
 
     const [[colorRow]] = await conn.query(
@@ -358,7 +358,7 @@ router.post('/matches/:id/join-with-easypass', requireAuth, async (req, res) => 
       location_id: locationId,
       locationId,
       locationName,
-      msg: `Te has apuntado usando ${totalEasyPassCost} EasyPass de ${locationName}`,
+      msg: safeQuantity > 1 ? `Has reservado ${safeQuantity} plazas usando ${totalEasyPassCost} EasyPass de ${locationName}` : `Te has apuntado usando ${totalEasyPassCost} EasyPass de ${locationName}`,
     });
   } catch (e) {
     await conn.rollback();
