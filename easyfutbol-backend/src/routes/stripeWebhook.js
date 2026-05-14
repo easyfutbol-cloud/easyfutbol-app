@@ -32,9 +32,10 @@ webhookRouter.post('/webhook', express.raw({ type: 'application/json' }), async 
   }
 
   const metadata = session.metadata || {};
-  const purchaseType = metadata.purchase_type || metadata.type || null;
+  const purchaseType = metadata.purchase_type || metadata.type || metadata.kind || null;
   const userId = metadata.user_id ? Number(metadata.user_id) : metadata.userId ? Number(metadata.userId) : null;
   const packId = metadata.pack_id ? Number(metadata.pack_id) : metadata.packId ? Number(metadata.packId) : null;
+  const metadataLocationId = metadata.location_id ? Number(metadata.location_id) : metadata.locationId ? Number(metadata.locationId) : null;
   const packEasyPassAmountFromMetadata = metadata.packEasyPassAmount
     ? Number(metadata.packEasyPassAmount)
     : metadata.easyPassAmount
@@ -43,7 +44,7 @@ webhookRouter.post('/webhook', express.raw({ type: 'application/json' }), async 
     ? Number(metadata.credits)
     : null;
 
-  const isPackPurchase = purchaseType === 'pack' || purchaseType === 'easypass' || !!packId;
+  const isPackPurchase = purchaseType === 'pack' || purchaseType === 'easypass' || purchaseType === 'easypass_pack' || purchaseType === 'kind' || metadata.kind === 'easypass_pack' || !!packId;
 
   if (!isPackPurchase) {
     console.warn('⚠️  Webhook recibido sin tipo de compra EasyPass válido:', session.id, metadata);
@@ -106,7 +107,17 @@ webhookRouter.post('/webhook', express.raw({ type: 'application/json' }), async 
     }
 
     const [[pack]] = await conn.query(
-      'SELECT id, name, credits AS easyPassAmount, is_active FROM easypass_packs WHERE id=? LIMIT 1',
+      `SELECT ep.id,
+              ep.location_id,
+              ep.name,
+              ep.credits AS easyPassAmount,
+              ep.is_active,
+              l.name AS locationName,
+              l.slug AS locationSlug
+       FROM easypass_packs ep
+       LEFT JOIN locations l ON l.id = ep.location_id
+       WHERE ep.id=?
+       LIMIT 1`,
       [packId]
     );
 
@@ -124,6 +135,16 @@ webhookRouter.post('/webhook', express.raw({ type: 'application/json' }), async 
       return res.json({ received: true });
     }
 
+    const locationId = Number(pack.location_id || metadataLocationId || 1);
+    const locationName = pack.locationName || (locationId === 2 ? 'Asturias' : 'Valladolid');
+
+    await conn.query(
+      `INSERT INTO user_easypass_balances (user_id, location_id, balance)
+       VALUES (?, ?, ?)
+       ON DUPLICATE KEY UPDATE balance = balance + VALUES(balance)`,
+      [userId, locationId, easyPassAmount]
+    );
+
     await conn.query(
       'UPDATE users SET easypass_balance = COALESCE(easypass_balance, 0) + ? WHERE id=?',
       [easyPassAmount, userId]
@@ -132,7 +153,7 @@ webhookRouter.post('/webhook', express.raw({ type: 'application/json' }), async 
     await conn.query(
       `INSERT INTO easypass_transactions (user_id, type, amount, description, pack_id, payment_reference, created_at)
        VALUES (?, 'purchase', ?, ?, ?, ?, NOW())`,
-      [userId, easyPassAmount, `Compra pack ${pack.name || `#${packId}`}`, packId, session.id]
+      [userId, easyPassAmount, `Compra pack ${pack.name || `#${packId}`} - ${locationName}`, packId, session.id]
     );
 
     await conn.query(
@@ -147,7 +168,7 @@ webhookRouter.post('/webhook', express.raw({ type: 'application/json' }), async 
 
     await conn.commit();
     console.log(
-      `✅ EasyPass acreditados (session:${session.id}, u:${userId}, pack:${packId}, +${easyPassAmount}, saldo:${Number(updatedUser?.easyPassBalance || 0)})`
+      `✅ EasyPass acreditados (session:${session.id}, u:${userId}, pack:${packId}, sede:${locationName}, location:${locationId}, +${easyPassAmount}, saldo:${Number(updatedUser?.easyPassBalance || 0)})`
     );
   } catch (e) {
     await conn.rollback();

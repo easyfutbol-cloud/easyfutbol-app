@@ -270,9 +270,19 @@ router.post('/packs/:id/confirm', requireAuth, async (req, res) => {
 
     const easyPassAmount = Number(pack.easyPassAmount || 0);
 
+    const locationId = Number(pack.location_id || 1);
+    const locationName = pack.locationName || (locationId === 2 ? 'Asturias' : 'Valladolid');
+
+    await conn.query(
+      `INSERT INTO user_easypass_balances (user_id, location_id, balance)
+       VALUES (?, ?, ?)
+       ON DUPLICATE KEY UPDATE balance = balance + VALUES(balance)`,
+      [userId, locationId, easyPassAmount]
+    );
+
     await conn.query(
       `UPDATE users
-       SET easypass_balance = easypass_balance + ?
+       SET easypass_balance = COALESCE(easypass_balance, 0) + ?
        WHERE id = ?`,
       [easyPassAmount, userId]
     );
@@ -281,7 +291,7 @@ router.post('/packs/:id/confirm', requireAuth, async (req, res) => {
       `INSERT INTO easypass_transactions
         (user_id, type, amount, description, pack_id, payment_reference, created_at)
        VALUES (?, 'purchase', ?, ?, ?, ?, NOW())`,
-      [userId, easyPassAmount, `Compra pack ${pack.name || `#${packId}`} - ${pack.locationName || 'EasyFutbol'}`, packId, paymentReference]
+      [userId, easyPassAmount, `Compra pack ${pack.name || `#${packId}`} - ${locationName}`, packId, paymentReference]
     );
 
     const [[updatedUser]] = await conn.query(
@@ -296,6 +306,9 @@ router.post('/packs/:id/confirm', requireAuth, async (req, res) => {
       alreadyProcessed: false,
       easyPassAmountAdded: easyPassAmount,
       credits_added: easyPassAmount,
+      location_id: Number(pack.location_id || 1),
+      locationId: Number(pack.location_id || 1),
+      locationName: pack.locationName || null,
       easyPassBalance: Number(updatedUser?.easyPassBalance || 0),
       credits: Number(updatedUser?.easyPassBalance || 0),
     });
