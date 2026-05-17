@@ -29,6 +29,22 @@ function toMySQLDateTime(d) {
   return `${yyyy}-${MM}-${dd} ${hh}:${mm}:${ss}`;
 }
 
+function getFallbackLocationFromCity(city = '') {
+  const normalized = String(city || '').trim().toLowerCase();
+  if (['avilés', 'aviles', 'oviedo', 'gijón', 'gijon', 'asturias'].includes(normalized)) {
+    return { id: 2, name: 'Asturias', slug: 'asturias' };
+  }
+  return { id: 1, name: 'Valladolid', slug: 'valladolid' };
+}
+
+async function getLocationById(conn, locationId) {
+  const [[location]] = await conn.query(
+    'SELECT id, name, slug FROM locations WHERE id=? LIMIT 1',
+    [locationId]
+  );
+  return location || null;
+}
+
 /** 1) Ciudades permitidas */
 router.get('/admin/cities', requireAuth, requireAdmin, (_req, res) => {
   res.json({ ok: true, data: ALLOWED_CITIES });
@@ -66,7 +82,11 @@ router.get('/admin/fields', requireAuth, requireAdmin, async (req, res) => {
  *   "time": "21:00",        // HH:mm (24h)
  *   "price_eur": 3.9,
  *   "capacity": 14,
- *   "duration_min": 60
+ *   "duration_min": 60,
+ *   "easypass_cost": 1,
+ *   "location_id": 1,
+ *   "locationId": 1,
+ *   "location_slug": "valladolid"
  * }
  * Nota: price_eur y capacity se usan directamente en el flujo de pago Stripe
  * (/matches/:id/pay), así que deben venir siempre bien informados.
@@ -83,7 +103,11 @@ router.post('/admin/matches', requireAuth, requireAdmin, async (req, res) => {
       time,         // 'HH:mm'
       price_eur,
       capacity,
-      duration_min = 60
+      duration_min = 60,
+      easypass_cost = 1,
+      location_id,
+      locationId,
+      location_slug
     } = req.body || {};
 
     // Validaciones básicas
@@ -96,6 +120,7 @@ router.post('/admin/matches', requireAuth, requireAdmin, async (req, res) => {
     const cap = Number(capacity);
     const price = Number(price_eur);
     const dur = Number(duration_min);
+    const easyPassCost = Math.max(1, Number(easypass_cost || 1));
     if (!isPositiveInt(cap) || cap > 50) {
       return res.status(400).json({ ok:false, msg:'Capacidad inválida (1-50)' });
     }
@@ -104,6 +129,9 @@ router.post('/admin/matches', requireAuth, requireAdmin, async (req, res) => {
     }
     if (!(price >= 0 && price <= 1000)) {
       return res.status(400).json({ ok:false, msg:'Precio inválido (0-1000€)' });
+    }
+    if (!Number.isInteger(easyPassCost) || easyPassCost <= 0 || easyPassCost > 50) {
+      return res.status(400).json({ ok:false, msg:'Coste EasyPass inválido (1-50)' });
     }
 
     // Construir starts_at a partir de date + time (interpretado como hora local)
@@ -142,16 +170,45 @@ router.post('/admin/matches', requireAuth, requireAdmin, async (req, res) => {
       }
     }
 
+    const fallbackLocation = getFallbackLocationFromCity(city);
+    let matchLocationId = Number(location_id || locationId || 0);
+
+    if (!matchLocationId && location_slug) {
+      const [[locationBySlug]] = await conn.query(
+        'SELECT id, name, slug FROM locations WHERE slug=? LIMIT 1',
+        [String(location_slug).trim().toLowerCase()]
+      );
+      if (locationBySlug?.id) matchLocationId = Number(locationBySlug.id);
+    }
+
+    if (!matchLocationId) {
+      matchLocationId = fallbackLocation.id;
+    }
+
+    const location = await getLocationById(conn, matchLocationId);
+    if (!location) {
+      await conn.rollback();
+      return res.status(400).json({ ok:false, msg:'Localización EasyPass inválida' });
+    }
+
     // Crear el partido
     const [ins] = await conn.query(
       `INSERT INTO matches
-       (title, field_id, city, starts_at, duration_min, price_eur, capacity, spots_taken, status)
-       VALUES (?,?,?,?,?,?,?,0,'scheduled')`, // 'scheduled' => visible y pagable en /matches
-      [title, fieldId, city, startsAt, dur, price, cap]
+       (title, field_id, city, location_id, starts_at, duration_min, price_eur, easypass_cost, capacity, spots_taken, status)
+       VALUES (?,?,?,?,?,?,?,?,?,0,'scheduled')`, // 'scheduled' => visible y pagable en /matches
+      [title, fieldId, city, matchLocationId, startsAt, dur, price, easyPassCost, cap]
     );
 
     await conn.commit();
-    res.status(201).json({ ok:true, id: ins.insertId });
+    res.status(201).json({
+      ok:true,
+      id: ins.insertId,
+      location_id: matchLocationId,
+      locationId: matchLocationId,
+      locationName: location.name,
+      easypass_cost: easyPassCost,
+      easyPassCost,
+    });
   } catch (e) {
     await conn.rollback();
     console.error(e);
@@ -166,7 +223,8 @@ router.post('/admin/matches', requireAuth, requireAdmin, async (req, res) => {
  * Body esperado:
  * {
  *   "amount": 3,                         // puede ser positivo o negativo, pero no 0
- *   "reason": "Compensación por incidencia"
+ *   "reason": "Compensación por incidencia",
+ *   "location_id": 1                     // 1 Valladolid, 2 Asturias
  * }
  */
 router.post('/admin/users/:id/easypass-adjust', requireAuth, requireAdmin, async (req, res) => {
@@ -175,6 +233,7 @@ router.post('/admin/users/:id/easypass-adjust', requireAuth, requireAdmin, async
     const userId = Number(req.params.id);
     const amount = Number(req.body?.amount);
     const reason = String(req.body?.reason || '').trim();
+    const requestedLocationId = Number(req.body?.location_id || req.body?.locationId || 1);
 
     if (!Number.isInteger(userId) || userId <= 0) {
       return res.status(400).json({ ok:false, msg:'Usuario inválido' });
@@ -186,6 +245,9 @@ router.post('/admin/users/:id/easypass-adjust', requireAuth, requireAdmin, async
 
     if (!reason) {
       return res.status(400).json({ ok:false, msg:'El motivo es obligatorio' });
+    }
+    if (!Number.isInteger(requestedLocationId) || requestedLocationId <= 0) {
+      return res.status(400).json({ ok:false, msg:'Localización EasyPass inválida' });
     }
 
     await conn.beginTransaction();
@@ -200,23 +262,54 @@ router.post('/admin/users/:id/easypass-adjust', requireAuth, requireAdmin, async
       return res.status(404).json({ ok:false, msg:'Usuario no encontrado' });
     }
 
-    const currentBalance = Number(user.easypass_balance || 0);
-    const nextBalance = currentBalance + amount;
-
-    if (nextBalance < 0) {
+    const location = await getLocationById(conn, requestedLocationId);
+    if (!location) {
       await conn.rollback();
-      return res.status(400).json({ ok:false, msg:'El ajuste dejaría el saldo de EasyPass en negativo' });
+      return res.status(400).json({ ok:false, msg:'Localización EasyPass no encontrada' });
+    }
+
+    const [[balanceRow]] = await conn.query(
+      `SELECT balance
+       FROM user_easypass_balances
+       WHERE user_id=?
+         AND location_id=?
+       FOR UPDATE`,
+      [userId, requestedLocationId]
+    );
+
+    const currentLocationBalance = Number(balanceRow?.balance || 0);
+    const nextLocationBalance = currentLocationBalance + amount;
+
+    if (nextLocationBalance < 0) {
+      await conn.rollback();
+      return res.status(400).json({ ok:false, msg:`El ajuste dejaría el saldo de EasyPass de ${location.name} en negativo` });
     }
 
     await conn.query(
+      `INSERT INTO user_easypass_balances (user_id, location_id, balance)
+       VALUES (?, ?, ?)
+       ON DUPLICATE KEY UPDATE balance = VALUES(balance)`,
+      [userId, requestedLocationId, nextLocationBalance]
+    );
+
+    const [[totalRow]] = await conn.query(
+      `SELECT COALESCE(SUM(balance), 0) AS totalBalance
+       FROM user_easypass_balances
+       WHERE user_id=?`,
+      [userId]
+    );
+
+    const nextGlobalBalance = Number(totalRow?.totalBalance || 0);
+
+    await conn.query(
       'UPDATE users SET easypass_balance=? WHERE id=?',
-      [nextBalance, userId]
+      [nextGlobalBalance, userId]
     );
 
     await conn.query(
       `INSERT INTO easypass_transactions (user_id, type, amount, description, created_at)
        VALUES (?, 'admin_adjustment', ?, ?, NOW())`,
-      [userId, amount, `Ajuste manual admin: ${reason}`]
+      [userId, amount, `Ajuste manual admin: ${reason} - EasyPass ${location.name}`]
     );
 
     await conn.commit();
@@ -232,8 +325,14 @@ router.post('/admin/users/:id/easypass-adjust', requireAuth, requireAdmin, async
         },
         amount,
         reason,
-        easyPassBalance: nextBalance,
-        credits: nextBalance,
+        location_id: requestedLocationId,
+        locationId: requestedLocationId,
+        location_name: location.name,
+        locationName: location.name,
+        balance: nextLocationBalance,
+        easyPassBalance: nextLocationBalance,
+        credits: nextLocationBalance,
+        globalEasyPassBalance: nextGlobalBalance,
       },
     });
   } catch (e) {
