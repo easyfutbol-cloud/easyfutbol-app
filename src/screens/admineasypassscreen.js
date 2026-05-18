@@ -16,6 +16,7 @@ export default function AdminEasyPassScreen() {
   const [userId, setUserId] = useState('');
   const [amount, setAmount] = useState('');
   const [reason, setReason] = useState('');
+  const [locationId, setLocationId] = useState(1);
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState(null);
 
@@ -28,6 +29,8 @@ export default function AdminEasyPassScreen() {
     Number.isInteger(parsedAmount) &&
     parsedAmount !== 0 &&
     !loading;
+
+  const selectedLocationName = locationId === 2 ? 'Asturias' : 'Valladolid';
 
   const fillPreset = (presetAmount, presetReason) => {
     setAmount(String(presetAmount));
@@ -46,7 +49,11 @@ export default function AdminEasyPassScreen() {
 
       const res = await api.post(`/admin/users/${userId.trim()}/easypass-adjust`, {
         amount: parsedAmount,
-        reason: reason.trim(),
+        reason: `${reason.trim()} - EasyPass ${selectedLocationName}`,
+        location_id: locationId,
+        locationId,
+        location_name: selectedLocationName,
+        locationName: selectedLocationName,
       });
 
       const payload = res?.data;
@@ -61,7 +68,7 @@ export default function AdminEasyPassScreen() {
 
       Alert.alert(
         'Ajuste aplicado',
-        `${parsedAmount > 0 ? 'Se han añadido' : 'Se han descontado'} ${Math.abs(parsedAmount)} EasyPass correctamente.`
+        `${parsedAmount > 0 ? 'Se han añadido' : 'Se han descontado'} ${Math.abs(parsedAmount)} EasyPass de ${selectedLocationName} correctamente.`
       );
     } catch (error) {
       const msg = error?.response?.data?.msg || 'No se pudo aplicar el ajuste de EasyPass.';
@@ -75,7 +82,7 @@ export default function AdminEasyPassScreen() {
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
       <Text style={styles.title}>Control de EasyPass</Text>
       <Text style={styles.subtitle}>
-        Ajusta manualmente el saldo de un usuario y deja registrado el motivo.
+        Ajusta manualmente el saldo de un usuario por ciudad y deja registrado el motivo.
       </Text>
 
       <View style={styles.card}>
@@ -89,6 +96,30 @@ export default function AdminEasyPassScreen() {
           style={styles.input}
         />
 
+        <Text style={styles.label}>Tipo de EasyPass</Text>
+        <View style={styles.locationSelector}>
+          <TouchableOpacity
+            style={[styles.locationBtn, locationId === 1 && styles.locationBtnActive]}
+            onPress={() => setLocationId(1)}
+            activeOpacity={0.85}
+          >
+            <Text style={[styles.locationBtnText, locationId === 1 && styles.locationBtnTextActive]}>Valladolid</Text>
+            <Text style={[styles.locationBtnSub, locationId === 1 && styles.locationBtnSubActive]}>location_id 1</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.locationBtn, locationId === 2 && styles.locationBtnActive]}
+            onPress={() => setLocationId(2)}
+            activeOpacity={0.85}
+          >
+            <Text style={[styles.locationBtnText, locationId === 2 && styles.locationBtnTextActive]}>Asturias</Text>
+            <Text style={[styles.locationBtnSub, locationId === 2 && styles.locationBtnSubActive]}>location_id 2</Text>
+          </TouchableOpacity>
+        </View>
+        <Text style={styles.locationHelp}>
+          El ajuste se aplicará solo al saldo de EasyPass de {selectedLocationName}.
+        </Text>
+
         <Text style={styles.label}>Cantidad de EasyPass</Text>
         <TextInput
           value={amount}
@@ -101,10 +132,10 @@ export default function AdminEasyPassScreen() {
 
         <View style={styles.helperRow}>
           <Text style={[styles.helperText, isPositive && styles.helperPositive]}>
-            {isPositive ? `Se sumarán ${parsedAmount} EasyPass` : 'Usa un número positivo para añadir'}
+            {isPositive ? `Se sumarán ${parsedAmount} EasyPass de ${selectedLocationName}` : 'Usa un número positivo para añadir'}
           </Text>
           <Text style={[styles.helperText, isNegative && styles.helperNegative]}>
-            {isNegative ? `Se restarán ${Math.abs(parsedAmount)} EasyPass` : 'Usa un número negativo para descontar'}
+            {isNegative ? `Se restarán ${Math.abs(parsedAmount)} EasyPass de ${selectedLocationName}` : 'Usa un número negativo para descontar'}
           </Text>
         </View>
 
@@ -165,8 +196,9 @@ export default function AdminEasyPassScreen() {
           <Text style={styles.resultLine}>Usuario: {result?.user?.name || '-'} ({result?.user?.email || '-'})</Text>
           <Text style={styles.resultLine}>ID: {result?.user?.id ?? '-'}</Text>
           <Text style={styles.resultLine}>Ajuste aplicado: {result?.amount ?? 0}</Text>
+          <Text style={styles.resultLine}>Tipo: {result?.locationName || result?.location_name || selectedLocationName}</Text>
           <Text style={styles.resultLine}>Motivo: {result?.reason || '-'}</Text>
-          <Text style={styles.resultBalance}>Saldo actual: {result?.easyPassBalance ?? 0} EasyPass</Text>
+          <Text style={styles.resultBalance}>Saldo actual: {result?.easyPassBalance ?? result?.balance ?? 0} EasyPass</Text>
         </View>
       ) : null}
     </ScrollView>
@@ -217,6 +249,48 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     color: colors.white,
     fontSize: 15,
+  },
+  locationSelector: {
+    flexDirection: 'row',
+    gap: spacing(1),
+  },
+  locationBtn: {
+    flex: 1,
+    backgroundColor: '#1a1a1a',
+    borderWidth: 1,
+    borderColor: '#2d2d2d',
+    borderRadius: 14,
+    paddingVertical: 13,
+    paddingHorizontal: 12,
+    alignItems: 'center',
+  },
+  locationBtnActive: {
+    backgroundColor: colors.orange,
+    borderColor: colors.orange,
+  },
+  locationBtnText: {
+    color: colors.white,
+    fontSize: 14,
+    fontWeight: '900',
+  },
+  locationBtnTextActive: {
+    color: '#000',
+  },
+  locationBtnSub: {
+    color: '#8b8b8b',
+    fontSize: 10,
+    fontWeight: '800',
+    marginTop: 3,
+  },
+  locationBtnSubActive: {
+    color: '#2a1000',
+  },
+  locationHelp: {
+    color: '#aaaaaa',
+    fontSize: 12,
+    fontWeight: '700',
+    marginTop: spacing(0.75),
+    lineHeight: 17,
   },
   textarea: {
     minHeight: 96,

@@ -51,12 +51,14 @@ router.get('/me/inscriptions', requireAuth, async (req, res) => {
   try {
     const userId = req.user.id;
     const [rows] = await pool.query(
-      `SELECT MIN(i.id) AS inscription_id,
+      `SELECT i.id AS inscription_id,
               i.status,
               i.stripe_session_id,
               i.ticket_type,
               i.payment_type,
-              COUNT(*) AS quantity,
+              1 AS quantity,
+              1 AS total_entries,
+              1 AS entradas_count,
               m.id AS match_id,
               m.title,
               m.city,
@@ -67,16 +69,24 @@ router.get('/me/inscriptions', requireAuth, async (req, res) => {
        JOIN matches m ON m.id = i.match_id
        JOIN fields  f ON f.id = m.field_id
        WHERE i.user_id = ?
-       GROUP BY i.status, i.stripe_session_id, i.ticket_type, i.payment_type,
-                m.id, m.title, m.city, m.starts_at, m.duration_min, f.name
-       ORDER BY m.starts_at DESC
+       ORDER BY m.starts_at DESC, i.id ASC
        LIMIT 300`,
       [userId]
     );
 
-    console.log('GET /me/inscriptions', { userId, count: rows.length });
+    const normalizedRows = rows.map((row) => ({
+      ...row,
+      quantity: 1,
+      total_entries: 1,
+      entradas_count: 1,
+    }));
 
-    res.json({ ok: true, data: rows });
+    console.log('GET /me/inscriptions', {
+      userId,
+      count: normalizedRows.length,
+    });
+
+    res.json({ ok: true, data: normalizedRows });
   } catch (e) {
     console.error(e);
     res.status(500).json({ ok: false, msg: 'Error listando inscripciones' });

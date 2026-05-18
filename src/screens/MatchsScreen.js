@@ -17,6 +17,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { colors, spacing } from '../theme';
 
 const STORAGE_CITY_KEY = 'ef_selected_city';
+const FALLBACK_CITIES = ['Valladolid', 'Avilés'];
 
 const MATCH_CARD_IMAGES = [
   require('../../assets/matches/match-2.jpg'),
@@ -48,6 +49,28 @@ function formatDayLabel(dateObj) {
   return label.charAt(0).toUpperCase() + label.slice(1);
 }
 
+function formatCalendarDay(dateObj) {
+  if (!dateObj) return { weekday: '', day: '', month: '' };
+  return {
+    weekday: dateObj.toLocaleDateString('es-ES', { weekday: 'short' }).replace('.', '').toUpperCase(),
+    day: dateObj.toLocaleDateString('es-ES', { day: '2-digit' }),
+    month: dateObj.toLocaleDateString('es-ES', { month: 'short' }).replace('.', '').toUpperCase(),
+  };
+}
+
+function buildCityOptions(matches) {
+  const set = new Set(FALLBACK_CITIES);
+  matches.forEach((m) => {
+    const c = (m.city || '').trim();
+    if (c) set.add(c);
+  });
+  return Array.from(set).sort((a, b) => {
+    if (a === 'Valladolid') return -1;
+    if (b === 'Valladolid') return 1;
+    return a.localeCompare(b, 'es');
+  });
+}
+
 // Agrupa los partidos por día
 function groupMatchesByDay(matches) {
   const groups = {};
@@ -61,7 +84,7 @@ function groupMatchesByDay(matches) {
     const title = formatDayLabel(dateObj);
 
     if (!groups[key]) {
-      groups[key] = { title, data: [] };
+      groups[key] = { title, dateObj, data: [] };
     }
     groups[key].data.push(match);
   });
@@ -78,16 +101,10 @@ export default function MatchsScreen({ navigation }) {
   const [refreshing, setRefreshing] = useState(false);
 
   const [selectedCity, setSelectedCity] = useState('');
+  const [citySelectorOpen, setCitySelectorOpen] = useState(false);
   const [initialCityLoaded, setInitialCityLoaded] = useState(false);
 
-  const availableCities = useMemo(() => {
-    const set = new Set();
-    matches.forEach((m) => {
-      const c = (m.city || '').trim();
-      if (c) set.add(c);
-    });
-    return Array.from(set).sort((a, b) => a.localeCompare(b, 'es'));
-  }, [matches]);
+  const availableCities = useMemo(() => buildCityOptions(matches), [matches]);
 
   const filteredMatches = useMemo(() => {
     if (!selectedCity) return matches;
@@ -148,13 +165,8 @@ export default function MatchsScreen({ navigation }) {
   useEffect(() => {
     if (!initialCityLoaded) return;
     if (selectedCity) return;
-    if (availableCities.length === 0) return;
-
-    // Primera vez: selecciona una ciudad por defecto
-    const first = availableCities[0];
-    setSelectedCity(first);
-    AsyncStorage.setItem(STORAGE_CITY_KEY, first).catch(() => {});
-  }, [availableCities, selectedCity, initialCityLoaded]);
+    setCitySelectorOpen(true);
+  }, [selectedCity, initialCityLoaded]);
 
   const onRefresh = useCallback(() => {
     loadMatches(true);
@@ -162,6 +174,7 @@ export default function MatchsScreen({ navigation }) {
 
   const changeCity = useCallback(async (city) => {
     setSelectedCity(city);
+    setCitySelectorOpen(false);
     try {
       await AsyncStorage.setItem(STORAGE_CITY_KEY, city);
     } catch (e) {
@@ -219,11 +232,23 @@ export default function MatchsScreen({ navigation }) {
     );
   };
 
-  const renderSectionHeader = ({ section }) => (
-    <View style={styles.sectionHeaderContainer}>
-      <Text style={styles.sectionHeaderText}>{section.title}</Text>
-    </View>
-  );
+  const renderSectionHeader = ({ section }) => {
+    const calendar = formatCalendarDay(section.dateObj);
+    return (
+      <View style={styles.sectionHeaderContainer}>
+        <View style={styles.calendarBadge}>
+          <View style={styles.calendarTopStrip} />
+          <Text style={styles.calendarWeekday}>{calendar.weekday}</Text>
+          <Text style={styles.calendarDay}>{calendar.day}</Text>
+          <Text style={styles.calendarMonth}>{calendar.month}</Text>
+        </View>
+        <View style={styles.sectionHeaderTextWrap}>
+          <Text style={styles.sectionHeaderText}>{section.title}</Text>
+          <Text style={styles.sectionHeaderSubText}>{section.data.length} partido{section.data.length === 1 ? '' : 's'} disponible{section.data.length === 1 ? '' : 's'}</Text>
+        </View>
+      </View>
+    );
+  };
 
   if (loading) {
     return (
@@ -237,17 +262,58 @@ export default function MatchsScreen({ navigation }) {
     );
   }
 
-  if (!loading && filteredMatches.length === 0) {
+  if (!loading && initialCityLoaded && (!selectedCity || citySelectorOpen)) {
     return (
       <View style={styles.container}>
         <StatusBar barStyle="light-content" />
+        <View style={styles.citySelectorFull}>
+          <Text style={styles.citySelectorEyebrow}>EasyFutbol</Text>
+          <Text style={styles.citySelectorTitle}>¿Dónde quieres jugar?</Text>
+          <Text style={styles.citySelectorText}>
+            Elige una ciudad para ver su calendario de partidos. La guardaremos como predeterminada y podrás cambiarla cuando quieras.
+          </Text>
+
+          <View style={styles.citySelectorGrid}>
+            {availableCities.map((c) => {
+              const active = c === selectedCity;
+              return (
+                <TouchableOpacity
+                  key={c}
+                  activeOpacity={0.86}
+                  onPress={() => changeCity(c)}
+                  style={[styles.citySelectorCard, active && styles.citySelectorCardActive]}
+                >
+                  <Text style={[styles.citySelectorCardTitle, active && styles.citySelectorCardTitleActive]}>{c}</Text>
+                  <Text style={[styles.citySelectorCardMeta, active && styles.citySelectorCardMetaActive]}>
+                    {active ? 'Ciudad predeterminada' : 'Ver calendario'}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        </View>
+      </View>
+    );
+  }
+
+  if (!loading && selectedCity && filteredMatches.length === 0) {
+    return (
+      <View style={styles.container}>
+        <StatusBar barStyle="light-content" />
+        <View style={styles.topCityHeader}>
+          <View style={styles.topCityAccent} />
+          <View style={styles.topCityInfo}>
+            <Text style={styles.topCityLabel}>Ciudad predeterminada</Text>
+            <Text style={styles.topCityName}>{selectedCity}</Text>
+            <Text style={styles.topCityHint}>Te avisaremos cuando haya nuevos partidos</Text>
+          </View>
+          <TouchableOpacity style={styles.changeCityBtn} onPress={() => setCitySelectorOpen(true)} activeOpacity={0.85}>
+            <Text style={styles.changeCityText}>Cambiar ciudad</Text>
+          </TouchableOpacity>
+        </View>
         <View style={styles.center}>
           <Text style={styles.emptyTitle}>No hay partidos disponibles</Text>
-          <Text style={styles.emptyText}>
-            {selectedCity
-              ? `No hay partidos abiertos en ${selectedCity} ahora mismo.`
-              : 'Cuando creemos nuevos partidos en EasyFutbol aparecerán aquí.'}
-          </Text>
+          <Text style={styles.emptyText}>No hay partidos abiertos en {selectedCity} ahora mismo.</Text>
         </View>
       </View>
     );
@@ -256,32 +322,17 @@ export default function MatchsScreen({ navigation }) {
   return (
     <View style={styles.container}>
       <StatusBar barStyle="light-content" />
-      {availableCities.length > 0 && (
-        <View style={styles.cityBar}>
-          <Text style={styles.cityLabel}>Ciudad</Text>
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.cityChips}
-          >
-            {availableCities.map((c) => {
-              const active = c === selectedCity;
-              return (
-                <TouchableOpacity
-                  key={c}
-                  activeOpacity={0.85}
-                  onPress={() => changeCity(c)}
-                  style={[styles.cityChip, active && styles.cityChipActive]}
-                >
-                  <Text style={[styles.cityChipText, active && styles.cityChipTextActive]}>
-                    {c}
-                  </Text>
-                </TouchableOpacity>
-              );
-            })}
-          </ScrollView>
+      <View style={styles.topCityHeader}>
+        <View style={styles.topCityAccent} />
+        <View style={styles.topCityInfo}>
+          <Text style={styles.topCityLabel}>Calendario de partidos</Text>
+          <Text style={styles.topCityName}>{selectedCity}</Text>
+          <Text style={styles.topCityHint}>Partidos disponibles por fecha</Text>
         </View>
-      )}
+        <TouchableOpacity style={styles.changeCityBtn} onPress={() => setCitySelectorOpen(true)} activeOpacity={0.85}>
+          <Text style={styles.changeCityText}>Cambiar ciudad</Text>
+        </TouchableOpacity>
+      </View>
       <SectionList
         sections={sections}
         keyExtractor={(item) => String(item.id)}
@@ -315,52 +366,175 @@ const styles = StyleSheet.create({
   },
   sectionHeaderContainer: {
     marginTop: spacing(2),
-    marginBottom: spacing(0.5),
+    marginBottom: spacing(1),
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  calendarBadge: {
+    width: 50,
+    minHeight: 58,
+    borderRadius: 14,
+    backgroundColor: '#121212',
+    borderWidth: 1,
+    borderColor: 'rgba(255,90,0,0.45)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: spacing(1.1),
+    overflow: 'hidden',
+  },
+  calendarTopStrip: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    height: 5,
+    backgroundColor: colors.orange,
+  },
+  calendarWeekday: {
+    color: colors.orange,
+    fontSize: 9,
+    fontWeight: '900',
+    marginTop: 4,
+  },
+  calendarDay: {
+    color: colors.white,
+    fontSize: 21,
+    fontWeight: '900',
+    lineHeight: 24,
+  },
+  calendarMonth: {
+    color: '#bdbdbd',
+    fontSize: 9,
+    fontWeight: '900',
+  },
+  sectionHeaderTextWrap: {
+    flex: 1,
   },
   sectionHeaderText: {
     color: colors.white,
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: '800',
   },
-  cityBar: {
-    marginTop: spacing(1),
-    marginBottom: spacing(1),
-  },
-  cityLabel: {
-    color: colors.gray,
+  sectionHeaderSubText: {
+    color: '#999',
     fontSize: 12,
     fontWeight: '700',
+    marginTop: 2,
+  },
+  citySelectorFull: {
+    flex: 1,
+    justifyContent: 'center',
+    paddingHorizontal: spacing(1),
+  },
+  citySelectorEyebrow: {
+    color: colors.orange,
+    fontSize: 13,
+    fontWeight: '900',
+    textTransform: 'uppercase',
+    letterSpacing: 0.8,
     marginBottom: spacing(0.75),
+  },
+  citySelectorTitle: {
+    color: colors.white,
+    fontSize: 31,
+    fontWeight: '900',
+    marginBottom: spacing(1),
+  },
+  citySelectorText: {
+    color: '#bdbdbd',
+    fontSize: 14,
+    fontWeight: '700',
+    lineHeight: 21,
+    marginBottom: spacing(2),
+  },
+  citySelectorGrid: {
+    gap: spacing(1.2),
+  },
+  citySelectorCard: {
+    backgroundColor: '#111',
+    borderWidth: 1,
+    borderColor: '#252525',
+    borderRadius: 20,
+    paddingVertical: spacing(2),
+    paddingHorizontal: spacing(2),
+  },
+  citySelectorCardActive: {
+    backgroundColor: 'rgba(255,90,0,0.16)',
+    borderColor: colors.orange,
+  },
+  citySelectorCardTitle: {
+    color: colors.white,
+    fontSize: 20,
+    fontWeight: '900',
+  },
+  citySelectorCardTitleActive: {
+    color: colors.white,
+  },
+  citySelectorCardMeta: {
+    color: '#999',
+    fontSize: 12,
+    fontWeight: '800',
+    marginTop: 5,
+  },
+  citySelectorCardMetaActive: {
+    color: colors.orange,
+  },
+  topCityHeader: {
+    marginTop: spacing(1),
+    marginBottom: spacing(1.25),
+    backgroundColor: '#0f0f0f',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.08)',
+    borderRadius: 20,
+    padding: spacing(1.4),
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing(1.1),
+  },
+  topCityAccent: {
+    width: 5,
+    alignSelf: 'stretch',
+    borderRadius: 999,
+    backgroundColor: colors.orange,
+  },
+  topCityInfo: {
+    flex: 1,
+  },
+  topCityLabel: {
+    color: colors.orange,
+    fontSize: 11,
+    fontWeight: '900',
     textTransform: 'uppercase',
     letterSpacing: 0.6,
   },
-  cityChips: {
-    paddingRight: spacing(1),
+  topCityName: {
+    color: colors.white,
+    fontSize: 21,
+    fontWeight: '900',
+    marginTop: 2,
   },
-  cityChip: {
+  topCityHint: {
+    color: '#9f9f9f',
+    fontSize: 12,
+    fontWeight: '700',
+    marginTop: 3,
+  },
+  changeCityBtn: {
+    backgroundColor: 'rgba(255,90,0,0.12)',
     borderWidth: 1,
-    borderColor: '#2a2a2a',
-    backgroundColor: '#121212',
-    paddingHorizontal: spacing(1.5),
+    borderColor: 'rgba(255,90,0,0.45)',
+    paddingHorizontal: spacing(1.15),
     paddingVertical: spacing(0.8),
     borderRadius: 999,
-    marginRight: spacing(1),
   },
-  cityChipActive: {
-    borderColor: colors.orange,
-    backgroundColor: 'rgba(255, 90, 0, 0.15)',
-  },
-  cityChipText: {
-    color: colors.white,
-    fontSize: 13,
-    fontWeight: '700',
-  },
-  cityChipTextActive: {
+  changeCityText: {
     color: colors.orange,
+    fontSize: 11,
+    fontWeight: '900',
   },
   cardWrapper: {
-    marginBottom: spacing(1.5),
-    borderRadius: 16,
+    marginBottom: spacing(1.25),
+    borderRadius: 18,
     overflow: 'hidden',
   },
   cardBackground: {
@@ -368,13 +542,13 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-end',
   },
   cardImage: {
-    borderRadius: 16,
-    opacity: 0.45,
+    borderRadius: 18,
+    opacity: 0.38,
   },
   cardOverlay: {
     flex: 1,
-    paddingHorizontal: spacing(2),
-    paddingVertical: spacing(1.5),
+    paddingHorizontal: spacing(1.8),
+    paddingVertical: spacing(1.4),
     justifyContent: 'space-between',
   },
   title: {
@@ -394,8 +568,8 @@ const styles = StyleSheet.create({
   },
   ctaButton: {
     backgroundColor: colors.orange,
-    paddingHorizontal: spacing(2),
-    paddingVertical: spacing(0.75),
+    paddingHorizontal: spacing(1.6),
+    paddingVertical: spacing(0.7),
     borderRadius: 999,
   },
   ctaText: {

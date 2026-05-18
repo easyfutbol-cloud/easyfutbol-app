@@ -27,8 +27,33 @@ const debugHttpError = (e, context = '') => {
   return { status, method, baseURL, url, data };
 };
 
+const getLocationSlugFromCity = (cityName = '') => {
+  const normalized = String(cityName || '').trim().toLowerCase();
+  if (['avilés', 'aviles', 'oviedo', 'gijón', 'gijon', 'asturias'].includes(normalized)) return 'asturias';
+  return 'valladolid';
+};
+
+const getBackendDateTimeFromLocal = (dateValue, timeValue) => {
+  const localMatchDate = new Date(
+    dateValue.getFullYear(),
+    dateValue.getMonth(),
+    dateValue.getDate(),
+    timeValue.getHours(),
+    timeValue.getMinutes(),
+    0,
+    0
+  );
+
+  const iso = localMatchDate.toISOString();
+  return {
+    backendDate: iso.slice(0, 10),
+    backendTime: iso.slice(11, 16),
+  };
+};
+
 export default function AdminCreateMatchScreen() {
   const [cities, setCities] = useState([]);
+  const [locations, setLocations] = useState([]);
   const [city, setCity] = useState('');
   const [fields, setFields] = useState([]);
   const [fieldId, setFieldId] = useState('');
@@ -45,6 +70,10 @@ export default function AdminCreateMatchScreen() {
   const [capacity, setCapacity] = useState('14');
   const [duration, setDuration] = useState('60');
   const [hasAftergame, setHasAftergame] = useState(false);
+  const selectedLocationSlug = getLocationSlugFromCity(city);
+  const selectedLocation = locations.find((item) => String(item.slug) === selectedLocationSlug);
+  const selectedLocationId = selectedLocation ? Number(selectedLocation.id) : selectedLocationSlug === 'asturias' ? 2 : 1;
+  const selectedLocationName = selectedLocation?.name || (selectedLocationSlug === 'asturias' ? 'Asturias' : 'Valladolid');
 
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
@@ -56,6 +85,18 @@ export default function AdminCreateMatchScreen() {
         setLoading(true);
 
         const { data } = await api.get(apiPath('/api/admin/cities'));
+
+        try {
+          const locationsRes = await api.get(apiPath('/api/easypass/locations'));
+          const locationList = Array.isArray(locationsRes?.data?.data) ? locationsRes.data.data : [];
+          setLocations(locationList);
+        } catch (locationsError) {
+          debugHttpError(locationsError, 'GET easypass locations');
+          setLocations([
+            { id: 1, name: 'Valladolid', slug: 'valladolid' },
+            { id: 2, name: 'Asturias', slug: 'asturias' },
+          ]);
+        }
 
         const fallbackCities = [
           'Valladolid',
@@ -81,6 +122,7 @@ export default function AdminCreateMatchScreen() {
       } catch (e) {
         const info = debugHttpError(e, 'GET cities');
         console.log('Error cargando ciudades para admin:', info?.data || e.message || e);
+        setLocations([{ id: 1, name: 'Valladolid', slug: 'valladolid' }, { id: 2, name: 'Asturias', slug: 'asturias' }]);
         // si falla la API, usamos igualmente el fallback
         setCities([
           'Valladolid',
@@ -121,6 +163,8 @@ export default function AdminCreateMatchScreen() {
     return `${h}:${m}`;
   }, [time]);
 
+  const backendDateTime = useMemo(() => getBackendDateTimeFromLocal(date, time), [date, time]);
+
   const create = async () => {
     try {
       const cleanTitle = title.trim();
@@ -141,14 +185,17 @@ export default function AdminCreateMatchScreen() {
       }
 
       setCreating(true);
+      const { backendDate, backendTime } = backendDateTime;
 
       const body = {
         title: cleanTitle,
         city,
-        date: dateStr,          // YYYY-MM-DD (lo que espera el backend)
-        time: timeStr,          // HH:mm (24h)
+        date: backendDate,      // UTC para que en la app se vea la hora local correcta
+        time: backendTime,      // UTC para evitar el desfase de +2h en España
         price_eur: 0,
         easypass_cost: EASY_PASS_COST,
+        location_id: selectedLocationId,
+        location_slug: selectedLocationSlug,
         capacity: capacityNum,
         duration_min: durationNum,
         has_aftergame: hasAftergame ? 1 : 0,
@@ -232,6 +279,15 @@ export default function AdminCreateMatchScreen() {
         </Picker>
 
         {city ? (
+          <View style={styles.locationNoticeBox}>
+            <Text style={styles.locationNoticeTitle}>EasyPass del partido</Text>
+            <Text style={styles.locationNoticeText}>
+              Este partido usará EasyPass de {selectedLocationName}. Los jugadores solo podrán apuntarse con saldo de {selectedLocationName}.
+            </Text>
+          </View>
+        ) : null}
+
+        {city ? (
           <>
             <Text style={styles.label}>Campo (elige uno o escribe)</Text>
             <Picker
@@ -302,8 +358,11 @@ export default function AdminCreateMatchScreen() {
 
         <Text style={styles.label}>Coste</Text>
         <View style={styles.fixedInfoBox}>
-          <Text style={styles.fixedInfoText}>Este partido costará 1 EasyPass</Text>
+          <Text style={styles.fixedInfoText}>Este partido costará 1 EasyPass de {selectedLocationName}</Text>
         </View>
+        <Text style={styles.timeHelpText}>
+          Hora visible para jugadores: {dateStr} a las {timeStr}. El sistema la guarda internamente como {backendDateTime.backendDate} {backendDateTime.backendTime} para evitar el desfase horario.
+        </Text>
 
         <View style={styles.row}>
           <View style={{ flex: 1, marginRight: 6 }}>
@@ -362,6 +421,17 @@ const styles = StyleSheet.create({
   picker:{ color:'#fff', backgroundColor:'#111', borderRadius:8 },
   fixedInfoBox:{ backgroundColor:'#111', borderWidth:1, borderColor:'#222', padding:spacing(1.2), borderRadius:10 },
   fixedInfoText:{ color:'#fff', fontWeight:'700' },
+  locationNoticeBox:{
+    backgroundColor:'rgba(255,90,0,0.10)',
+    borderWidth:1,
+    borderColor:'rgba(255,90,0,0.35)',
+    padding:spacing(1.2),
+    borderRadius:10,
+    marginTop:spacing(1),
+  },
+  locationNoticeTitle:{ color:colors.orange, fontWeight:'900', marginBottom:4 },
+  locationNoticeText:{ color:'#fff', fontWeight:'700', fontSize:13, lineHeight:18 },
+  timeHelpText:{ color:'#999', fontSize:12, fontWeight:'700', lineHeight:17, marginTop:6 },
   row:{ flexDirection:'row', alignItems:'flex-start', marginTop:spacing(1) },
   switchCard:{
     backgroundColor:'#111',

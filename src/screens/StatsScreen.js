@@ -46,33 +46,43 @@ const PERIODS = [
   { key: 'yearly', label: 'Anual' },
 ];
 
-const SCOPES = [
-  { key: 'provincial', label: 'Provincial' },
-  { key: 'national', label: 'Nacional' },
+const LOCATIONS = [
+  { key: 'national', label: 'Nacional', location_id: null },
+  { key: 'valladolid', label: 'Valladolid', location_id: 1 },
+  { key: 'asturias', label: 'Asturias', location_id: 2 },
 ];
 
 export default function StatsScreen() {
   const insets = useSafeAreaInsets();
   const [period, setPeriod] = useState('monthly');
-  const [scope, setScope] = useState('provincial');
+  const [location, setLocation] = useState('national');
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
   const [bgIndex, setBgIndex] = useState(0);
   const [error, setError] = useState('');
 
+  const selectedLocation = useMemo(
+    () => LOCATIONS.find(item => item.key === location) || LOCATIONS[0],
+    [location]
+  );
+
   const title = useMemo(() => {
     const p = PERIODS.find(p => p.key === period)?.label || '';
-    const s = SCOPES.find(s => s.key === scope)?.label || '';
-    return `🏆 Goleadores ${p} · ${s}`;
-  }, [period, scope]);
+    return `🏆 Goleadores ${p} · ${selectedLocation.label}`;
+  }, [period, selectedLocation]);
 
   const fetchStats = useCallback(async () => {
     setLoading(true);
     setError('');
     try {
-      // Ajusta a tus endpoints/params reales:
-      // Ejemplo: /stats/top-players?period=monthly&scope=provincial
-      const r = await api.get('/stats/top-players', { params: { period, scope } });
+      const params = { period };
+
+      if (selectedLocation.key !== 'national') {
+        params.location_id = selectedLocation.location_id;
+        params.location_slug = selectedLocation.key;
+      }
+
+      const r = await api.get('/stats/top-players', { params });
       const data = r.data?.data || [];
       setItems(Array.isArray(data) ? data : []);
     } catch (e) {
@@ -81,7 +91,7 @@ export default function StatsScreen() {
     } finally {
       setLoading(false);
     }
-  }, [period, scope]);
+  }, [period, selectedLocation]);
 
   useEffect(() => {
     fetchStats();
@@ -109,7 +119,10 @@ export default function StatsScreen() {
 
         <View style={{ flex: 1 }}>
           <Text style={styles.name} numberOfLines={1}>{displayName}</Text>
-          <Text style={styles.meta}>{item.goals ?? 0} G · {item.assists ?? 0} A</Text>
+          <Text style={styles.meta}>
+            {item.goals ?? 0} G · {item.assists ?? 0} A · {item.wins ?? 0} V
+          </Text>
+          <Text style={styles.locationMeta}>{selectedLocation.key === 'national' ? (item.locationName || item.location_name || 'EasyFutbol') : selectedLocation.label}</Text>
         </View>
         <View style={styles.totalWrap}>
           <Text style={styles.total}>{item.total ?? (item.goals ?? 0) + (item.assists ?? 0)}</Text>
@@ -142,7 +155,7 @@ export default function StatsScreen() {
           {/* Header */}
           <View style={styles.header}>
             <Text style={styles.screenTitle}>Estadísticas</Text>
-            <Text style={styles.subtitle}>Top goleadores por periodo y ámbito</Text>
+            <Text style={styles.subtitle}>Top goleadores por periodo y ciudad</Text>
           </View>
 
           {/* Controles */}
@@ -157,12 +170,20 @@ export default function StatsScreen() {
             </View>
 
             <View style={styles.segmentBlock}>
-              <Text style={styles.segmentLabel}>Ámbito</Text>
+              <Text style={styles.segmentLabel}>Ciudad</Text>
               <View style={styles.segmentRow}>
-                {SCOPES.map(s => (
-                  <Pill key={s.key} label={s.label} active={scope === s.key} onPress={() => setScope(s.key)} />
+                {LOCATIONS.map(item => (
+                  <Pill
+                    key={item.key}
+                    label={item.label}
+                    active={location === item.key}
+                    onPress={() => setLocation(item.key)}
+                  />
                 ))}
               </View>
+              <Text style={styles.cityHelp}>
+                Nacional mezcla todas las sedes. Valladolid y Asturias cuentan solo partidos de esa localización.
+              </Text>
             </View>
           </View>
 
@@ -186,7 +207,7 @@ export default function StatsScreen() {
             ) : (
               <FlatList
                 data={items}
-                keyExtractor={(it, i) => String(it.id ?? `${period}-${scope}-${i}`)}
+                keyExtractor={(it, i) => String(`${it.id ?? it.user_id ?? i}-${it.location_id ?? selectedLocation.location_id}`)}
                 renderItem={renderRow}
                 ListEmptyComponent={ListEmpty}
                 contentContainerStyle={{ paddingVertical: spacing(1) }}
@@ -219,6 +240,7 @@ const styles = StyleSheet.create({
   },
   segmentBlock: { marginBottom: spacing(1.5) },
   segmentLabel: { color: '#ddd', marginBottom: spacing(1), fontWeight: '600' },
+  cityHelp: { color: '#a8a8a8', fontSize: 12, fontWeight: '600', marginTop: 8, lineHeight: 17 },
   segmentRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
 
   pill: {
@@ -291,6 +313,7 @@ const styles = StyleSheet.create({
   },
   name: { color: colors.white, fontSize: 16, fontWeight: '700' },
   meta: { color: '#b3b3b3', fontSize: 12, marginTop: 2 },
+  locationMeta: { color: ORANGE, fontSize: 11, marginTop: 3, fontWeight: '800' },
   totalWrap: { alignItems: 'flex-end', minWidth: 60 },
   total: { color: colors.white, fontSize: 18, fontWeight: '800' },
   totalLabel: { color: '#9a9a9a', fontSize: 10 },

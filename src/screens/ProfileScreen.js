@@ -2,7 +2,7 @@
 import { useEffect, useState, useMemo, useCallback } from 'react';
 import {
   View, Text, StyleSheet, StatusBar, ActivityIndicator, TouchableOpacity,
-  Alert, TextInput, ScrollView, ImageBackground, Image, Linking
+  Alert, TextInput, ScrollView, ImageBackground, Image, Linking, Modal
 } from 'react-native';
 import { colors, spacing } from '../theme';
 import { api } from '../api/client';
@@ -31,7 +31,10 @@ export default function ProfileScreen({ navigation }) {
   const [avatarNonce, setAvatarNonce] = useState(Date.now());
   const [avatarPreviewUri, setAvatarPreviewUri] = useState(null);
   const [easyPass, setEasyPass] = useState(0);
+  const [easyPassBalances, setEasyPassBalances] = useState([]);
   const [easyPassLoading, setEasyPassLoading] = useState(false);
+  const [collaborationsVisible, setCollaborationsVisible] = useState(false);
+  const [activeCollaboration, setActiveCollaboration] = useState('herminia');
 
   const BASE = (api?.defaults?.baseURL || '').replace(/\/+$/, '');
   // BASE suele ser https://.../api. Para assets (/uploads/...) necesitamos el origen sin /api
@@ -78,6 +81,16 @@ export default function ProfileScreen({ navigation }) {
       const json = await res.json().catch(() => ({}));
       const credits = Number(json?.credits ?? json?.data?.credits ?? 0);
       if (Number.isFinite(credits)) setEasyPass(credits);
+
+      const balances = json?.easyPassBalances || json?.easypass_balances || json?.data?.easyPassBalances || json?.data?.easypass_balances || [];
+      if (Array.isArray(balances)) {
+        setEasyPassBalances(balances.map((item) => ({
+          ...item,
+          locationId: Number(item.locationId ?? item.location_id),
+          locationName: item.locationName || item.location_name || 'EasyFutbol',
+          balance: Number(item.balance ?? item.easyPassBalance ?? item.credits ?? 0),
+        })));
+      }
     } catch {
       // No rompemos el perfil si aún no existe el endpoint
     } finally {
@@ -88,36 +101,77 @@ export default function ProfileScreen({ navigation }) {
   const buyEasyPass = async () => {
     try {
       const headers = { Accept: 'application/json', ...(await getAuthHeader()) };
-      const res = await fetch(`${BASE}/packs`, { method: 'GET', headers });
-      if (!res.ok) throw new Error('No se pudieron cargar los packs');
-      const json = await res.json().catch(() => ({}));
-      const packs = json?.data || [];
-      if (!Array.isArray(packs) || packs.length === 0) {
-        Alert.alert('EasyPass', 'No hay packs disponibles ahora mismo');
+
+      const locationsRes = await fetch(`${BASE}/easypass/locations`, { method: 'GET', headers });
+      const locationsJson = await locationsRes.json().catch(() => ({}));
+      if (!locationsRes.ok) throw new Error(locationsJson?.msg || 'No se pudieron cargar las ciudades');
+
+      const locations = Array.isArray(locationsJson?.data) ? locationsJson.data : [];
+      if (locations.length === 0) {
+        Alert.alert('EasyPass', 'No hay ciudades disponibles ahora mismo');
         return;
       }
 
-      // Mostramos los packs en un Alert (simple y rápido)
-      const buttons = packs.slice(0, 6).map((p) => ({
-        text: `${p.name} · ${p.credits} EasyPass · ${(Number(p.price_cents || 0)/100).toFixed(2)}€`,
-        onPress: async () => {
-          try {
-            const r2 = await fetch(`${BASE}/packs/${p.id}/checkout`, { method: 'POST', headers });
-            const j2 = await r2.json().catch(() => ({}));
-            if (!r2.ok || !j2?.checkout_url) throw new Error(j2?.msg || 'No se pudo crear el pago');
-            await Linking.openURL(j2.checkout_url);
-          } catch (e) {
-            Alert.alert('Error', e?.message || 'No se pudo iniciar el pago');
+      const openPacksForLocation = async (location) => {
+        try {
+          const locationId = Number(location?.id || 1);
+          const locationName = location?.name || 'EasyFutbol';
+
+          const packsRes = await fetch(`${BASE}/easypass/packs?location_id=${locationId}`, { method: 'GET', headers });
+          const packsJson = await packsRes.json().catch(() => ({}));
+          if (!packsRes.ok) throw new Error(packsJson?.msg || 'No se pudieron cargar los packs');
+
+          const packs = Array.isArray(packsJson?.data) ? packsJson.data : [];
+          if (packs.length === 0) {
+            Alert.alert('EasyPass', `No hay packs disponibles para ${locationName} ahora mismo`);
+            return;
           }
-        },
+
+          const buttons = packs.slice(0, 6).map((p) => ({
+            text: `${p.name} · ${(Number(p.price_cents || 0) / 100).toFixed(2)}€`,
+            onPress: async () => {
+              try {
+                const checkoutRes = await fetch(`${BASE}/easypass/packs/${p.id}/checkout`, { method: 'POST', headers });
+                const checkoutJson = await checkoutRes.json().catch(() => ({}));
+                if (!checkoutRes.ok || !checkoutJson?.checkout_url) {
+                  throw new Error(checkoutJson?.msg || 'No se pudo crear el pago');
+                }
+                await Linking.openURL(checkoutJson.checkout_url);
+              } catch (e) {
+                Alert.alert('Error', e?.message || 'No se pudo iniciar el pago');
+              }
+            },
+          }));
+
+          Alert.alert(
+            `EasyPass ${locationName}`,
+            `Estos EasyPass solo serán válidos para partidos de ${locationName}. Elige un pack:`,
+            [
+              ...buttons,
+              { text: 'Cambiar ciudad', onPress: buyEasyPass },
+              { text: 'Cancelar', style: 'cancel' },
+            ]
+          );
+        } catch (e) {
+          Alert.alert('Error', e?.message || 'No se pudieron cargar los packs');
+        }
+      };
+
+      const cityButtons = locations.map((location) => ({
+        text: location.name,
+        onPress: () => openPacksForLocation(location),
       }));
 
-      Alert.alert('Comprar EasyPass', 'Elige un pack:', [
-        ...buttons,
-        { text: 'Cancelar', style: 'cancel' },
-      ]);
+      Alert.alert(
+        'Comprar EasyPass',
+        'Primero elige la ciudad. Recuerda: cada EasyPass solo vale para la localización donde lo compras.',
+        [
+          ...cityButtons,
+          { text: 'Cancelar', style: 'cancel' },
+        ]
+      );
     } catch (e) {
-      Alert.alert('Error', e?.message || 'No se pudieron cargar los packs');
+      Alert.alert('Error', e?.message || 'No se pudieron cargar las ciudades');
     }
   };
 
@@ -156,6 +210,15 @@ export default function ProfileScreen({ navigation }) {
       setName(payload?.user?.name || '');
       setEmail(payload?.user?.email || '');
       setAvatarNonce(Date.now());
+      const profileBalances = payload?.user?.easyPassBalances || payload?.user?.easypass_balances || [];
+      if (Array.isArray(profileBalances)) {
+        setEasyPassBalances(profileBalances.map((item) => ({
+          ...item,
+          locationId: Number(item.locationId ?? item.location_id),
+          locationName: item.locationName || item.location_name || 'EasyFutbol',
+          balance: Number(item.balance ?? item.easyPassBalance ?? item.credits ?? 0),
+        })));
+      }
       // Cargar créditos (EasyPass)
       await loadEasyPass();
     } catch (e) {
@@ -310,7 +373,10 @@ export default function ProfileScreen({ navigation }) {
     assists: stats.assists ?? 0,
     mvps: stats.mvps ?? 0,
     teammate_rating: stats.teammate_rating ?? '—',
-    matches_won: stats.matches_won ?? 0,
+    matches_won: stats.wins ?? stats.matches_won ?? 0,
+    losses: stats.losses ?? 0,
+    draws: stats.draws ?? 0,
+    win_rate: stats.win_rate ?? 0,
   };
 
   const STAT_ITEMS = useMemo(() => ([
@@ -320,6 +386,7 @@ export default function ProfileScreen({ navigation }) {
     { key: 'mvps', label: 'MVPs', value: s.mvps, emoji: '🏆' },
     { key: 'teammate_rating', label: 'Nota comp.', value: s.teammate_rating, emoji: '⭐️' },
     { key: 'matches_won', label: 'Ganados', value: s.matches_won, emoji: '✅' },
+    { key: 'win_rate', label: '% victoria', value: `${s.win_rate}%`, emoji: '📈' },
   ]), [s]);
 
   if (loading) {
@@ -394,6 +461,20 @@ export default function ProfileScreen({ navigation }) {
             </Text>
           </View>
 
+          <View style={styles.collabCard}>
+            <Text style={styles.section}>🤝 Colaboraciones</Text>
+            <Text style={styles.collabIntro}>
+              Enseña tu perfil de EasyFutbol y tu ID de jugador para acceder a las colaboraciones activas.
+            </Text>
+            <TouchableOpacity
+              style={styles.collabBtn}
+              onPress={() => { setActiveCollaboration('herminia'); setCollaborationsVisible(true); }}
+              activeOpacity={0.85}
+            >
+              <Text style={styles.collabBtnText}>Ver colaboraciones</Text>
+            </TouchableOpacity>
+          </View>
+
           {/* Panel info */}
           <View style={styles.panel}>
             {editing ? (
@@ -430,8 +511,34 @@ export default function ProfileScreen({ navigation }) {
               </View>
               <View style={styles.passHeaderText}>
                 <Text style={styles.passValue}>{easyPassLoading ? '...' : easyPass}</Text>
-                <Text style={styles.passHint}>Tus créditos disponibles para apuntarte a partidos</Text>
+                <Text style={styles.passHint}>Saldo total antiguo. Abajo puedes verlos separados por ciudad.</Text>
               </View>
+            </View>
+
+            <View style={styles.passLocationBox}>
+              <Text style={styles.passLocationTitle}>Tus EasyPass por localización</Text>
+              <Text style={styles.passLocationNote}>
+                Cada EasyPass solo puede usarse en partidos de su propia ciudad.
+              </Text>
+
+              {easyPassLoading ? (
+                <ActivityIndicator color={ORANGE} style={{ marginTop: 12 }} />
+              ) : easyPassBalances.length > 0 ? (
+                easyPassBalances.map((item) => (
+                  <View key={item.locationId || item.locationName} style={styles.passLocationRow}>
+                    <View>
+                      <Text style={styles.passLocationName}>{item.locationName}</Text>
+                      <Text style={styles.passLocationMeta}>Válidos solo para {item.locationName}</Text>
+                    </View>
+                    <View style={styles.passLocationBadge}>
+                      <Text style={styles.passLocationAmount}>{Number(item.balance || 0)}</Text>
+                      <Text style={styles.passLocationSmall}>EP</Text>
+                    </View>
+                  </View>
+                ))
+              ) : (
+                <Text style={styles.passLocationEmpty}>Todavía no tienes EasyPass por ciudad.</Text>
+              )}
             </View>
 
             <TouchableOpacity style={styles.passBtn} onPress={buyEasyPass} activeOpacity={0.85}>
@@ -475,6 +582,116 @@ export default function ProfileScreen({ navigation }) {
               ))}
             </View>
           </View>
+
+          <Modal
+            visible={collaborationsVisible}
+            transparent
+            animationType="fade"
+            onRequestClose={() => setCollaborationsVisible(false)}
+          >
+            <View style={styles.modalOverlay}>
+              <View style={styles.modalCard}>
+                <View style={styles.modalHeader}>
+                  <View>
+                    <Text style={styles.modalEyebrow}>EasyFutbol</Text>
+                    <Text style={styles.modalTitle}>Colaboraciones activas</Text>
+                  </View>
+                  <TouchableOpacity
+                    style={styles.modalCloseBtn}
+                    onPress={() => setCollaborationsVisible(false)}
+                    activeOpacity={0.85}
+                  >
+                    <Text style={styles.modalCloseText}>×</Text>
+                  </TouchableOpacity>
+                </View>
+
+                <View style={styles.playerIdBox}>
+                  <Text style={styles.playerIdLabel}>Tu ID de jugador</Text>
+                  <Text style={styles.playerIdValue}>#{user?.id || '—'}</Text>
+                  <Text style={styles.playerIdHint}>Muéstralo en el local para que puedan apuntar tu usuario.</Text>
+                </View>
+
+                <View style={styles.collaborationTabs}>
+                  <TouchableOpacity
+                    style={[styles.collaborationTab, activeCollaboration === 'herminia' && styles.collaborationTabActive]}
+                    onPress={() => setActiveCollaboration('herminia')}
+                    activeOpacity={0.85}
+                  >
+                    <Text style={[styles.collaborationTabText, activeCollaboration === 'herminia' && styles.collaborationTabTextActive]}>
+                      La Herminia
+                    </Text>
+                    <Text style={[styles.collaborationTabSub, activeCollaboration === 'herminia' && styles.collaborationTabSubActive]}>
+                      Aftergame
+                    </Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={[styles.collaborationTab, activeCollaboration === 'nuino' && styles.collaborationTabActive]}
+                    onPress={() => setActiveCollaboration('nuino')}
+                    activeOpacity={0.85}
+                  >
+                    <Text style={[styles.collaborationTabText, activeCollaboration === 'nuino' && styles.collaborationTabTextActive]}>
+                      Nuino
+                    </Text>
+                    <Text style={[styles.collaborationTabSub, activeCollaboration === 'nuino' && styles.collaborationTabSubActive]}>
+                      Botas
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+
+                <ScrollView style={styles.collaborationContentScroll} showsVerticalScrollIndicator={false}>
+                  {activeCollaboration === 'herminia' ? (
+                    <View style={styles.collaborationItemLarge}>
+                      <View style={styles.collaborationTopRow}>
+                        <Text style={styles.collaborationNameLarge}>La Herminia</Text>
+                        <Text style={styles.collaborationTag}>Aftergame</Text>
+                      </View>
+                      <Text style={styles.collaborationTextLarge}>
+                        Enseña tu perfil de EasyFutbol y tu ID de jugador para disfrutar de estas ofertas después del partido.
+                      </Text>
+
+                      <View style={styles.offerCard}>
+                        <Text style={styles.offerTitle}>4 cañas + cazurras</Text>
+                        <Text style={styles.offerPrice}>12€</Text>
+                      </View>
+
+                      <View style={styles.offerCard}>
+                        <Text style={styles.offerTitle}>Hamburguesa + caña</Text>
+                        <Text style={styles.offerPrice}>10€</Text>
+                      </View>
+
+                      <View style={styles.offerCard}>
+                        <Text style={styles.offerTitle}>Pizza + caña</Text>
+                        <Text style={styles.offerPrice}>10€</Text>
+                      </View>
+                    </View>
+                  ) : (
+                    <View style={styles.collaborationItemLarge}>
+                      <View style={styles.collaborationTopRow}>
+                        <Text style={styles.collaborationNameLarge}>Nuino</Text>
+                        <Text style={styles.collaborationTag}>Botas</Text>
+                      </View>
+                      <Text style={styles.collaborationTextLarge}>Da una segunda vida a tus botas.</Text>
+
+                      <View style={styles.offerCard}>
+                        <Text style={styles.offerTitle}>Descuento EasyFutbol</Text>
+                        <Text style={styles.offerPrice}>10%</Text>
+                        <Text style={styles.offerSmall}>En todos los servicios</Text>
+                      </View>
+                    </View>
+                  )}
+                </ScrollView>
+
+                <TouchableOpacity
+                  style={styles.modalPrimaryBtn}
+                  onPress={() => setCollaborationsVisible(false)}
+                  activeOpacity={0.85}
+                >
+                  <Text style={styles.modalPrimaryBtnText}>Entendido</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </Modal>
 
           <TouchableOpacity style={styles.logoutBtn} onPress={logout}>
             <Text style={styles.logoutText}>Cerrar sesión</Text>
@@ -545,8 +762,82 @@ const styles = StyleSheet.create({
   passHeaderText:{ flex:1 },
   passValue:{ color:'#fff', fontSize:28, fontWeight:'900', marginBottom:4 },
   passHint:{ color:'#9f9f9f', fontSize:12, fontWeight:'700' },
+  passLocationBox:{
+    backgroundColor:'rgba(255,90,0,0.08)',
+    borderWidth:1,
+    borderColor:'rgba(255,90,0,0.28)',
+    borderRadius:14,
+    padding:12,
+    marginBottom:14,
+  },
+  passLocationTitle:{ color:'#fff', fontSize:15, fontWeight:'900', marginBottom:4 },
+  passLocationNote:{ color:'#bdbdbd', fontSize:12, fontWeight:'700', lineHeight:18, marginBottom:10 },
+  passLocationRow:{
+    flexDirection:'row',
+    justifyContent:'space-between',
+    alignItems:'center',
+    backgroundColor:'rgba(0,0,0,0.25)',
+    borderWidth:1,
+    borderColor:'rgba(255,255,255,0.06)',
+    borderRadius:12,
+    paddingVertical:11,
+    paddingHorizontal:12,
+    marginTop:8,
+  },
+  passLocationName:{ color:'#fff', fontSize:14, fontWeight:'900' },
+  passLocationMeta:{ color:'#9f9f9f', fontSize:11, fontWeight:'700', marginTop:3 },
+  passLocationBadge:{
+    minWidth:58,
+    paddingVertical:7,
+    paddingHorizontal:10,
+    borderRadius:12,
+    backgroundColor:ORANGE,
+    alignItems:'center',
+  },
+  passLocationAmount:{ color:'#000', fontSize:18, fontWeight:'900', lineHeight:20 },
+  passLocationSmall:{ color:'#000', fontSize:10, fontWeight:'900', marginTop:1 },
+  passLocationEmpty:{ color:'#bdbdbd', fontSize:12, fontWeight:'700', textAlign:'center', marginTop:8 },
   passBtn:{ backgroundColor: ORANGE, paddingVertical:12, paddingHorizontal:14, borderRadius:12, alignItems:'center' },
   passBtnText:{ color:'#000', fontWeight:'900' },
+  collabCard:{ backgroundColor:'rgba(17,17,17,0.92)', borderRadius:16, padding: spacing(2), borderWidth:1, borderColor:'rgba(255,90,0,0.18)', marginBottom: spacing(2) },
+  collabIntro:{ color:'#bdbdbd', fontSize:13, lineHeight:20, marginBottom:14, fontWeight:'700' },
+  collabBtn:{ backgroundColor: ORANGE, paddingVertical:14, paddingHorizontal:16, borderRadius:12 },
+  collabBtnText:{ color:'#000', fontWeight:'900', textAlign:'center' },
+
+  modalOverlay:{ flex:1, backgroundColor:'rgba(0,0,0,0.78)', alignItems:'center', justifyContent:'center', padding:20 },
+  modalCard:{ width:'100%', maxWidth:520, maxHeight:'88%', backgroundColor:'#111', borderRadius:24, padding:20, borderWidth:1, borderColor:'rgba(255,90,0,0.35)' },
+  modalHeader:{ flexDirection:'row', justifyContent:'space-between', alignItems:'flex-start', marginBottom:14 },
+  modalEyebrow:{ color:ORANGE, fontSize:12, fontWeight:'900', textTransform:'uppercase', letterSpacing:0.6 },
+  modalTitle:{ color:'#fff', fontSize:20, fontWeight:'900', marginTop:3 },
+  modalCloseBtn:{ width:36, height:36, borderRadius:18, backgroundColor:'#222', alignItems:'center', justifyContent:'center' },
+  modalCloseText:{ color:'#fff', fontSize:26, fontWeight:'800', lineHeight:28 },
+  playerIdBox:{ backgroundColor:'rgba(255,90,0,0.10)', borderWidth:1, borderColor:'rgba(255,90,0,0.35)', borderRadius:14, padding:13, marginBottom:12 },
+  playerIdLabel:{ color:'#bdbdbd', fontSize:12, fontWeight:'800' },
+  playerIdValue:{ color:'#fff', fontSize:30, fontWeight:'900', marginTop:2 },
+  playerIdHint:{ color:'#d8d8d8', fontSize:12, fontWeight:'700', lineHeight:17, marginTop:4 },
+  collaborationTabs:{ flexDirection:'row', gap:10, marginBottom:12 },
+  collaborationTab:{ flex:1, backgroundColor:'#171717', borderWidth:1, borderColor:'rgba(255,255,255,0.08)', borderRadius:14, paddingVertical:12, paddingHorizontal:10, alignItems:'center' },
+  collaborationTabActive:{ backgroundColor:ORANGE, borderColor:ORANGE },
+  collaborationTabText:{ color:'#fff', fontSize:14, fontWeight:'900' },
+  collaborationTabTextActive:{ color:'#000' },
+  collaborationTabSub:{ color:'#999', fontSize:10, fontWeight:'800', marginTop:3 },
+  collaborationTabSubActive:{ color:'#2a1000' },
+  collaborationContentScroll:{ maxHeight:320, marginBottom:8 },
+  collaborationItemLarge:{ backgroundColor:'#171717', borderRadius:16, borderWidth:1, borderColor:'rgba(255,255,255,0.07)', padding:15, marginBottom:10 },
+  collaborationNameLarge:{ color:'#fff', fontSize:19, fontWeight:'900', flex:1 },
+  collaborationTextLarge:{ color:'#eaeaea', fontSize:14, fontWeight:'800', lineHeight:21, marginBottom:12 },
+  offerCard:{ backgroundColor:'rgba(255,90,0,0.09)', borderWidth:1, borderColor:'rgba(255,90,0,0.24)', borderRadius:14, padding:13, marginTop:8 },
+  offerTitle:{ color:'#fff', fontSize:15, fontWeight:'900' },
+  offerPrice:{ color:ORANGE, fontSize:25, fontWeight:'900', marginTop:3 },
+  offerSmall:{ color:'#bdbdbd', fontSize:12, fontWeight:'700', marginTop:2 },
+  collaborationItem:{ backgroundColor:'#171717', borderRadius:14, borderWidth:1, borderColor:'rgba(255,255,255,0.07)', padding:13, marginBottom:10 },
+  collaborationTopRow:{ flexDirection:'row', justifyContent:'space-between', alignItems:'center', gap:10, marginBottom:8 },
+  collaborationName:{ color:'#fff', fontSize:16, fontWeight:'900', flex:1 },
+  collaborationTag:{ color:'#000', backgroundColor:ORANGE, overflow:'hidden', borderRadius:10, paddingHorizontal:9, paddingVertical:4, fontSize:11, fontWeight:'900' },
+  collaborationText:{ color:'#eaeaea', fontSize:13, fontWeight:'800', lineHeight:19, marginBottom:4 },
+  collaborationBullet:{ color:'#bdbdbd', fontSize:13, fontWeight:'700', lineHeight:20 },
+  modalPrimaryBtn:{ backgroundColor:ORANGE, borderRadius:12, paddingVertical:13, marginTop:4 },
+  modalPrimaryBtnText:{ color:'#000', fontWeight:'900', textAlign:'center' },
   communityCard:{ backgroundColor:'rgba(17,17,17,0.92)', borderRadius:16, padding: spacing(2), borderWidth:1, borderColor:'rgba(255,255,255,0.06)', marginBottom: spacing(2) },
   communityText:{ color:'#bdbdbd', fontSize:13, lineHeight:20, marginBottom:14 },
   communityBtn:{ backgroundColor:'#25D366', paddingVertical:14, paddingHorizontal:16, borderRadius:12 },

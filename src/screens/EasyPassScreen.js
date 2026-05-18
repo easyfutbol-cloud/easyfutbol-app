@@ -8,23 +8,12 @@ import easypassLogo from '../../assets/easypass-logo.png';
 
 const ORANGE = '#ff5a00';
 
-const EASY_PASS_PACKS = [
-  { easyPassAmount: 1, priceCents: 500 },
-  { easyPassAmount: 3, priceCents: 1400 },
-  { easyPassAmount: 5, priceCents: 2200 },
-  { easyPassAmount: 8, priceCents: 3400 },
-  { easyPassAmount: 10, priceCents: 4000 },
-];
-
-const getLocalPackConfig = (pack) => {
-  const packEasyPassAmount = Number(pack?.easyPassAmount ?? pack?.credits ?? 0);
-  return EASY_PASS_PACKS.find((item) => item.easyPassAmount === packEasyPassAmount) || null;
-};
-
 const formatEuro = (cents) => `${(Number(cents || 0) / 100).toFixed(2)}€`;
 
 export default function EasyPassScreen() {
   const [packs, setPacks] = useState([]);
+  const [locations, setLocations] = useState([]);
+  const [selectedLocationId, setSelectedLocationId] = useState(1);
   const [easyPassBalance, setEasyPassBalance] = useState(0);
   const [loading, setLoading] = useState(true);
   const [buyingPackId, setBuyingPackId] = useState(null);
@@ -34,14 +23,14 @@ export default function EasyPassScreen() {
   const previousBalanceRef = useRef(null);
   const purchaseInProgressRef = useRef(false);
 
-  const displayPacks = packs.map((pack) => {
-    const localConfig = getLocalPackConfig(pack);
-    return {
-      ...pack,
-      displayName: `${Number(pack?.easyPassAmount ?? pack?.credits ?? 0)} EasyPass`,
-      displayPriceCents: localConfig?.priceCents ?? Number(pack?.price_cents || 0),
-    };
-  });
+  const selectedLocation = locations.find((item) => Number(item.id) === Number(selectedLocationId));
+  const selectedLocationName = selectedLocation?.name || 'Valladolid';
+
+  const displayPacks = packs.map((pack) => ({
+    ...pack,
+    displayName: `${Number(pack?.easyPassAmount ?? pack?.credits ?? 0)} EasyPass`,
+    displayPriceCents: Number(pack?.price_cents || pack?.priceCents || 0),
+  }));
 
   const BASE = (api?.defaults?.baseURL || '').replace(/\/+$/, '');
 
@@ -69,6 +58,7 @@ export default function EasyPassScreen() {
         setIsAuthenticated(false);
         setEasyPassBalance(0);
         setPacks([]);
+        setLocations([]);
         previousBalanceRef.current = null;
         purchaseInProgressRef.current = false;
         return;
@@ -115,8 +105,21 @@ export default function EasyPassScreen() {
 
       previousBalanceRef.current = nextBalance;
 
-      // packs
-      const r2 = await fetch(`${BASE}/packs`, { method: 'GET', headers });
+      // sedes
+      const rLocations = await fetch(`${BASE}/easypass/locations`, { method: 'GET', headers });
+      const jLocations = await rLocations.json().catch(() => ({}));
+      const nextLocations = Array.isArray(jLocations?.data) ? jLocations.data : [];
+      setLocations(nextLocations);
+
+      const validSelectedLocation = nextLocations.some((item) => Number(item.id) === Number(selectedLocationId));
+      const locationIdToUse = validSelectedLocation ? selectedLocationId : Number(nextLocations?.[0]?.id || 1);
+
+      if (!validSelectedLocation && Number(locationIdToUse) !== Number(selectedLocationId)) {
+        setSelectedLocationId(locationIdToUse);
+      }
+
+      // packs por sede
+      const r2 = await fetch(`${BASE}/easypass/packs?location_id=${locationIdToUse}`, { method: 'GET', headers });
       const j2 = await r2.json().catch(() => ({}));
       setPacks(Array.isArray(j2?.data) ? j2.data : []);
     } catch (e) {
@@ -126,7 +129,7 @@ export default function EasyPassScreen() {
     } finally {
       setLoading(false);
     }
-  }, [BASE]);
+  }, [BASE, selectedLocationId]);
 
   useEffect(() => { load(); }, [load]);
   useFocusEffect(useCallback(() => { load(false); }, [load]));
@@ -136,7 +139,7 @@ export default function EasyPassScreen() {
       setBuyingPackId(pack.id);
       purchaseInProgressRef.current = true;
       const headers = { Accept: 'application/json', ...(await getAuthHeader()) };
-      const r = await fetch(`${BASE}/packs/${pack.id}/checkout`, { method: 'POST', headers });
+      const r = await fetch(`${BASE}/easypass/packs/${pack.id}/checkout`, { method: 'POST', headers });
       const j = await r.json().catch(() => ({}));
       if (!r.ok || !j?.checkout_url) throw new Error(j?.msg || 'No se pudo crear el pago');
       await Linking.openURL(j.checkout_url);
@@ -173,10 +176,17 @@ export default function EasyPassScreen() {
 
           <View style={styles.loginRequiredCard}>
             <Text style={styles.loginRequiredEmoji}>🔐</Text>
-            <Text style={styles.loginRequiredTitle}>Inicia sesión para ver tus EasyPass</Text>
+            <Text style={styles.loginRequiredTitle}>Necesitas iniciar sesión</Text>
             <Text style={styles.loginRequiredText}>
-              Accede a tu cuenta o regístrate para consultar tus EasyPass, comprar nuevos packs y apuntarte a partidos.
+              Para comprar EasyPass, ver tu saldo o apuntarte a partidos, primero tienes que iniciar sesión o crear una cuenta.
             </Text>
+
+            <View style={styles.loginWarningBox}>
+              <Text style={styles.loginWarningTitle}>Aviso</Text>
+              <Text style={styles.loginWarningText}>
+                Sin sesión iniciada no podemos saber tu saldo ni asociar la compra de EasyPass a tu perfil.
+              </Text>
+            </View>
 
             <TouchableOpacity
               style={styles.loginPrimaryBtn}
@@ -229,13 +239,49 @@ export default function EasyPassScreen() {
           </TouchableOpacity>
         ) : null}
 
-        <Text style={styles.section}>Packs</Text>
+        <View style={styles.locationCard}>
+          <Text style={styles.locationEyebrow}>Elige ciudad</Text>
+          <Text style={styles.locationTitle}>¿Dónde vas a jugar?</Text>
+          <Text style={styles.locationHint}>
+            Cada EasyPass solo sirve para la localización en la que lo compres. Revisa bien la ciudad antes de pagar.
+          </Text>
+
+          <View style={styles.locationGrid}>
+            {locations.map((location) => {
+              const isSelected = Number(location.id) === Number(selectedLocationId);
+              return (
+                <TouchableOpacity
+                  key={location.id}
+                  style={[styles.locationBtn, isSelected && styles.locationBtnActive]}
+                  onPress={() => setSelectedLocationId(Number(location.id))}
+                  activeOpacity={0.85}
+                >
+                  <Text style={[styles.locationBtnText, isSelected && styles.locationBtnTextActive]}>
+                    {location.name}
+                  </Text>
+                  <Text style={[styles.locationBtnSubText, isSelected && styles.locationBtnSubTextActive]}>
+                    {isSelected ? 'Seleccionada' : 'Tocar para elegir'}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        </View>
+
+        <Text style={styles.section}>Packs para {selectedLocationName}</Text>
+
+        <View style={styles.warningCard}>
+          <Text style={styles.warningTitle}>Importante</Text>
+          <Text style={styles.warningText}>
+            Los EasyPass de {selectedLocationName} solo se podrán usar en partidos de {selectedLocationName}. No compres packs de otra ciudad si vas a jugar aquí.
+          </Text>
+        </View>
 
         {displayPacks.map((p) => (
           <View key={p.id} style={styles.packCard}>
             <View style={{ flex:1 }}>
               <Text style={styles.packName}>{p.displayName}</Text>
-              <Text style={styles.packMeta}>Pack de {Number(p?.easyPassAmount ?? p?.credits ?? 0)} EasyPass</Text>
+              <Text style={styles.packMeta}>Válido solo para {selectedLocationName}</Text>
             </View>
 
             <View style={{ alignItems:'flex-end' }}>
@@ -297,6 +343,17 @@ const styles = StyleSheet.create({
   loginRequiredEmoji:{ fontSize:34, marginBottom: 10 },
   loginRequiredTitle:{ color:'#fff', fontSize:20, fontWeight:'900', textAlign:'center' },
   loginRequiredText:{ color:'#bdbdbd', marginTop: 10, fontSize:14, fontWeight:'700', textAlign:'center', lineHeight:20 },
+  loginWarningBox:{
+    width:'100%',
+    marginTop: 16,
+    backgroundColor:'rgba(255,90,0,0.10)',
+    borderWidth:1,
+    borderColor:'rgba(255,90,0,0.35)',
+    borderRadius:14,
+    padding: 13,
+  },
+  loginWarningTitle:{ color:ORANGE, fontWeight:'900', marginBottom: 4, textAlign:'center' },
+  loginWarningText:{ color:'#f1f1f1', fontSize:12, fontWeight:'700', lineHeight:18, textAlign:'center' },
   loginPrimaryBtn:{ width:'100%', marginTop: 18, backgroundColor: ORANGE, paddingVertical:13, borderRadius:14, alignItems:'center' },
   loginPrimaryBtnText:{ color:'#000', fontWeight:'900', fontSize:15 },
   loginSecondaryBtn:{ width:'100%', marginTop: 10, backgroundColor:'#1b1b1b', borderWidth:1, borderColor:'rgba(255,255,255,0.14)', paddingVertical:13, borderRadius:14, alignItems:'center' },
@@ -314,6 +371,45 @@ const styles = StyleSheet.create({
   backToMatchBtnText:{ color:'#fff', fontWeight:'900' },
 
   section:{ color: ORANGE, fontWeight:'900', marginBottom: 10, fontSize:16 },
+
+  locationCard:{
+    backgroundColor:'rgba(17,17,17,0.96)',
+    borderRadius:18,
+    padding: 16,
+    borderWidth:1,
+    borderColor:'rgba(255,90,0,0.28)',
+    marginBottom: 16,
+  },
+  locationEyebrow:{ color:ORANGE, fontSize:12, fontWeight:'900', textTransform:'uppercase', letterSpacing:0.5 },
+  locationTitle:{ color:'#fff', fontSize:19, fontWeight:'900', marginTop: 4 },
+  locationHint:{ color:'#bdbdbd', fontSize:12, fontWeight:'700', lineHeight:18, marginTop: 8 },
+  locationGrid:{ flexDirection:'row', gap:10, marginTop: 14 },
+  locationBtn:{
+    flex:1,
+    backgroundColor:'#171717',
+    borderWidth:1,
+    borderColor:'rgba(255,255,255,0.12)',
+    borderRadius:14,
+    paddingVertical:13,
+    paddingHorizontal:10,
+    alignItems:'center',
+  },
+  locationBtnActive:{ backgroundColor:ORANGE, borderColor:ORANGE },
+  locationBtnText:{ color:'#fff', fontSize:15, fontWeight:'900' },
+  locationBtnTextActive:{ color:'#000' },
+  locationBtnSubText:{ color:'#9f9f9f', fontSize:10, fontWeight:'800', marginTop: 4 },
+  locationBtnSubTextActive:{ color:'#281000' },
+
+  warningCard:{
+    backgroundColor:'rgba(255,90,0,0.10)',
+    borderWidth:1,
+    borderColor:'rgba(255,90,0,0.35)',
+    borderRadius:14,
+    padding: 13,
+    marginBottom: 12,
+  },
+  warningTitle:{ color:ORANGE, fontWeight:'900', marginBottom: 4 },
+  warningText:{ color:'#f1f1f1', fontSize:12, fontWeight:'700', lineHeight:18 },
 
   packCard:{
     flexDirection:'row',

@@ -17,6 +17,37 @@ function Badge({ status }) {
   );
 }
 
+function ShirtIcons({ whiteCount = 0, blackCount = 0, cancelled = false }) {
+  const icons = [];
+
+  for (let i = 0; i < whiteCount; i += 1) {
+    icons.push({ key: `white-${i}`, type: 'white' });
+  }
+
+  for (let i = 0; i < blackCount; i += 1) {
+    icons.push({ key: `black-${i}`, type: 'black' });
+  }
+
+  if (icons.length === 0) return null;
+
+  return (
+    <View style={styles.shirtIconsRow}>
+      {icons.map((icon) => (
+        <View
+          key={icon.key}
+          style={[
+            styles.shirtIcon,
+            icon.type === 'white' ? styles.shirtIconWhite : styles.shirtIconBlack,
+            cancelled && styles.shirtIconCancelled,
+          ]}
+        >
+          <Text style={[styles.shirtIconText, icon.type === 'white' && styles.shirtIconTextWhite]}>👕</Text>
+        </View>
+      ))}
+    </View>
+  );
+}
+
 function groupInscriptionsByMatch(list) {
   const byMatch = {};
 
@@ -52,34 +83,29 @@ function groupInscriptionsByMatch(list) {
     const activeInscriptions = group.inscriptions.filter(
       (i) => i.status === 'confirmed' || i.status === 'pending'
     );
-    const cancelledInscriptions = group.inscriptions.filter((i) => i.status === 'cancelled');
 
     const whiteCount = activeInscriptions.filter((i) => i.ticket_type === 'white').length;
     const blackCount = activeInscriptions.filter((i) => i.ticket_type === 'black').length;
-    const cancelledWhiteCount = cancelledInscriptions.filter((i) => i.ticket_type === 'white').length;
-    const cancelledBlackCount = cancelledInscriptions.filter((i) => i.ticket_type === 'black').length;
 
     return {
       ...group,
       status,
-      total: group.inscriptions.length,
+      total: activeInscriptions.length,
       activeCount: activeInscriptions.length,
-      cancelledCount: cancelledInscriptions.length,
       whiteCount,
       blackCount,
-      cancelledWhiteCount,
-      cancelledBlackCount,
     };
   });
 
-  // ordenar por fecha de inicio, la más próxima primero
-  groups.sort((a, b) => {
+  const activeGroups = groups.filter((group) => group.activeCount > 0);
+
+  activeGroups.sort((a, b) => {
     const da = a.starts_at ? new Date(a.starts_at).getTime() : 0;
     const db = b.starts_at ? new Date(b.starts_at).getTime() : 0;
     return da - db;
   });
 
-  return groups;
+  return activeGroups;
 }
 
 function isFutureMatch(startsAt) {
@@ -176,11 +202,8 @@ export default function MyMatchesScreen() {
     const canCancel = isFuture && (item.status === 'pending' || item.status === 'confirmed');
     const total = item.total || 0;
     const activeCount = item.activeCount || 0;
-    const cancelledCount = item.cancelledCount || 0;
     const whites = item.whiteCount || 0;
     const blacks = item.blackCount || 0;
-    const cancelledWhites = item.cancelledWhiteCount || 0;
-    const cancelledBlacks = item.cancelledBlackCount || 0;
 
     return (
       <View style={styles.card}>
@@ -194,20 +217,18 @@ export default function MyMatchesScreen() {
         {total > 0 && (
           <View style={styles.entriesSummaryWrap}>
             {activeCount > 0 ? (
-              <Text style={styles.cardMetaStrong}>
-                Activas: {activeCount === 1 ? '1 entrada' : `${activeCount} entradas`}
-                {` (${whites} blancas · ${blacks} negras)`}
-              </Text>
+              <View style={styles.entryCountBlock}>
+                <Text style={styles.cardMetaStrong}>
+                  Activas: {activeCount === 1 ? '1 entrada' : `${activeCount} entradas`}
+                </Text>
+                <View style={styles.entryShirtLine}>
+                  <ShirtIcons whiteCount={whites} blackCount={blacks} />
+                  <Text style={styles.entryShirtText}>{whites} blancas · {blacks} negras</Text>
+                </View>
+              </View>
             ) : (
               <Text style={styles.cardMetaStrong}>
                 Activas: 0 entradas
-              </Text>
-            )}
-
-            {cancelledCount > 0 && (
-              <Text style={styles.cardMetaCancelled}>
-                Canceladas: {cancelledCount === 1 ? '1 entrada' : `${cancelledCount} entradas`}
-                {` (${cancelledWhites} blancas · ${cancelledBlacks} negras)`}
               </Text>
             )}
           </View>
@@ -291,7 +312,16 @@ const styles = StyleSheet.create({
   cardMeta:{ color:'#aaa', fontSize:13, marginBottom:4 },
   entriesSummaryWrap:{ marginTop:spacing(1), marginBottom:spacing(0.5) },
   cardMetaStrong:{ color:colors.white, fontSize:13, fontWeight:'700', marginBottom:4 },
-  cardMetaCancelled:{ color:'#ff9b9b', fontSize:13, marginBottom:4 },
+  entryCountBlock:{ marginBottom:6 },
+  entryShirtLine:{ flexDirection:'row', alignItems:'center', flexWrap:'wrap', gap:8, marginTop:2 },
+  shirtIconsRow:{ flexDirection:'row', alignItems:'center', flexWrap:'wrap', gap:4 },
+  shirtIcon:{ width:24, height:24, borderRadius:8, alignItems:'center', justifyContent:'center', borderWidth:1 },
+  shirtIconWhite:{ backgroundColor:'#f5f5f5', borderColor:'#d8d8d8' },
+  shirtIconBlack:{ backgroundColor:'#050505', borderColor:'#555' },
+  shirtIconCancelled:{ opacity:0.45 },
+  shirtIconText:{ fontSize:13, lineHeight:16 },
+  shirtIconTextWhite:{ color:'#111' },
+  entryShirtText:{ color:'#d7d7d7', fontSize:12, fontWeight:'700' },
   btnOutline:{ borderWidth:1, borderColor:'#555', paddingVertical:spacing(1.2), borderRadius:12, alignItems:'center', marginTop:spacing(1) },
   btnOutlineText:{ color:'#ddd', fontWeight:'800', fontSize:14 }
 });
