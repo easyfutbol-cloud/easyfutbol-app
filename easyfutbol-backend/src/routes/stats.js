@@ -69,9 +69,9 @@ router.get('/stats/top-players', async (req, res) => {
         u.name,
         u.email,
         u.avatar_url,
-        COALESCE(m.location_id, CASE WHEN LOWER(m.city) IN ('avilés','aviles','oviedo','gijón','gijon','asturias') THEN 2 ELSE 1 END) AS location_id,
-        COALESCE(l.name, CASE WHEN LOWER(m.city) IN ('avilés','aviles','oviedo','gijón','gijon','asturias') THEN 'Asturias' ELSE 'Valladolid' END) AS location_name,
-        COALESCE(l.slug, CASE WHEN LOWER(m.city) IN ('avilés','aviles','oviedo','gijón','gijon','asturias') THEN 'asturias' ELSE 'valladolid' END) AS location_slug,
+        MAX(COALESCE(m.location_id, CASE WHEN LOWER(m.city) IN ('avilés','aviles','oviedo','gijón','gijon','asturias') THEN 2 ELSE 1 END)) AS location_id,
+        MAX(COALESCE(l.name, CASE WHEN LOWER(m.city) IN ('avilés','aviles','oviedo','gijón','gijon','asturias') THEN 'Asturias' ELSE 'Valladolid' END)) AS location_name,
+        MAX(COALESCE(l.slug, CASE WHEN LOWER(m.city) IN ('avilés','aviles','oviedo','gijón','gijon','asturias') THEN 'asturias' ELSE 'valladolid' END)) AS location_slug,
         COALESCE(SUM(mps.goals), 0) AS goals,
         COALESCE(SUM(mps.assists), 0) AS assists,
         COALESCE(SUM(mps.is_mvp), 0) AS mvps,
@@ -86,7 +86,7 @@ router.get('/stats/top-players', async (req, res) => {
       WHERE 1=1
       ${dateWhere}
       ${locationFilter.sql}
-      GROUP BY u.id, u.name, u.email, u.avatar_url, m.location_id, m.city, l.name, l.slug
+      GROUP BY u.id, u.name, u.email, u.avatar_url
       HAVING total > 0
       ORDER BY total DESC, goals DESC, mvps DESC
       LIMIT 50
