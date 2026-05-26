@@ -113,16 +113,40 @@ router.get('/matches/:id/attendees', async (req, res) => {
     }
 
     const [rows] = await pool.query(
-      `SELECT u.id AS user_id,
+      `SELECT
+              u.id AS user_id,
               u.name AS username,
               u.avatar_url,
-              i.ticket_type
+              u.worldcup_team,
+              SUM(CASE WHEN i.ticket_type = 'white' THEN 1 ELSE 0 END) AS white_tickets,
+              SUM(CASE WHEN i.ticket_type = 'black' THEN 1 ELSE 0 END) AS black_tickets,
+              CASE
+                WHEN SUM(CASE WHEN i.ticket_type = 'white' THEN 1 ELSE 0 END) > 0
+                 AND SUM(CASE WHEN i.ticket_type = 'black' THEN 1 ELSE 0 END) > 0
+                  THEN 'mixed'
+                WHEN SUM(CASE WHEN i.ticket_type = 'white' THEN 1 ELSE 0 END) > 0
+                  THEN 'white'
+                WHEN SUM(CASE WHEN i.ticket_type = 'black' THEN 1 ELSE 0 END) > 0
+                  THEN 'black'
+                ELSE 'orange'
+              END AS ticket_color
        FROM inscriptions i
        JOIN users u ON u.id = i.user_id
        WHERE i.match_id=?
-         AND i.status='confirmed'
-       ORDER BY CASE i.ticket_type WHEN 'white' THEN 0 WHEN 'black' THEN 1 ELSE 2 END,
-                u.name ASC`,
+         AND TRIM(REPLACE(i.status, '.', '')) = 'confirmed'
+       GROUP BY
+         u.id,
+         u.name,
+         u.avatar_url,
+         u.worldcup_team
+       ORDER BY
+         CASE ticket_color
+           WHEN 'white' THEN 0
+           WHEN 'black' THEN 1
+           WHEN 'mixed' THEN 2
+           ELSE 3
+         END,
+         u.name ASC`,
       [matchId]
     );
 
