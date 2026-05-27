@@ -344,4 +344,75 @@ router.post('/admin/users/:id/easypass-adjust', requireAuth, requireAdmin, async
   }
 });
 
+
+/**
+ * 5) Listar usuarios registrados (ADMIN)
+ * Query opcional:
+ * - location=all | valladolid | asturias | undefined
+ * - search=texto, id, teléfono o email
+ */
+router.get('/admin/users', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const location = String(req.query?.location || 'all').trim().toLowerCase();
+    const search = String(req.query?.search || '').trim();
+
+    const where = [];
+    const params = [];
+
+    if (location === 'valladolid' || location === 'asturias') {
+      where.push('preferred_location = ?');
+      params.push(location);
+    } else if (location === 'undefined' || location === 'sin_definir' || location === 'null') {
+      where.push('(preferred_location IS NULL OR preferred_location = \'\')');
+    }
+
+    if (search) {
+      const like = `%${search}%`;
+      where.push(`(
+        CAST(id AS CHAR) LIKE ?
+        OR name LIKE ?
+        OR email LIKE ?
+        OR phone LIKE ?
+      )`);
+      params.push(like, like, like, like);
+    }
+
+    const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
+
+    const [rows] = await pool.query(
+      `SELECT
+         id,
+         name,
+         email,
+         phone,
+         preferred_location,
+         role,
+         created_at
+       FROM users
+       ${whereSql}
+       ORDER BY id DESC
+       LIMIT 500`,
+      params
+    );
+
+    return res.json({
+      ok: true,
+      data: rows.map((user) => ({
+        id: Number(user.id),
+        name: user.name,
+        email: user.email,
+        phone: user.phone,
+        preferred_location: user.preferred_location,
+        preferredLocation: user.preferred_location,
+        role: user.role,
+        created_at: user.created_at,
+        createdAt: user.created_at,
+      })),
+    });
+  } catch (e) {
+    console.error('Error listando usuarios admin', e);
+    return res.status(500).json({ ok: false, msg: 'Error listando usuarios' });
+  }
+});
+
 export default router;

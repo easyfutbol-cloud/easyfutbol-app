@@ -41,6 +41,7 @@ import AdminMatchEditScreen from './src/screens/AdminMatchEditScreen';
 import AdminNotifyScreen from './src/screens/AdminNotifyScreen';
 import AdminEasyPassScreen from './src/screens/admineasypassscreen';
 import AdminDashboardScreen from './src/screens/AdminDashboardScreen';
+import AdminUsersScreen from './src/screens/AdminUsersScreen';
 import EasyPassScreen from './src/screens/EasyPassScreen';
 import AchievementsScreen from './src/screens/AchievementsScreen';
 import LeaguesHomeScreen from './src/screens/leagues/LeaguesHomeScreen';
@@ -526,6 +527,7 @@ function AppMenu({ currentRouteName }) {
     { label: 'Administrar Partidos (Admin)', screen: 'AdminMatches' },
     { label: 'Crear Partido (Admin)', screen: 'AdminCreateMatch' },
     { label: 'Stats Partido (Admin)', screen: 'AdminMatchStats' },
+    { label: 'Usuarios (Admin)', screen: 'AdminUsers' },
     { label: 'Avisos (Admin)', screen: 'AdminNotify' },
     { label: 'Control de EasyPass (Admin)', screen: 'AdminEasyPass' },
   ];
@@ -653,6 +655,7 @@ function AppShell({ currentRouteName }) {
         <Stack.Screen name="AdminMatchEdit" component={AdminMatchEditScreen} />
         <Stack.Screen name="AdminCreateMatch" component={AdminCreateMatchScreen} />
         <Stack.Screen name="AdminMatchStats" component={AdminMatchStatsScreen} />
+        <Stack.Screen name="AdminUsers" component={AdminUsersScreen} />
         <Stack.Screen name="AdminNotify" component={AdminNotifyScreen} />
         <Stack.Screen name="AdminEasyPass" component={AdminEasyPassScreen} />
       </Stack.Navigator>
