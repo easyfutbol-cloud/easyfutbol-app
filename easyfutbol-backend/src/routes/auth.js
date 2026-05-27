@@ -148,9 +148,6 @@ router.post('/auth/register', async (req, res) => {
       return res.status(400).json({ ok: false, msg: 'Faltan datos' });
     }
 
-    if (!preferredLocation) {
-      return res.status(400).json({ ok: false, msg: 'Selecciona Valladolid o Asturias' });
-    }
 
     // validación email básica
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) {
