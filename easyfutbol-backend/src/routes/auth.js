@@ -73,8 +73,17 @@ function isStrongPassword(pwd) {
   return /^(?=.*[A-Z])(?=.*[^A-Za-z0-9]).{6,}$/.test(String(pwd || ''));
 }
 
+
 function normalizeEmail(v) {
   return String(v || '').trim().toLowerCase();
+}
+
+function normalizePreferredLocation(v) {
+  const value = String(v || '').trim().toLowerCase();
+  if (!value) return null;
+
+  const allowed = ['valladolid', 'asturias'];
+  return allowed.includes(value) ? value : null;
 }
 
 function generateEmailOtp() {
@@ -129,11 +138,18 @@ router.post('/auth/register', async (req, res) => {
     const emailRaw = body.email || body.correo;
     const phone = body.phone || body.telefono || body.tel;
     const password = body.password;
+    const preferredLocation = normalizePreferredLocation(
+      body.preferred_location || body.preferredLocation || body.location || body.sede
+    );
 
     const email = normalizeEmail(emailRaw);
 
     if (!name || !email || !password || !phone) {
       return res.status(400).json({ ok: false, msg: 'Faltan datos' });
+    }
+
+    if (!preferredLocation) {
+      return res.status(400).json({ ok: false, msg: 'Selecciona Valladolid o Asturias' });
     }
 
     // validación email básica
@@ -163,16 +179,16 @@ router.post('/auth/register', async (req, res) => {
     let result;
     try {
       const [r] = await pool.query(
-        'INSERT INTO users (name, email, password_hash, role, phone, email_verified, email_verify_code_hash, email_verify_expires_at) VALUES (?,?,?,?,?,?,?,?)',
-        [name, email, hash, 'player', phoneDigits, 0, codeHash, expires]
+        'INSERT INTO users (name, email, password_hash, role, phone, preferred_location, email_verified, email_verify_code_hash, email_verify_expires_at) VALUES (?,?,?,?,?,?,?,?,?)',
+        [name, email, hash, 'player', phoneDigits, preferredLocation, 0, codeHash, expires]
       );
       result = r;
     } catch (e) {
       // Si no existe columna phone, reintentamos sin phone.
       if (e && e.code === 'ER_BAD_FIELD_ERROR') {
         const [r] = await pool.query(
-          'INSERT INTO users (name, email, password_hash, role, email_verified, email_verify_code_hash, email_verify_expires_at) VALUES (?,?,?,?,?,?,?)',
-          [name, email, hash, 'player', 0, codeHash, expires]
+          'INSERT INTO users (name, email, password_hash, role, preferred_location, email_verified, email_verify_code_hash, email_verify_expires_at) VALUES (?,?,?,?,?,?,?,?)',
+          [name, email, hash, 'player', preferredLocation, 0, codeHash, expires]
         );
         result = r;
       } else {

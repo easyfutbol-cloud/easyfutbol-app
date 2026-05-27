@@ -19,7 +19,7 @@ export async function login(identifier, password) {
   return data; // { ok, user, token } | { message: 'EMAIL_NOT_VERIFIED' }
 }
 
-export async function register(username, email, phone, password) {
+export async function register(username, email, phone, password, preferredLocation) {
   const payload = {
     username,
     user: username,
@@ -30,6 +30,10 @@ export async function register(username, email, phone, password) {
     telefono: phone,
     tel: phone,
     password,
+    preferred_location: preferredLocation,
+    preferredLocation,
+    location: preferredLocation,
+    sede: preferredLocation,
   };
 
   const { data } = await api.post('/auth/register', payload);

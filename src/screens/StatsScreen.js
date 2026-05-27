@@ -7,11 +7,12 @@ import { colors, spacing } from '../theme';
 import { api } from '../api/client';
 
 const ORANGE = '#ff5a00';
+const DEFAULT_PLAYER_AVATAR = 'https://easyfutbol.es/wp-content/uploads/2026/05/Diseno-sin-titulo-7.png';
 function buildAvatarUrl(rawAvatar) {
-  if (!rawAvatar) return null;
+  if (!rawAvatar) return DEFAULT_PLAYER_AVATAR;
 
   const value = String(rawAvatar).trim();
-  if (!value) return null;
+  if (!value) return DEFAULT_PLAYER_AVATAR;
 
   if (/^https?:\/\//i.test(value)) {
     return value;
@@ -107,15 +108,7 @@ export default function StatsScreen() {
       <View style={styles.row}>
         <Text style={[styles.rank, index < 3 && styles.rankMedal]}>{medal}</Text>
 
-        {avatar ? (
-          <Image source={{ uri: avatar }} style={styles.avatar} resizeMode="cover" />
-        ) : (
-          <View style={styles.avatarFallback}>
-            <Text style={styles.avatarFallbackText}>
-              {displayName.charAt(0).toUpperCase()}
-            </Text>
-          </View>
-        )}
+        <Image source={{ uri: avatar || DEFAULT_PLAYER_AVATAR }} style={styles.avatar} resizeMode="cover" />
 
         <View style={{ flex: 1 }}>
           <Text style={styles.name} numberOfLines={1}>{displayName}</Text>

@@ -7,8 +7,75 @@ import { useFocusEffect } from '@react-navigation/native';
 const MAX_TICKETS_PER_PURCHASE = 8;
 const EASY_PASS_COST = 1;
 
+
 const pitchImage = {
   uri: 'https://images.pexels.com/photos/399187/football-pitch-sport-play-399187.jpeg?auto=compress&cs=tinysrgb&w=1200',
+};
+
+const defaultPlayerAvatar = {
+  uri: 'https://easyfutbol.es/wp-content/uploads/2026/05/Diseno-sin-titulo-7.png',
+};
+
+const normalizeFieldKey = (value) =>
+  String(value || '')
+    .trim()
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '');
+
+const FIELD_CONFIGS = {
+  canterac: {
+    image: {
+      uri: 'https://easyfutbol.es/wp-content/uploads/2025/08/CANTERAC.jpeg',
+    },
+    arrivalInstructions:
+      'El acceso al campo de Canterac se realiza por la entrada principal del complejo. Recomendamos llegar 10 minutos antes para organizar equipos y camisetas.',
+  },
+  la_rondilla: {
+    image: {
+      uri: 'https://images.pexels.com/photos/399187/football-pitch-sport-play-399187.jpeg?auto=compress&cs=tinysrgb&w=1200',
+    },
+    arrivalInstructions:
+      'El partido se juega en La Rondilla. Entra por el acceso principal y busca la zona de campos de fútbol. Recomendamos llegar con unos minutos de margen.',
+  },
+  ribera_de_castilla: {
+    image: {
+      uri: 'https://easyfutbol.es/wp-content/uploads/2025/08/RIBERA-DE-CASTILLA.jpeg',
+    },
+    arrivalInstructions:
+      'El partido se juega en Ribera de Castilla. Recomendamos llegar 10 minutos antes para organizar equipos y camisetas.',
+  },
+};
+
+const getFieldConfig = (fieldName) => {
+  const key = normalizeFieldKey(fieldName);
+  if (!key) return null;
+
+  if (FIELD_CONFIGS[key]) return FIELD_CONFIGS[key];
+
+  const matchedKey = Object.keys(FIELD_CONFIGS).find(
+    (fieldKey) => key.includes(fieldKey) || fieldKey.includes(key)
+  );
+
+  return matchedKey ? FIELD_CONFIGS[matchedKey] : null;
+};
+
+const WORLD_CUP_FLAGS = {
+  spain: '🇪🇸',
+  argentina: '🇦🇷',
+  brazil: '🇧🇷',
+  ecuador: '🇪🇨',
+  dominican_republic: '🇩🇴',
+  south_korea: '🇰🇷',
+  nicaragua: '🇳🇮',
+  germany: '🇩🇪',
+};
+
+const getWorldCupFlag = (team) => {
+  if (!team) return null;
+  return WORLD_CUP_FLAGS[String(team).trim().toLowerCase()] || null;
 };
 
 export default function MatchScreen({ route, navigation }) {
@@ -54,12 +121,18 @@ export default function MatchScreen({ route, navigation }) {
         seen.add(stableId);
       }
 
+      const ticketColor = a.ticket_color || a.ticketColor || a.ticket_type || a.ticketType || 'orange';
+      const worldcupTeam = a.worldcup_team || a.worldcupTeam || null;
+
       out.push({
         key: stableId,
         id: userId,
         username,
         avatar,
         rawAvatar: a.avatar_url || a.avatarUrl || a.avatar || '',
+        ticketColor,
+        worldcupTeam,
+        flag: getWorldCupFlag(worldcupTeam),
       });
     });
 
@@ -223,7 +296,24 @@ export default function MatchScreen({ route, navigation }) {
     };
   }, [matchId, match?.attendees]);
 
-  const fieldName = match?.field_name || '';
+  const fieldName = match?.field_name || match?.field || match?.fieldName || match?.venue || match?.location || match?.campo || '';
+  const fieldConfig = getFieldConfig(fieldName);
+  
+  useEffect(() => {
+    if (match) {
+      console.log('Match field debug', {
+        field_name: match?.field_name,
+        field: match?.field,
+        fieldName: match?.fieldName,
+        venue: match?.venue,
+        location: match?.location,
+        campo: match?.campo,
+        resolvedFieldName: fieldName,
+        normalizedFieldKey: normalizeFieldKey(fieldName),
+        hasFieldConfig: !!fieldConfig,
+      });
+    }
+  }, [match, fieldName, fieldConfig]);
   const city = match?.city || '';
   const easyPassCost = match?.easypass_cost ?? EASY_PASS_COST;
   const hasAftergame =
@@ -261,6 +351,7 @@ export default function MatchScreen({ route, navigation }) {
   const handleGoToRegister = () => {
     navigation?.navigate('Access');
   };
+
 
   const totalEasyPassCost = quantity * easyPassCost;
   const canJoinWithEasyPass = easyPassBalance >= totalEasyPassCost;
@@ -417,7 +508,7 @@ export default function MatchScreen({ route, navigation }) {
 
       <View style={styles.heroCard}>
         <ImageBackground
-          source={pitchImage}
+          source={fieldConfig?.image || pitchImage}
           style={styles.heroBg}
           imageStyle={styles.heroImage}
         >
@@ -432,6 +523,7 @@ export default function MatchScreen({ route, navigation }) {
                 {[fieldName, city].filter(Boolean).join(' · ')}
               </Text>
             )}
+
           </View>
         </ImageBackground>
       </View>
@@ -463,7 +555,8 @@ export default function MatchScreen({ route, navigation }) {
         </View>
       )}
 
-      <Text style={styles.label}>Jugadores apuntados</Text>
+      <View style={styles.attendeesSectionCard}>
+        <Text style={styles.attendeesSectionTitle}>Jugadores apuntados</Text>
 
       {attendeesLoading ? (
         <View style={styles.attendeesLoadingRow}>
@@ -480,22 +573,49 @@ export default function MatchScreen({ route, navigation }) {
         >
           {attendeesNormalized.map((p) => (
             <View key={p.key} style={styles.attendeeCard}>
-              <View style={styles.attendeeAvatarWrap}>
-                {p.avatar ? (
-                  <Image
-                    source={{ uri: p.avatar }}
-                    style={styles.attendeeAvatar}
-                    onError={(e) => {
-                      console.log('Error cargando avatar', {
-                        username: p.username,
-                        rawAvatar: p.rawAvatar,
-                        resolvedAvatar: p.avatar,
-                        error: e?.nativeEvent,
-                      });
-                    }}
-                  />
+              <View style={styles.attendeeAvatarOuter}>
+                {p.ticketColor === 'mixed' ? (
+                  <View style={styles.attendeeAvatarMixedBorder}>
+                    <View style={styles.attendeeAvatarMixedHalfWhite} />
+                    <View style={styles.attendeeAvatarMixedHalfBlack} />
+                  </View>
                 ) : (
-                  <View style={styles.attendeeAvatarFallback} />
+                  <View
+                    style={[
+                      styles.attendeeAvatarColorBorder,
+                      p.ticketColor === 'white' && styles.attendeeAvatarBorderWhite,
+                      p.ticketColor === 'black' && styles.attendeeAvatarBorderBlack,
+                      p.ticketColor !== 'white' && p.ticketColor !== 'black' && styles.attendeeAvatarBorderOrange,
+                    ]}
+                  />
+                )}
+
+                <View style={styles.attendeeAvatarWrap}>
+                  {p.avatar ? (
+                    <Image
+                      source={{ uri: p.avatar }}
+                      style={styles.attendeeAvatar}
+                      onError={(e) => {
+                        console.log('Error cargando avatar', {
+                          username: p.username,
+                          rawAvatar: p.rawAvatar,
+                          resolvedAvatar: p.avatar,
+                          error: e?.nativeEvent,
+                        });
+                      }}
+                    />
+                  ) : (
+                    <Image
+                      source={defaultPlayerAvatar}
+                      style={styles.attendeeAvatar}
+                    />
+                  )}
+                </View>
+
+                {!!p.flag && (
+                  <View style={styles.attendeeFlagBadge}>
+                    <Text style={styles.attendeeFlagText}>{p.flag}</Text>
+                  </View>
                 )}
               </View>
               <Text style={styles.attendeeName} numberOfLines={1}>
@@ -505,7 +625,7 @@ export default function MatchScreen({ route, navigation }) {
           ))}
         </ScrollView>
       )}
-
+      </View>
       {isGuest ? (
         <View style={styles.loginPromptCard}>
           <Text style={styles.loginPromptTitle}>Inicia sesión para poder apuntarte</Text>
@@ -707,7 +827,7 @@ const styles = StyleSheet.create({
     marginBottom: spacing(2),
   },
   heroBg: {
-    height: 140,
+    height: 180,
     justifyContent: 'flex-end',
   },
   heroImage: {
@@ -947,6 +1067,23 @@ const styles = StyleSheet.create({
   loading:{ color:colors.gray, textAlign:'center', marginTop:spacing(4) },
   btn:{ backgroundColor:colors.orange, paddingVertical:spacing(1.5), borderRadius:12, alignItems:'center', marginTop:spacing(3) },
   btnText:{ color:colors.black, fontWeight:'800', fontSize:16 },
+  attendeesSectionCard: {
+  marginTop: spacing(2),
+  marginBottom: spacing(1.5),
+  paddingTop: spacing(1.5),
+  paddingBottom: spacing(1),
+  paddingLeft: spacing(1.5),
+  borderRadius: 18,
+  backgroundColor: '#181818',
+  borderWidth: 1,
+  borderColor: '#2f2f2f',
+},
+attendeesSectionTitle: {
+  color: colors.white,
+  fontWeight: '800',
+  fontSize: 16,
+  marginBottom: spacing(1.2),
+},
   attendeesLoadingRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -958,33 +1095,85 @@ const styles = StyleSheet.create({
     fontSize: 13,
   },
   attendeesRow: {
-    paddingBottom: spacing(1.5),
+    paddingRight: spacing(1.5),
+    paddingBottom: spacing(0.5),
   },
   attendeeCard: {
     width: 86,
     alignItems: 'center',
     marginRight: spacing(1),
   },
-  attendeeAvatarWrap: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    borderWidth: 2,
+  attendeeAvatarOuter: {
+    width: 62,
+    height: 62,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: spacing(0.6),
+    position: 'relative',
+  },
+  attendeeAvatarColorBorder: {
+    position: 'absolute',
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    borderWidth: 3,
+    backgroundColor: 'transparent',
+  },
+  attendeeAvatarBorderWhite: {
+    borderColor: '#ffffff',
+  },
+  attendeeAvatarBorderBlack: {
+    backgroundColor: '#000000',
+  },
+  attendeeAvatarBorderOrange: {
     borderColor: colors.orange,
+  },
+  attendeeAvatarMixedBorder: {
+    position: 'absolute',
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    overflow: 'hidden',
+    flexDirection: 'row',
+    borderWidth: 1,
+    borderColor: '#555',
+  },
+  attendeeAvatarMixedHalfWhite: {
+    flex: 1,
+    backgroundColor: '#ffffff',
+  },
+  attendeeAvatarMixedHalfBlack: {
+    flex: 1,
+    backgroundColor: '#000000',
+  },
+  attendeeAvatarWrap: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
     backgroundColor: '#111',
     alignItems: 'center',
     justifyContent: 'center',
     overflow: 'hidden',
-    marginBottom: spacing(0.6),
   },
   attendeeAvatar: {
-    width: 56,
-    height: 56,
+    width: 52,
+    height: 52,
   },
-  attendeeAvatarFallback: {
-    width: 56,
-    height: 56,
-    backgroundColor: '#1b1b1b',
+  attendeeFlagBadge: {
+    position: 'absolute',
+    right: 0,
+    bottom: 3,
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: '#050505',
+    borderWidth: 1,
+    borderColor: '#ffffff',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  attendeeFlagText: {
+    fontSize: 13,
   },
   attendeeName: {
     color: colors.white,

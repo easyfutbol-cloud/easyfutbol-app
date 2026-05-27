@@ -59,6 +59,7 @@ export default function AccessScreen({ navigation, route }) {
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [acceptedTerms, setAcceptedTerms] = useState(false);
   const [isAdult, setIsAdult] = useState(false);
+  const [preferredLocation, setPreferredLocation] = useState('');
 
   // baseURL del backend (api/client). Si termina en /api, lo normalizamos para no duplicar rutas.
   const BASE = (api?.defaults?.baseURL || '')
@@ -317,6 +318,7 @@ export default function AccessScreen({ navigation, route }) {
       if (!isValidEmail(em)) throw new Error('Introduce un correo electrónico válido.');
       if (!ph) throw new Error('Introduce un teléfono.');
       if (!isValidPhone(ph)) throw new Error('Introduce un teléfono válido (9-15 dígitos).');
+      if (!preferredLocation) throw new Error('Selecciona dónde quieres jugar principalmente.');
       if (!isStrongPassword(pass)) {
         throw new Error('La contraseña debe tener mínimo 6 caracteres, 1 mayúscula y 1 símbolo.');
       }
@@ -344,6 +346,10 @@ export default function AccessScreen({ navigation, route }) {
           telefono: ph,
           tel: ph,
           password: pass,
+          preferred_location: preferredLocation,
+          preferredLocation,
+          location: preferredLocation,
+          sede: preferredLocation,
         }
       );
 
@@ -531,6 +537,47 @@ export default function AccessScreen({ navigation, route }) {
                   editable={!loading}
                 />
 
+                <Text style={[styles.subtitle, { marginTop: 10 }]}>¿Dónde quieres jugar principalmente?</Text>
+                <View style={styles.locationSelector}>
+                  <TouchableOpacity
+                    style={[
+                      styles.locationOption,
+                      preferredLocation === 'valladolid' && styles.locationOptionActive,
+                    ]}
+                    onPress={() => setPreferredLocation('valladolid')}
+                    disabled={loading}
+                    activeOpacity={0.85}
+                  >
+                    <Text
+                      style={[
+                        styles.locationOptionText,
+                        preferredLocation === 'valladolid' && styles.locationOptionTextActive,
+                      ]}
+                    >
+                      Valladolid
+                    </Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={[
+                      styles.locationOption,
+                      preferredLocation === 'asturias' && styles.locationOptionActive,
+                    ]}
+                    onPress={() => setPreferredLocation('asturias')}
+                    disabled={loading}
+                    activeOpacity={0.85}
+                  >
+                    <Text
+                      style={[
+                        styles.locationOptionText,
+                        preferredLocation === 'asturias' && styles.locationOptionTextActive,
+                      ]}
+                    >
+                      Asturias
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+
                 <Text style={[styles.subtitle, { marginTop: 10 }]}>Contraseña</Text>
                 <View style={styles.passwordRow}>
                   <TextInput
@@ -669,6 +716,31 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     paddingHorizontal: 14,
     color: '#fff',
+  },
+  locationSelector: {
+    flexDirection: 'row',
+    gap: 10,
+    width: '100%',
+  },
+  locationOption: {
+    flex: 1,
+    backgroundColor: '#111',
+    borderRadius: 12,
+    paddingVertical: 13,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#222',
+  },
+  locationOptionActive: {
+    backgroundColor: '#ff5a00',
+    borderColor: '#ff5a00',
+  },
+  locationOptionText: {
+    color: '#ddd',
+    fontWeight: '900',
+  },
+  locationOptionTextActive: {
+    color: '#000',
   },
 
   passwordRow: {

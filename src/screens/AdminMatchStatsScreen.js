@@ -4,15 +4,40 @@ import {
   Text,
   StyleSheet,
   FlatList,
-  TextInput,
-  TouchableOpacity,
   ActivityIndicator,
-  Alert,
   StatusBar,
 } from 'react-native';
 import { Picker } from '@react-native-picker/picker';
 import { colors, spacing } from '../theme';
+
 import { api } from '../api/client';
+
+const getTicketLabel = (player) => {
+  const rawValue =
+    player?.ticket_type ??
+    player?.ticketType ??
+    player?.ticket_color ??
+    player?.ticketColor ??
+    player?.shirt_color ??
+    player?.shirtColor ??
+    player?.color ??
+    player?.team_color ??
+    player?.teamColor ??
+    '';
+
+  const value = String(rawValue || '').trim().toLowerCase();
+
+  if (value === 'white' || value === 'blanca' || value === 'blanco') return 'Blanca';
+  if (value === 'black' || value === 'negra' || value === 'negro') return 'Negra';
+
+  const whiteTickets = Number(player?.white_tickets ?? player?.whiteTickets ?? 0) || 0;
+  const blackTickets = Number(player?.black_tickets ?? player?.blackTickets ?? 0) || 0;
+
+  if (whiteTickets > 0 && blackTickets === 0) return 'Blanca';
+  if (blackTickets > 0 && whiteTickets === 0) return 'Negra';
+
+  return 'Sin color';
+};
 
 export default function AdminMatchStatsScreen({ route }) {
   const initialMatchId =
@@ -26,24 +51,6 @@ export default function AdminMatchStatsScreen({ route }) {
 
   const [players, setPlayers] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [savingId, setSavingId] = useState(null);
-
-  const userOptions = useMemo(() => {
-    const seen = new Map();
-
-    players.forEach((p) => {
-      const userId = p.user_id ?? p.assigned_user_id ?? null;
-      if (!userId) return;
-      if (!seen.has(String(userId))) {
-        seen.set(String(userId), {
-          value: String(userId),
-          label: p.name ? `${p.name}${p.email ? ` · ${p.email}` : ''}` : `Usuario #${userId}`,
-        });
-      }
-    });
-
-    return Array.from(seen.values());
-  }, [players]);
 
   const loadMatches = async () => {
     setMatchesLoading(true);
@@ -83,15 +90,13 @@ export default function AdminMatchStatsScreen({ route }) {
 
     setLoading(true);
     try {
-      const { data } = await api.get(`/admin/matches/${selectedMatchId}/stats`);
-      const raw = data?.data || [];
+      const { data } = await api.get(`/matches/${selectedMatchId}/attendees`);
+      const raw = data?.data?.attendees || data?.attendees || data?.data || [];
       const normalized = raw.map((p, index) => ({
         ...p,
-        local_row_id: String(p.inscription_id ?? p.id ?? index),
-        goals: String(p.goals ?? 0),
-        assists: String(p.assists ?? 0),
-        is_mvp: !!p.is_mvp,
-        assigned_user_id: p.assigned_user_id ?? p.user_id ?? '',
+        name: p.username || p.name || p.buyer_name || 'Entrada sin nombre',
+        email: p.email || p.buyer_email || '',
+        local_row_id: String(p.inscription_id ?? p.id ?? `${p.user_id ?? 'user'}-${index}`),
       }));
       setPlayers(normalized);
     } catch (e) {
@@ -109,117 +114,36 @@ export default function AdminMatchStatsScreen({ route }) {
     load();
   }, [selectedMatchId]);
 
-  const updateStat = (inscriptionId, field, value) => {
-    setPlayers((prev) =>
-      prev.map((p) =>
-        p.inscription_id === inscriptionId ? { ...p, [field]: value } : p
-      )
-    );
-  };
-
-  const toggleMvp = (inscriptionId) => {
-    setPlayers((prev) => {
-      const current = prev.find((p) => p.inscription_id === inscriptionId);
-      const nextIsMvp = !current?.is_mvp;
-
-      return prev.map((p) => ({
-        ...p,
-        is_mvp: p.inscription_id === inscriptionId ? nextIsMvp : false,
-      }));
-    });
-  };
-
-  const save = async (p) => {
-    setSavingId(p.inscription_id);
-    try {
-      const payload = {
-        goals: Number(p.goals) || 0,
-        assists: Number(p.assists) || 0,
-        is_mvp: !!p.is_mvp,
-        assigned_user_id: p.assigned_user_id ? Number(p.assigned_user_id) : null,
-      };
-
-      const { data } = await api.patch(
-        `/admin/inscriptions/${p.inscription_id}/stats`,
-        payload
-      );
-
-      if (!data?.ok) throw new Error(data?.msg || 'Error guardando');
-      Alert.alert('Hecho', `Stats actualizadas de ${p.name || 'la entrada'}`);
-      load();
-    } catch (e) {
-      Alert.alert('Error', e.message || 'No se pudo guardar');
-    } finally {
-      setSavingId(null);
-    }
-  };
-
   const renderItem = ({ item, index }) => {
-    const saving = savingId === item.inscription_id;
+    const playerId = item.user_id ?? item.assigned_user_id ?? null;
+    const profileName = item.name || item.username || item.user_login || 'Entrada sin nombre';
+    const ticketLabel = getTicketLabel(item);
 
     return (
       <View style={styles.row}>
-        <Text style={styles.entryTitle}>Entrada {index + 1}</Text>
-
-        <View style={styles.userBlock}>
-          <Text style={styles.label}>Jugador asignado</Text>
-          <View style={styles.pickerWrap}>
-            <Picker
-              selectedValue={item.assigned_user_id || ''}
-              onValueChange={(value) => updateStat(item.inscription_id, 'assigned_user_id', value)}
-              dropdownIconColor={colors.white}
-              style={styles.picker}
-            >
-              <Picker.Item label="Sin asignar" value="" />
-              {userOptions.map((option) => (
-                <Picker.Item key={option.value} label={option.label} value={option.value} />
-              ))}
-            </Picker>
-          </View>
+        <View style={styles.entryHeader}>
+          <Text style={styles.entryTitle}>Entrada {index + 1}</Text>
+          <Text
+            style={[
+              styles.ticketBadge,
+              ticketLabel === 'Blanca' && styles.ticketBadgeWhite,
+              ticketLabel === 'Negra' && styles.ticketBadgeBlack,
+            ]}
+          >
+            {ticketLabel}
+          </Text>
         </View>
 
         <View style={styles.identityBlock}>
-          <Text style={styles.name}>{item.name || 'Entrada sin nombre'}</Text>
+          <Text style={styles.name}>{profileName}</Text>
+          <Text style={styles.playerMeta}>ID jugador: {playerId ?? 'Sin asignar'}</Text>
           {!!item.email && <Text style={styles.email}>{item.email}</Text>}
         </View>
 
-        <View style={styles.statsRow}>
-          <View style={styles.statBox}>
-            <Text style={styles.label}>Goles</Text>
-            <TextInput
-              style={styles.input}
-              keyboardType="numeric"
-              value={String(item.goals ?? 0)}
-              onChangeText={(t) => updateStat(item.inscription_id, 'goals', t)}
-            />
-          </View>
-
-          <View style={styles.statBox}>
-            <Text style={styles.label}>Asist.</Text>
-            <TextInput
-              style={styles.input}
-              keyboardType="numeric"
-              value={String(item.assists ?? 0)}
-              onChangeText={(t) => updateStat(item.inscription_id, 'assists', t)}
-            />
-          </View>
-
-          <TouchableOpacity
-            style={[styles.mvpBtn, item.is_mvp && styles.mvpBtnActive]}
-            onPress={() => toggleMvp(item.inscription_id)}
-            disabled={!!savingId}
-          >
-            <Text style={[styles.mvpText, item.is_mvp && styles.mvpTextActive]}>MVP</Text>
-          </TouchableOpacity>
+        <View style={styles.readOnlyStatsRow}>
+          <Text style={styles.readOnlyStat}>Inscripción: {item.inscription_id ?? '-'}</Text>
+          <Text style={styles.readOnlyStat}>Color: {ticketLabel}</Text>
         </View>
-
-        <TouchableOpacity
-          style={[styles.btn, saving && styles.btnDisabled]}
-          onPress={() => save(item)}
-          disabled={!!savingId}
-        >
-          {saving ? <ActivityIndicator color="#000" /> : <Text style={styles.btnText}>Guardar</Text>}
-        </TouchableOpacity>
       </View>
     );
   };
@@ -314,13 +238,36 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#222',
   },
+  entryHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 10,
+    marginBottom: 8,
+  },
   entryTitle: {
     color: colors.orange,
     fontWeight: '800',
-    marginBottom: 8,
   },
-  userBlock: {
-    marginBottom: 10,
+  ticketBadge: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 999,
+    backgroundColor: '#222',
+    color: '#aaa',
+    fontSize: 11,
+    fontWeight: '900',
+    overflow: 'hidden',
+  },
+  ticketBadgeWhite: {
+    backgroundColor: '#fff',
+    color: '#000',
+  },
+  ticketBadgeBlack: {
+    backgroundColor: '#000',
+    color: '#fff',
+    borderWidth: 1,
+    borderColor: '#444',
   },
   identityBlock: {
     marginBottom: 12,
@@ -330,76 +277,40 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     fontSize: 16,
   },
+  playerMeta: {
+    color: colors.orange,
+    fontSize: 12,
+    fontWeight: '800',
+    marginTop: 4,
+  },
   email: {
     color: '#aaa',
     fontSize: 12,
     marginTop: 2,
   },
-  label: {
-    color: '#bbb',
-    fontSize: 12,
-    fontWeight: '700',
-    marginBottom: 6,
-  },
-  pickerWrap: {
-    backgroundColor: '#1b1b1b',
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: '#333',
-    overflow: 'hidden',
-  },
-  picker: {
-    color: colors.white,
-  },
-  statsRow: {
+  readOnlyStatsRow: {
     flexDirection: 'row',
-    alignItems: 'flex-end',
-    gap: 8,
-    marginBottom: 12,
-  },
-  statBox: {
-    flex: 1,
-  },
-  input: {
-    backgroundColor: '#222',
-    color: '#fff',
-    height: 42,
-    borderRadius: 10,
-    textAlign: 'center',
-    fontWeight: '700',
-  },
-  btn: {
-    backgroundColor: colors.orange,
-    paddingHorizontal: 12,
-    paddingVertical: 12,
-    borderRadius: 10,
     alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginTop: 8,
   },
-  btnDisabled: {
-    opacity: 0.7,
-  },
-  btnText: {
-    color: '#000',
-    fontWeight: '800',
-  },
-  mvpBtn: {
-    backgroundColor: '#222',
-    paddingHorizontal: 14,
-    paddingVertical: 11,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: '#555',
-  },
-  mvpBtnActive: {
-    backgroundColor: colors.orange,
-    borderColor: colors.orange,
-  },
-  mvpText: {
-    color: '#ccc',
-    fontWeight: '700',
+  readOnlyStat: {
+    color: '#ddd',
     fontSize: 12,
+    fontWeight: '800',
+    backgroundColor: '#1f1f1f',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 999,
   },
-  mvpTextActive: {
+  mvpReadOnly: {
     color: '#000',
+    fontSize: 12,
+    fontWeight: '900',
+    backgroundColor: colors.orange,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 999,
   },
 });

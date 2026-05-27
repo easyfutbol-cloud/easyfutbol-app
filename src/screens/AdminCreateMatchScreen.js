@@ -33,6 +33,7 @@ const getLocationSlugFromCity = (cityName = '') => {
   return 'valladolid';
 };
 
+
 const getBackendDateTimeFromLocal = (dateValue, timeValue) => {
   const localMatchDate = new Date(
     dateValue.getFullYear(),
@@ -49,6 +50,28 @@ const getBackendDateTimeFromLocal = (dateValue, timeValue) => {
     backendDate: iso.slice(0, 10),
     backendTime: iso.slice(11, 16),
   };
+};
+
+const getAutoMatchTitle = (dateValue, fieldDisplayName) => {
+  const cleanField = String(fieldDisplayName || '').trim();
+  if (!dateValue || !cleanField) return '';
+
+  const months = [
+    'enero',
+    'febrero',
+    'marzo',
+    'abril',
+    'mayo',
+    'junio',
+    'julio',
+    'agosto',
+    'septiembre',
+    'octubre',
+    'noviembre',
+    'diciembre',
+  ];
+
+  return `${dateValue.getDate()} de ${months[dateValue.getMonth()]} - ${cleanField}`;
 };
 
 export default function AdminCreateMatchScreen() {
@@ -165,12 +188,28 @@ export default function AdminCreateMatchScreen() {
 
   const backendDateTime = useMemo(() => getBackendDateTimeFromLocal(date, time), [date, time]);
 
+  const selectedField = useMemo(
+    () => fields.find((item) => String(item.id) === String(fieldId)),
+    [fields, fieldId]
+  );
+
+  const resolvedFieldName = selectedField?.name || fieldName.trim();
+
+  const autoMatchTitle = useMemo(
+    () => getAutoMatchTitle(date, resolvedFieldName),
+    [date, resolvedFieldName]
+  );
+
+  useEffect(() => {
+    setTitle(autoMatchTitle);
+  }, [autoMatchTitle]);
+
   const create = async () => {
     try {
-      const cleanTitle = title.trim();
       const cleanFieldName = fieldName.trim();
+      const cleanTitle = autoMatchTitle.trim();
 
-      if (!cleanTitle) return Alert.alert('Falta título');
+      if (!cleanTitle) return Alert.alert('Falta título', 'Selecciona la fecha y el campo para generar el título automáticamente.');
       if (!city) return Alert.alert('Selecciona ciudad');
       if (!fieldId && !cleanFieldName) return Alert.alert('Selecciona o escribe un campo');
 
@@ -256,14 +295,12 @@ export default function AdminCreateMatchScreen() {
         <StatusBar barStyle="light-content" />
         <Text style={styles.title}>Crear Partido</Text>
 
-        <Text style={styles.label}>Título</Text>
-        <TextInput
-          style={styles.input}
-          placeholder="Miércoles Noche"
-          placeholderTextColor="#777"
-          value={title}
-          onChangeText={setTitle}
-        />
+        <Text style={styles.label}>Título automático</Text>
+        <View style={styles.autoTitleBox}>
+          <Text style={autoMatchTitle ? styles.autoTitleText : styles.autoTitlePlaceholder}>
+            {autoMatchTitle || 'Selecciona fecha y campo para generar el título'}
+          </Text>
+        </View>
 
         <Text style={styles.label}>Ciudad</Text>
         <Picker
@@ -403,7 +440,7 @@ export default function AdminCreateMatchScreen() {
         <TouchableOpacity
           style={styles.btn}
           onPress={create}
-          disabled={creating || !city || !(fieldId || fieldName) || !title}
+          disabled={creating || !city || !(fieldId || fieldName) || !autoMatchTitle}
         >
           {creating ? <ActivityIndicator /> : <Text style={styles.btnText}>Crear partido</Text>}
         </TouchableOpacity>
@@ -418,6 +455,9 @@ const styles = StyleSheet.create({
   title:{ color:colors.white, fontSize:22, fontWeight:'800', marginBottom:spacing(2), textAlign:'center' },
   label:{ color:'#ddd', fontWeight:'700', marginTop:spacing(1), marginBottom:4 },
   input:{ backgroundColor:'#111', borderWidth:1, borderColor:'#222', color:'#fff', padding:spacing(1.2), borderRadius:10 },
+  autoTitleBox:{ backgroundColor:'#141414', borderWidth:1, borderColor:'rgba(255,90,0,0.35)', padding:spacing(1.2), borderRadius:10 },
+  autoTitleText:{ color:'#fff', fontWeight:'900', fontSize:15 },
+  autoTitlePlaceholder:{ color:'#777', fontWeight:'700', fontSize:14 },
   picker:{ color:'#fff', backgroundColor:'#111', borderRadius:8 },
   fixedInfoBox:{ backgroundColor:'#111', borderWidth:1, borderColor:'#222', padding:spacing(1.2), borderRadius:10 },
   fixedInfoText:{ color:'#fff', fontWeight:'700' },
