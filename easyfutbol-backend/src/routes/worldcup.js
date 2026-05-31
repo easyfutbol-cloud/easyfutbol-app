@@ -18,14 +18,32 @@ const POINTS = {
 function normalizeWorldCupTeam(value) {
   let rawValue = value;
 
+  if (typeof rawValue === 'string') {
+    const trimmedValue = rawValue.trim();
+    if (trimmedValue.startsWith('{') && trimmedValue.endsWith('}')) {
+      try {
+        rawValue = JSON.parse(trimmedValue);
+      } catch (_e) {
+        rawValue = trimmedValue;
+      }
+    }
+  }
+
   if (rawValue && typeof rawValue === 'object') {
     rawValue =
       rawValue.id ||
       rawValue.key ||
       rawValue.value ||
       rawValue.slug ||
+      rawValue.code ||
+      rawValue.country_code ||
+      rawValue.countryCode ||
+      rawValue.team_id ||
+      rawValue.teamId ||
       rawValue.team ||
       rawValue.name ||
+      rawValue.label ||
+      rawValue.title ||
       '';
   }
 
@@ -187,21 +205,34 @@ router.post('/select-team', requireAuth, async (req, res) => {
       body.worldcupTeam ||
       body.selected_team ||
       body.selectedTeam ||
+      body.selected_country ||
+      body.selectedCountry ||
       body.country ||
       body.country_id ||
       body.countryId ||
+      body.country_code ||
+      body.countryCode ||
+      body.team_id ||
+      body.teamId ||
+      body.code ||
       body.value ||
       body.id ||
       body.key ||
-      body.slug;
+      body.slug ||
+      body.name ||
+      body.label ||
+      body.title ||
+      body;
 
     const cleanTeam = normalizeWorldCupTeam(rawTeam);
 
     if (!cleanTeam) {
+      console.log('WorldCup select-team body inválido:', body);
       return res.status(400).json({ message: 'Debes elegir una selección válida' });
     }
 
     if (cleanTeam.length < 2 || cleanTeam.length > 50) {
+      console.log('WorldCup select-team selección inválida:', { body, cleanTeam });
       return res.status(400).json({ message: 'La selección elegida no es válida' });
     }
 
