@@ -192,9 +192,18 @@ router.get('/me', requireAuth, async (req, res) => {
 // Permite al usuario elegir selección una sola vez
 router.post('/select-team', requireAuth, async (req, res) => {
   try {
+    console.log('WORLD CUP SELECT TEAM - REQUEST', {
+      user: req.user,
+      body: req.body,
+      headers: {
+        authorization: req.headers?.authorization ? 'present' : 'missing',
+        contentType: req.headers?.['content-type'],
+      },
+    });
     const userId = req.user?.id || req.user?.userId;
 
     if (!userId) {
+      console.log('WORLD CUP SELECT TEAM - ERROR 401: userId missing', { user: req.user });
       return res.status(401).json({ message: 'Usuario no autenticado' });
     }
 
@@ -226,6 +235,12 @@ router.post('/select-team', requireAuth, async (req, res) => {
 
     const cleanTeam = normalizeWorldCupTeam(rawTeam);
 
+    console.log('WORLD CUP SELECT TEAM - NORMALIZED', {
+      rawTeam,
+      cleanTeam,
+      bodyKeys: Object.keys(body || {}),
+    });
+
     if (!cleanTeam) {
       console.log('WorldCup select-team body inválido:', body);
       return res.status(400).json({ message: 'Debes elegir una selección válida' });
@@ -247,10 +262,12 @@ router.post('/select-team', requireAuth, async (req, res) => {
     );
 
     if (!users.length) {
+      console.log('WORLD CUP SELECT TEAM - ERROR 404: user not found', { userId });
       return res.status(404).json({ message: 'Usuario no encontrado' });
     }
 
     if (users[0].worldcup_team) {
+      console.log('WORLD CUP SELECT TEAM - ERROR 409: already selected', { userId, currentTeam: users[0].worldcup_team, attemptedTeam: cleanTeam });
       return res.status(409).json({ message: 'Ya has elegido una selección y no puedes cambiarla' });
     }
 
@@ -263,12 +280,23 @@ router.post('/select-team', requireAuth, async (req, res) => {
       [cleanTeam, userId]
     );
 
+    console.log('WORLD CUP SELECT TEAM - SUCCESS', {
+      userId,
+      team: cleanTeam,
+    });
+
     return res.json({
       message: 'Selección elegida correctamente',
       team: cleanTeam,
     });
   } catch (error) {
-    console.error('Error eligiendo selección del Mundial:', error);
+    console.error('WORLD CUP SELECT TEAM - ERROR 500:', {
+      message: error?.message,
+      code: error?.code,
+      stack: error?.stack,
+      body: req.body,
+      user: req.user,
+    });
     return res.status(500).json({ message: 'Error eligiendo selección del Mundial' });
   }
 });
