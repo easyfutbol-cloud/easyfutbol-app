@@ -7,12 +7,38 @@ const router = express.Router();
 const WORLD_CUP_START = '2026-06-09 00:00:00';
 const WORLD_CUP_END = '2026-07-20 00:00:00';
 
+
 const POINTS = {
   goal: 1,
   assist: 1,
   mvp: 3,
   win: 2,
 };
+
+function normalizeWorldCupTeam(value) {
+  let rawValue = value;
+
+  if (rawValue && typeof rawValue === 'object') {
+    rawValue =
+      rawValue.id ||
+      rawValue.key ||
+      rawValue.value ||
+      rawValue.slug ||
+      rawValue.team ||
+      rawValue.name ||
+      '';
+  }
+
+  const cleanValue = String(rawValue || '')
+    .trim()
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '');
+
+  return cleanValue;
+}
 
 // GET /api/worldcup/ranking
 // Ranking general por selecciones + ranking individual
@@ -154,13 +180,26 @@ router.post('/select-team', requireAuth, async (req, res) => {
       return res.status(401).json({ message: 'Usuario no autenticado' });
     }
 
-    const { team } = req.body || {};
+    const body = req.body || {};
+    const rawTeam =
+      body.team ||
+      body.worldcup_team ||
+      body.worldcupTeam ||
+      body.selected_team ||
+      body.selectedTeam ||
+      body.country ||
+      body.country_id ||
+      body.countryId ||
+      body.value ||
+      body.id ||
+      body.key ||
+      body.slug;
 
-    if (!team || typeof team !== 'string') {
+    const cleanTeam = normalizeWorldCupTeam(rawTeam);
+
+    if (!cleanTeam) {
       return res.status(400).json({ message: 'Debes elegir una selección válida' });
     }
-
-    const cleanTeam = team.trim().toLowerCase();
 
     if (cleanTeam.length < 2 || cleanTeam.length > 50) {
       return res.status(400).json({ message: 'La selección elegida no es válida' });
