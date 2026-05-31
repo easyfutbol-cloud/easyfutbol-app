@@ -4,7 +4,7 @@ import { requireAuth } from '../middlewares/auth.js';
 
 const router = express.Router();
 
-const WORLD_CUP_START = '2026-06-09 00:00:00';
+const WORLD_CUP_START = '2026-06-01 00:00:00';
 const WORLD_CUP_END = '2026-07-20 00:00:00';
 
 
