@@ -66,7 +66,8 @@ router.get('/ranking', async (_req, res) => {
       `
       SELECT
         team_data.team,
-        team_data.players,
+        team_data.total_players,
+        COALESCE(stats_data.active_players, 0) AS players,
         COALESCE(stats_data.matches_registered, 0) AS matches_registered,
         COALESCE(stats_data.goals, 0) AS goals,
         COALESCE(stats_data.assists, 0) AS assists,
@@ -81,13 +82,13 @@ router.get('/ranking', async (_req, res) => {
           (
             COALESCE(stats_data.stats_points, 0) +
             COALESCE(bonus_data.bonus_points, 0)
-          ) / team_data.players,
+          ) / NULLIF(COALESCE(stats_data.active_players, 0), 0),
           2
         ) AS average_points
       FROM (
         SELECT
           worldcup_team AS team,
-          COUNT(DISTINCT id) AS players
+          COUNT(DISTINCT id) AS total_players
         FROM users
         WHERE worldcup_team IS NOT NULL
         GROUP BY worldcup_team
@@ -95,6 +96,7 @@ router.get('/ranking', async (_req, res) => {
       LEFT JOIN (
         SELECT
           u.worldcup_team AS team,
+          COUNT(DISTINCT mps.user_id) AS active_players,
           COUNT(DISTINCT mps.match_id) AS matches_registered,
           COALESCE(SUM(mps.goals), 0) AS goals,
           COALESCE(SUM(mps.assists), 0) AS assists,
@@ -124,7 +126,7 @@ router.get('/ranking', async (_req, res) => {
           AND wbp.created_at < ?
         GROUP BY u.worldcup_team
       ) bonus_data ON bonus_data.team = team_data.team
-      ORDER BY average_points DESC, total_points DESC
+      ORDER BY COALESCE(average_points, 0) DESC, total_points DESC
       `,
       [
         POINTS.goal,
