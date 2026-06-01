@@ -1,9 +1,8 @@
-
-
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
+  Linking,
   RefreshControl,
   SafeAreaView,
   StyleSheet,
@@ -35,6 +34,16 @@ const getLocationBadgeStyle = (location) => {
   if (value === 'valladolid') return styles.locationBadgeValladolid;
   if (value === 'asturias') return styles.locationBadgeAsturias;
   return styles.locationBadgeUndefined;
+};
+
+const normalizePhoneForWhatsApp = (phone) => {
+  const digits = String(phone || '').replace(/\D/g, '');
+  if (!digits) return '';
+
+  if (digits.startsWith('34') && digits.length >= 11) return digits;
+  if (digits.length === 9) return `34${digits}`;
+
+  return digits;
 };
 
 export default function AdminUsersScreen() {
@@ -98,9 +107,22 @@ export default function AdminUsersScreen() {
     return { total, valladolid, asturias, undefinedUsers };
   }, [users]);
 
+  const openWhatsApp = async (phone) => {
+    const normalizedPhone = normalizePhoneForWhatsApp(phone);
+    if (!normalizedPhone) return;
+
+    const url = `https://wa.me/${normalizedPhone}`;
+    try {
+      await Linking.openURL(url);
+    } catch (e) {
+      console.log('No se pudo abrir WhatsApp', e?.message || e);
+    }
+  };
+
   const renderUser = ({ item }) => {
     const location = item.preferred_location || item.preferredLocation || null;
     const locationLabel = getLocationLabel(location);
+    const hasPhone = !!normalizePhoneForWhatsApp(item.phone);
 
     return (
       <View style={styles.card}>
@@ -122,6 +144,17 @@ export default function AdminUsersScreen() {
           <Text style={styles.infoLabel}>Email</Text>
           <Text style={styles.infoValue} numberOfLines={1}>{item.email || 'Sin email'}</Text>
         </View>
+
+        <TouchableOpacity
+          style={[styles.whatsappButton, !hasPhone && styles.whatsappButtonDisabled]}
+          onPress={() => openWhatsApp(item.phone)}
+          disabled={!hasPhone}
+          activeOpacity={0.85}
+        >
+          <Text style={[styles.whatsappButtonText, !hasPhone && styles.whatsappButtonTextDisabled]}>
+            Abrir WhatsApp
+          </Text>
+        </TouchableOpacity>
       </View>
     );
   };
@@ -353,6 +386,26 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '700',
     marginTop: 2,
+  },
+  whatsappButton: {
+    marginTop: 12,
+    backgroundColor: ORANGE,
+    borderRadius: 12,
+    paddingVertical: 11,
+    alignItems: 'center',
+  },
+  whatsappButtonDisabled: {
+    backgroundColor: '#222',
+    borderWidth: 1,
+    borderColor: '#333',
+  },
+  whatsappButtonText: {
+    color: '#000',
+    fontSize: 13,
+    fontWeight: '900',
+  },
+  whatsappButtonTextDisabled: {
+    color: '#777',
   },
   centerBox: {
     flex: 1,

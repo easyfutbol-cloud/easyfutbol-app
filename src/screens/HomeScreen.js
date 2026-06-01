@@ -16,6 +16,10 @@ const ORANGE = '#ff5a00';
 // ✅ Logo en assets/ en la raíz del proyecto
 const APP_LOGO = require('../../assets/Logo.png');
 
+const WORLD_CUP_SCREEN_BG = {
+  uri: 'https://easyfutbol.es/wp-content/uploads/2026/05/posible-fondo-1.png',
+};
+
 // Imágenes de fondo (cámbialas por las tuyas: require(...) o URLs propias)
 const BG = {
   myMatches: {
@@ -121,12 +125,17 @@ export default function HomeScreen({ navigation }) {
   );
 
   return (
-    <LinearGradient
-      colors={['#0b0b0d', '#121316', '#18191c']}
-      start={{ x: 0.1, y: 0 }}
-      end={{ x: 1, y: 1 }}
+    <ImageBackground
+      source={WORLD_CUP_SCREEN_BG}
       style={styles.container}
+      imageStyle={styles.worldCupBgImage}
     >
+      <LinearGradient
+        colors={['rgba(0,0,0,0.88)', 'rgba(0,0,0,0.76)', 'rgba(0,0,0,0.92)']}
+        start={{ x: 0.1, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={styles.container}
+      >
       <StatusBar barStyle="light-content" translucent backgroundColor="transparent" />
 
       {/* Glow naranja sutil */}
@@ -215,12 +224,17 @@ export default function HomeScreen({ navigation }) {
         </SectionCard>
         <View style={{ height: spacing(4) }} />
       </ScrollView>
-    </LinearGradient>
+      </LinearGradient>
+    </ImageBackground>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1, position: 'relative' },
+  worldCupBgImage: {
+    resizeMode: 'cover',
+    opacity: 0.9,
+  },
 
   glow: {
     position: 'absolute',

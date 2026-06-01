@@ -65,34 +65,65 @@ router.get('/ranking', async (_req, res) => {
     const [teamsRanking] = await pool.query(
       `
       SELECT
-        u.worldcup_team AS team,
-        COUNT(DISTINCT u.id) AS players,
-        COUNT(DISTINCT mps.match_id) AS matches_registered,
-        COALESCE(SUM(mps.goals), 0) AS goals,
-        COALESCE(SUM(mps.assists), 0) AS assists,
-        COALESCE(SUM(mps.is_mvp), 0) AS mvps,
-        COALESCE(SUM(CASE WHEN mps.result = 'win' THEN 1 ELSE 0 END), 0) AS wins,
-        COALESCE(SUM(
-          (mps.goals * ?) +
-          (mps.assists * ?) +
-          (mps.is_mvp * ?) +
-          (CASE WHEN mps.result = 'win' THEN ? ELSE 0 END)
-        ), 0) AS total_points,
+        team_data.team,
+        team_data.players,
+        COALESCE(stats_data.matches_registered, 0) AS matches_registered,
+        COALESCE(stats_data.goals, 0) AS goals,
+        COALESCE(stats_data.assists, 0) AS assists,
+        COALESCE(stats_data.mvps, 0) AS mvps,
+        COALESCE(stats_data.wins, 0) AS wins,
+        COALESCE(bonus_data.bonus_points, 0) AS bonus_points,
+        (
+          COALESCE(stats_data.stats_points, 0) +
+          COALESCE(bonus_data.bonus_points, 0)
+        ) AS total_points,
         ROUND(
+          (
+            COALESCE(stats_data.stats_points, 0) +
+            COALESCE(bonus_data.bonus_points, 0)
+          ) / team_data.players,
+          2
+        ) AS average_points
+      FROM (
+        SELECT
+          worldcup_team AS team,
+          COUNT(DISTINCT id) AS players
+        FROM users
+        WHERE worldcup_team IS NOT NULL
+        GROUP BY worldcup_team
+      ) team_data
+      LEFT JOIN (
+        SELECT
+          u.worldcup_team AS team,
+          COUNT(DISTINCT mps.match_id) AS matches_registered,
+          COALESCE(SUM(mps.goals), 0) AS goals,
+          COALESCE(SUM(mps.assists), 0) AS assists,
+          COALESCE(SUM(mps.is_mvp), 0) AS mvps,
+          COALESCE(SUM(CASE WHEN mps.result = 'win' THEN 1 ELSE 0 END), 0) AS wins,
           COALESCE(SUM(
             (mps.goals * ?) +
             (mps.assists * ?) +
             (mps.is_mvp * ?) +
             (CASE WHEN mps.result = 'win' THEN ? ELSE 0 END)
-          ), 0) / COUNT(DISTINCT u.id),
-          2
-        ) AS average_points
-      FROM users u
-      JOIN match_player_stats mps ON mps.user_id = u.id
-      WHERE u.worldcup_team IS NOT NULL
-        AND mps.created_at >= ?
-        AND mps.created_at < ?
-      GROUP BY u.worldcup_team
+          ), 0) AS stats_points
+        FROM users u
+        JOIN match_player_stats mps ON mps.user_id = u.id
+        WHERE u.worldcup_team IS NOT NULL
+          AND mps.created_at >= ?
+          AND mps.created_at < ?
+        GROUP BY u.worldcup_team
+      ) stats_data ON stats_data.team = team_data.team
+      LEFT JOIN (
+        SELECT
+          u.worldcup_team AS team,
+          COALESCE(SUM(wbp.points), 0) AS bonus_points
+        FROM users u
+        JOIN worldcup_bonus_points wbp ON wbp.user_id = u.id
+        WHERE u.worldcup_team IS NOT NULL
+          AND wbp.created_at >= ?
+          AND wbp.created_at < ?
+        GROUP BY u.worldcup_team
+      ) bonus_data ON bonus_data.team = team_data.team
       ORDER BY average_points DESC, total_points DESC
       `,
       [
@@ -100,10 +131,8 @@ router.get('/ranking', async (_req, res) => {
         POINTS.assist,
         POINTS.mvp,
         POINTS.win,
-        POINTS.goal,
-        POINTS.assist,
-        POINTS.mvp,
-        POINTS.win,
+        WORLD_CUP_START,
+        WORLD_CUP_END,
         WORLD_CUP_START,
         WORLD_CUP_END,
       ]
@@ -115,23 +144,47 @@ router.get('/ranking', async (_req, res) => {
         u.id,
         u.name,
         u.worldcup_team AS team,
-        COUNT(DISTINCT mps.match_id) AS matches,
-        COALESCE(SUM(mps.goals), 0) AS goals,
-        COALESCE(SUM(mps.assists), 0) AS assists,
-        COALESCE(SUM(mps.is_mvp), 0) AS mvps,
-        COALESCE(SUM(CASE WHEN mps.result = 'win' THEN 1 ELSE 0 END), 0) AS wins,
-        COALESCE(SUM(
-          (mps.goals * ?) +
-          (mps.assists * ?) +
-          (mps.is_mvp * ?) +
-          (CASE WHEN mps.result = 'win' THEN ? ELSE 0 END)
-        ), 0) AS points
+        COALESCE(stats_data.matches, 0) AS matches,
+        COALESCE(stats_data.goals, 0) AS goals,
+        COALESCE(stats_data.assists, 0) AS assists,
+        COALESCE(stats_data.mvps, 0) AS mvps,
+        COALESCE(stats_data.wins, 0) AS wins,
+        COALESCE(stats_data.stats_points, 0) AS stats_points,
+        COALESCE(bonus_data.bonus_points, 0) AS bonus_points,
+        (
+          COALESCE(stats_data.stats_points, 0) +
+          COALESCE(bonus_data.bonus_points, 0)
+        ) AS points
       FROM users u
-      JOIN match_player_stats mps ON mps.user_id = u.id
+      LEFT JOIN (
+        SELECT
+          mps.user_id,
+          COUNT(DISTINCT mps.match_id) AS matches,
+          COALESCE(SUM(mps.goals), 0) AS goals,
+          COALESCE(SUM(mps.assists), 0) AS assists,
+          COALESCE(SUM(mps.is_mvp), 0) AS mvps,
+          COALESCE(SUM(CASE WHEN mps.result = 'win' THEN 1 ELSE 0 END), 0) AS wins,
+          COALESCE(SUM(
+            (mps.goals * ?) +
+            (mps.assists * ?) +
+            (mps.is_mvp * ?) +
+            (CASE WHEN mps.result = 'win' THEN ? ELSE 0 END)
+          ), 0) AS stats_points
+        FROM match_player_stats mps
+        WHERE mps.created_at >= ?
+          AND mps.created_at < ?
+        GROUP BY mps.user_id
+      ) stats_data ON stats_data.user_id = u.id
+      LEFT JOIN (
+        SELECT
+          wbp.user_id,
+          COALESCE(SUM(wbp.points), 0) AS bonus_points
+        FROM worldcup_bonus_points wbp
+        WHERE wbp.created_at >= ?
+          AND wbp.created_at < ?
+        GROUP BY wbp.user_id
+      ) bonus_data ON bonus_data.user_id = u.id
       WHERE u.worldcup_team IS NOT NULL
-        AND mps.created_at >= ?
-        AND mps.created_at < ?
-      GROUP BY u.id, u.name, u.worldcup_team
       ORDER BY points DESC, goals DESC, assists DESC
       `,
       [
@@ -141,13 +194,21 @@ router.get('/ranking', async (_req, res) => {
         POINTS.win,
         WORLD_CUP_START,
         WORLD_CUP_END,
+        WORLD_CUP_START,
+        WORLD_CUP_END,
       ]
     );
 
     return res.json({
       startDate: WORLD_CUP_START,
       endDate: '2026-07-19 23:59:59',
-      points: POINTS,
+      points: {
+        ...POINTS,
+        goal_of_week: 3,
+        save_of_week: 3,
+        goal_of_month: 8,
+        save_of_month: 8,
+      },
       teamsRanking,
       playersRanking,
     });

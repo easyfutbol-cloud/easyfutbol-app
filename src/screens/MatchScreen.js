@@ -4,8 +4,13 @@ import { colors, spacing } from '../theme';
 import { api } from '../api/client';
 import { useFocusEffect } from '@react-navigation/native';
 
+
 const MAX_TICKETS_PER_PURCHASE = 8;
 const EASY_PASS_COST = 1;
+
+const WORLD_CUP_SCREEN_BG = {
+  uri: 'https://easyfutbol.es/wp-content/uploads/2026/05/posible-fondo-1.png',
+};
 
 
 const pitchImage = {
@@ -497,7 +502,12 @@ export default function MatchScreen({ route, navigation }) {
     capacity != null ? Math.max(capacity - spotsTaken, 0) : null;
 
   return (
-    <View style={styles.container}>
+    <ImageBackground
+      source={WORLD_CUP_SCREEN_BG}
+      style={styles.container}
+      imageStyle={styles.worldCupBgImage}
+    >
+      <View style={styles.worldCupOverlay} />
       <StatusBar barStyle="light-content" />
       <ScrollView
         showsVerticalScrollIndicator={false}
@@ -812,12 +822,20 @@ export default function MatchScreen({ route, navigation }) {
         </Text>
       )}
       </ScrollView>
-    </View>
+    </ImageBackground>
   );
 }
 
 const styles = StyleSheet.create({
   container:{ flex:1, backgroundColor:colors.black, padding:spacing(2) },
+  worldCupBgImage: {
+    resizeMode: 'cover',
+    opacity: 0.9,
+  },
+  worldCupOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.78)',
+  },
   scrollContent:{ paddingBottom: spacing(4) },
   title:{ color:colors.white, fontSize:24, fontWeight:'800', marginBottom:spacing(1.5) },
   meta:{ color:'#aaa', marginBottom:spacing(0.5) }, // keep meta for misc text
