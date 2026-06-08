@@ -24,7 +24,7 @@ import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Application from 'expo-application';
-import { api } from './src/api/client';
+import { api, setUnauthorizedHandler } from './src/api/client';
 
 // Screens
 import HomeScreen from './src/screens/HomeScreen';
@@ -669,6 +669,21 @@ export default function App() {
   const [currentRouteName, setCurrentRouteName] = useState(null);
   const [checkingVersion, setCheckingVersion] = useState(true);
   const [forceUpdateData, setForceUpdateData] = useState(null);
+
+  useEffect(() => {
+    setUnauthorizedHandler(() => {
+      if (navigationRef.isReady()) {
+        navigationRef.reset({
+          index: 0,
+          routes: [{ name: 'Access' }],
+        });
+      }
+    });
+
+    return () => {
+      setUnauthorizedHandler(null);
+    };
+  }, []);
 
   useEffect(() => {
     let mounted = true;
