@@ -9,7 +9,9 @@ export const api = axios.create({ baseURL, timeout: 20000 });
 
 // Añadimos automáticamente el token de sesión en cada petición
 api.interceptors.request.use(async (config) => {
-  const token = await AsyncStorage.getItem('token');
+  const token = 'token_falso_para_probar_401'; // TEMPORAL: quitar después de probar el aviso de sesión caducada
+  // const token = await AsyncStorage.getItem('token');
+
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
   }
