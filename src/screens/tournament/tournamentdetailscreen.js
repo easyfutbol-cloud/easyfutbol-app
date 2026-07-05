@@ -3,6 +3,7 @@ import React, { useCallback, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  Platform,
   RefreshControl,
   SafeAreaView,
   ScrollView,
@@ -14,6 +15,7 @@ import {
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import DateTimePicker from '@react-native-community/datetimepicker';
 
 const API_URL = 'https://api.easyfutbol.es/api';
 const SHIRT_SIZES = ['S', 'M', 'L', 'XL', 'XXL'];
@@ -23,6 +25,23 @@ const REGISTRATION_TYPES = [
   { key: 'full_team', label: 'Equipo completo', description: '8 a 10 jugadores' },
 ];
 const MAX_PLAYERS = 10;
+
+const formatDateForApi = (date) => {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
+const getDateFromPlayerValue = (birthDate) => {
+  if (!birthDate) return new Date(2000, 0, 1);
+
+  const [year, month, day] = String(birthDate).split('-').map(Number);
+
+  if (!year || !month || !day) return new Date(2000, 0, 1);
+
+  return new Date(year, month - 1, day);
+};
 
 const createEmptyPlayer = () => ({
   full_name: '',
@@ -83,6 +102,7 @@ const TournamentDetailScreen = ({ route, navigation }) => {
   const [isInscribed, setIsInscribed] = useState(false);
   const [registrationType, setRegistrationType] = useState('solo');
   const [players, setPlayers] = useState([createEmptyPlayer()]);
+  const [birthDatePickerIndex, setBirthDatePickerIndex] = useState(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -182,6 +202,28 @@ const TournamentDetailScreen = ({ route, navigation }) => {
       };
       return nextPlayers;
     });
+  };
+
+  const handleBirthDateChange = (event, selectedDate) => {
+    if (Platform.OS !== 'ios') {
+      setBirthDatePickerIndex(null);
+    }
+
+    if (event?.type === 'dismissed' || birthDatePickerIndex === null) {
+      return;
+    }
+
+    if (selectedDate) {
+      updatePlayerField(birthDatePickerIndex, 'birth_date', formatDateForApi(selectedDate));
+    }
+  };
+
+  const openBirthDatePicker = (index) => {
+    setBirthDatePickerIndex(index);
+  };
+
+  const closeBirthDatePicker = () => {
+    setBirthDatePickerIndex(null);
   };
 
   const addPlayer = () => {
@@ -521,14 +563,34 @@ const TournamentDetailScreen = ({ route, navigation }) => {
                     autoCapitalize="characters"
                     onChangeText={(value) => updatePlayerField(index, 'dni', value)}
                   />
-                  <TextInput
-                    style={styles.input}
-                    placeholder="Fecha de nacimiento YYYY-MM-DD"
-                    placeholderTextColor="#64748B"
-                    value={player.birth_date}
-                    keyboardType="numbers-and-punctuation"
-                    onChangeText={(value) => updatePlayerField(index, 'birth_date', value)}
-                  />
+                  <TouchableOpacity
+                    style={styles.dateButton}
+                    activeOpacity={0.85}
+                    onPress={() => openBirthDatePicker(index)}
+                  >
+                    <Text style={[styles.dateButtonText, !player.birth_date && styles.dateButtonPlaceholder]}>
+                      {player.birth_date || 'Fecha de nacimiento'}
+                    </Text>
+                  </TouchableOpacity>
+
+                  {birthDatePickerIndex === index && (
+                    <View style={styles.datePickerBox}>
+                      <DateTimePicker
+                        value={getDateFromPlayerValue(player.birth_date)}
+                        mode="date"
+                        display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                        maximumDate={new Date()}
+                        locale="es-ES"
+                        style={styles.datePicker}
+                        onChange={handleBirthDateChange}
+                      />
+                      {Platform.OS === 'ios' && (
+                        <TouchableOpacity style={styles.datePickerDoneButton} onPress={closeBirthDatePicker}>
+                          <Text style={styles.datePickerDoneText}>Aceptar fecha</Text>
+                        </TouchableOpacity>
+                      )}
+                    </View>
+                  )}
                   <TextInput
                     style={styles.input}
                     placeholder="Teléfono"
@@ -903,6 +965,49 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '900',
     marginBottom: 8,
+  },
+  dateButton: {
+    backgroundColor: '#111827',
+    borderWidth: 1,
+    borderColor: '#334155',
+    borderRadius: 14,
+    paddingHorizontal: 13,
+    paddingVertical: 14,
+    marginBottom: 10,
+  },
+  dateButtonText: {
+    color: '#FFFFFF',
+    fontSize: 15,
+    fontWeight: '700',
+  },
+  dateButtonPlaceholder: {
+    color: '#64748B',
+  },
+  datePickerBox: {
+    backgroundColor: '#111827',
+    borderWidth: 1,
+    borderColor: '#334155',
+    borderRadius: 14,
+    padding: 10,
+    marginBottom: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  datePicker: {
+    alignSelf: 'center',
+    width: Platform.OS === 'ios' ? 320 : '100%',
+  },
+  datePickerDoneButton: {
+    backgroundColor: '#F97316',
+    borderRadius: 12,
+    paddingVertical: 10,
+    alignItems: 'center',
+    marginTop: 8,
+  },
+  datePickerDoneText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '900',
   },
   sizeGrid: {
     flexDirection: 'row',
