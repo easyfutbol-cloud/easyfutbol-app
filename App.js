@@ -32,6 +32,7 @@ import AccessScreen from './src/screens/AccessScreen';
 import MatchScreen from './src/screens/MatchScreen';
 import MatchsScreen from './src/screens/MatchsScreen';
 import MyMatchesScreen from './src/screens/MyMatchesScreen';
+import MisPartidosScreen from './src/screens/MisPartidosScreen';
 import StatsScreen from './src/screens/StatsScreen';
 import ProfileScreen from './src/screens/ProfileScreen';
 import AdminCreateMatchScreen from './src/screens/AdminCreateMatchScreen';
@@ -54,6 +55,8 @@ import LeagueStandingsScreen from './src/screens/leagues/LeagueStandingsScreen';
 import LeagueInfoScreen from './src/screens/leagues/LeagueInfoScreen';
 import WorldCupScreen from './src/screens/worldcup/WorldCupScreen';
 import WorldCupSelectTeamScreen from './src/screens/worldcup/WorldCupSelectTeamScreen';
+import HomeTournamentScreen from './src/screens/tournament/hometournamentscreen';
+import TournamentDetailScreen from './src/screens/tournament/tournamentdetailscreen';
 
 // Notificaciones (opcional)
 let Notifications = null;
@@ -515,7 +518,8 @@ function AppMenu({ currentRouteName }) {
   const baseItems = [
     { label: 'Inicio', screen: 'Home' },
     { label: 'Partidos', screen: 'Matchs' },
-    { label: 'Mis Partidos', screen: 'MyMatches' },
+    { label: 'Mis partidos', screen: 'MisPartidos' },
+    { label: 'Torneos', screen: 'HomeTournament' },
     { label: 'Ligas', screen: 'LeaguesHome' },
     { label: 'Mundial EasyFutbol', screen: 'WorldCup' },
     { label: 'Estadísticas', screen: 'Stats' },
@@ -636,6 +640,7 @@ function AppShell({ currentRouteName }) {
         <Stack.Screen name="Match" component={MatchScreen} />
         <Stack.Screen name="Matchs" component={MatchsScreen} />
         <Stack.Screen name="MyMatches" component={MyMatchesScreen} />
+        <Stack.Screen name="MisPartidos" component={MisPartidosScreen} />
         <Stack.Screen name="Stats" component={StatsScreen} />
         <Stack.Screen name="Profile" component={ProfileScreen} />
         <Stack.Screen name="LeaguesHome" component={LeaguesHomeScreen} options={{ title: 'Ligas' }} />
@@ -648,6 +653,8 @@ function AppShell({ currentRouteName }) {
         <Stack.Screen name="LeagueInfo" component={LeagueInfoScreen} options={{ title: 'Funcionamiento' }} />
         <Stack.Screen name="WorldCup" component={WorldCupScreen} />
         <Stack.Screen name="WorldCupSelectTeam" component={WorldCupSelectTeamScreen} />
+        <Stack.Screen name="HomeTournament" component={HomeTournamentScreen} />
+        <Stack.Screen name="TournamentDetail" component={TournamentDetailScreen} />
         <Stack.Screen name="Achievements" component={AchievementsScreen} />
         <Stack.Screen name="EasyPass" component={EasyPassScreen} />
         <Stack.Screen name="AdminDashboard" component={AdminDashboardScreen} />

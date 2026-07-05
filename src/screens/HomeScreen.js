@@ -2,7 +2,7 @@
 import { View, Text, StyleSheet, StatusBar, TouchableOpacity, ImageBackground, Image, ScrollView, Alert } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
-import { colors, spacing } from '../theme';
+import { spacing } from '../theme';
 import { useEffect, useState, useCallback } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -12,7 +12,6 @@ import { menuController } from '../../App';
 
 const ORANGE = '#ff5a00';
 
-
 // ✅ Logo en assets/ en la raíz del proyecto
 const APP_LOGO = require('../../assets/Logo.png');
 
@@ -20,12 +19,14 @@ const WORLD_CUP_SCREEN_BG = {
   uri: 'https://easyfutbol.es/wp-content/uploads/2026/05/posible-fondo-1.png',
 };
 
-// Imágenes de fondo (cámbialas por las tuyas: require(...) o URLs propias)
 const BG = {
   myMatches: {
     uri: 'https://easyfutbol.es/wp-content/uploads/2024/10/siluetas-futbol-7.jpeg',
   },
   worldCup: {
+    uri: 'https://easyfutbol.es/wp-content/uploads/2025/02/grass-2616911_1280.jpg',
+  },
+  tournament: {
     uri: 'https://easyfutbol.es/wp-content/uploads/2025/02/grass-2616911_1280.jpg',
   },
   upcoming: {
@@ -45,9 +46,9 @@ const BG = {
 export default function HomeScreen({ navigation }) {
   const insets = useSafeAreaInsets();
 
-  const [isLogged, setIsLogged]   = useState(false);
-  const [isAdmin, setIsAdmin]     = useState(false);
-  const [avatar, setAvatar]       = useState(null);
+  const [isLogged, setIsLogged] = useState(false);
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [avatar, setAvatar] = useState(null);
   const [displayName, setDisplayName] = useState('');
 
   const requireAuth = (targetScreen) => {
@@ -72,7 +73,6 @@ export default function HomeScreen({ navigation }) {
       const rawUser = await AsyncStorage.getItem('user');
       const u = rawUser ? JSON.parse(rawUser) : {};
 
-      // Logs para depurar rol y datos de usuario
       console.log('USER EN HOMESCREEN:', u);
 
       const adminFlag =
@@ -97,17 +97,16 @@ export default function HomeScreen({ navigation }) {
     }
   }, []);
 
-  useEffect(() => { readSession(); }, [readSession]);
+  useEffect(() => {
+    readSession();
+  }, [readSession]);
 
-  // Tocar avatar -> abre menú; long press -> perfil (si logueado) o acceso
   const onPressAvatar = () => menuController.open?.();
   const onLongPressAvatar = () => navigation.navigate(isLogged ? 'Profile' : 'Access');
-
 
   const SectionCard = ({ title, bgSource, onPress, children }) => (
     <TouchableOpacity activeOpacity={0.9} onPress={onPress} style={styles.sectionWrapper}>
       <ImageBackground source={bgSource} style={styles.bg} imageStyle={styles.bgImage}>
-        {/* blur + oscurecedor para contraste */}
         <BlurView intensity={70} tint="dark" style={StyleSheet.absoluteFillObject} />
         <LinearGradient
           colors={['rgba(0,0,0,0.55)', 'rgba(0,0,0,0.25)']}
@@ -136,94 +135,121 @@ export default function HomeScreen({ navigation }) {
         end={{ x: 1, y: 1 }}
         style={styles.container}
       >
-      <StatusBar barStyle="light-content" translucent backgroundColor="transparent" />
+        <StatusBar barStyle="light-content" translucent backgroundColor="transparent" />
 
-      {/* Glow naranja sutil */}
-      <LinearGradient
-        colors={['rgba(255,90,0,0.12)', 'rgba(255,90,0,0)']}
-        style={styles.glow}
-        start={{ x: 1, y: 0 }}
-        end={{ x: 0.3, y: 0.7 }}
-      />
+        <LinearGradient
+          colors={['rgba(255,90,0,0.12)', 'rgba(255,90,0,0)']}
+          style={styles.glow}
+          start={{ x: 1, y: 0 }}
+          end={{ x: 0.3, y: 0.7 }}
+        />
 
-      {/* Top bar compacto: logo + username (izq) | avatar (dcha) */}
-      <View style={[styles.topBar, { paddingTop: spacing(1) }]}>
-        <View style={styles.leftBlock}>
-          <Image source={APP_LOGO} style={styles.appLogo} />
-          <Text numberOfLines={1} style={styles.username}>
-            {displayName || 'Usuario'}
-          </Text>
+        <View style={[styles.topBar, { paddingTop: spacing(1) + insets.top * 0 }]}> 
+          <View style={styles.leftBlock}>
+            <Image source={APP_LOGO} style={styles.appLogo} />
+            <Text numberOfLines={1} style={styles.username}>
+              {displayName || 'Usuario'}
+            </Text>
+          </View>
+
+          <TouchableOpacity
+            onPress={onPressAvatar}
+            onLongPress={onLongPressAvatar}
+            style={styles.avatarWrap}
+            accessibilityLabel="Abrir menú / Perfil"
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+          >
+            {avatar ? (
+              <Image source={{ uri: avatar }} style={styles.avatarImg} />
+            ) : (
+              <View style={styles.avatarPlaceholder}>
+                <Text style={styles.avatarInitial}>{(displayName || 'U').charAt(0).toUpperCase()}</Text>
+              </View>
+            )}
+          </TouchableOpacity>
         </View>
 
-        <TouchableOpacity
-          onPress={onPressAvatar}
-          onLongPress={onLongPressAvatar}
-          style={styles.avatarWrap}
-          accessibilityLabel="Abrir menú / Perfil"
-          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-        >
-          {avatar ? (
-            <Image source={{ uri: avatar }} style={styles.avatarImg} />
-          ) : (
-            <View style={styles.avatarPlaceholder}>
-              <Text style={styles.avatarInitial}>{(displayName || 'U').charAt(0).toUpperCase()}</Text>
-            </View>
+        <ScrollView contentContainerStyle={styles.stack}>
+          {isAdmin && (
+            <SectionCard
+              title="Crear partido"
+              bgSource={BG.adminCreate}
+              onPress={() => navigation.navigate('AdminCreateMatch')}
+            >
+              <Text style={styles.sectionDescription}>
+                Publica nuevos partidos de EasyFutbol desde la app (solo administradores).
+              </Text>
+            </SectionCard>
           )}
-        </TouchableOpacity>
-      </View>
 
-      {/* 4 FILAS APILADAS */}
-      <ScrollView contentContainerStyle={styles.stack}>
-        {isAdmin && (
           <SectionCard
-            title="Crear partido"
-            bgSource={BG.adminCreate}
-            onPress={() => navigation.navigate('AdminCreateMatch')}
+            title="🏆 Torneo EasyFutbol"
+            bgSource={BG.tournament}
+            onPress={() => requireAuth('HomeTournament')}
           >
-            <Text style={{ color: '#fff', fontSize: 13, opacity: 0.9 }}>
-              Publica nuevos partidos de EasyFutbol desde la app (solo administradores).
+            <Text style={styles.sectionDescription}>
+              25 de julio · 19:00 a 23:00 · camiseta oficial, partidos grabados, premios y consumición en La Herminia.
             </Text>
           </SectionCard>
-        )}
-        <SectionCard
-          title="Próximos partidos"
-          bgSource={BG.upcoming}
-          onPress={() => requireAuth('Matchs')}  // ajusta si tu ruta es distinta
-        />
-                <SectionCard
-          title="Mis entradas"
-          bgSource={BG.myMatches}
-          onPress={() => navigation.navigate('MyMatches')}
-        />
-        <SectionCard
-          title="Mundial EasyFutbol"
-          bgSource={BG.worldCup}
-          onPress={() => navigation.navigate('WorldCup')}
-        >
-          <Text style={{ color: '#fff', fontSize: 13, opacity: 0.9 }}>
-            Elige tu selección, suma puntos con tus goles, asistencias, MVP y victorias, y compite por el ranking del Mundial.
-          </Text>
-        </SectionCard>
-        <SectionCard
-          title="Estadísticas"
-          bgSource={BG.stats}
-          onPress={() => navigation.navigate('Stats')}
-        >
-          <Text style={{ color: '#fff', fontSize: 13, opacity: 0.9 }}>
-            Consulta tus goles, asistencias, MVP y rankings completos.
-          </Text>
-        </SectionCard>
-        <SectionCard
-          title="EasyPass"
-          bgSource={BG.easyPass}
-          onPress={() => requireAuth('EasyPass')}
-        >
-          <Text style={{ color: '#fff', fontSize: 13, opacity: 0.9 }}>
-            Compra packs de EasyPass y reserva tus partidos más rápido.
-          </Text>
-        </SectionCard>
-        <View style={{ height: spacing(4) }} />
-      </ScrollView>
+
+          <SectionCard
+            title="Próximos partidos"
+            bgSource={BG.upcoming}
+            onPress={() => requireAuth('Matchs')}
+          />
+
+          <SectionCard
+            title="Mis partidos"
+            bgSource={BG.myMatches}
+            onPress={() => requireAuth('MisPartidos')}
+          >
+            <Text style={styles.sectionDescription}>
+              Consulta tus partidos inscritos, camiseta, ubicación, hora e información importante antes de jugar.
+            </Text>
+          </SectionCard>
+
+          <SectionCard
+            title="Mis entradas"
+            bgSource={BG.myMatches}
+            onPress={() => requireAuth('MyMatches')}
+          >
+            <Text style={styles.sectionDescription}>
+              Revisa tus entradas compradas y el estado de tus reservas.
+            </Text>
+          </SectionCard>
+
+          <SectionCard
+            title="Mundial EasyFutbol"
+            bgSource={BG.worldCup}
+            onPress={() => navigation.navigate('WorldCup')}
+          >
+            <Text style={styles.sectionDescription}>
+              Elige tu selección, suma puntos con tus goles, asistencias, MVP y victorias, y compite por el ranking del Mundial.
+            </Text>
+          </SectionCard>
+
+          <SectionCard
+            title="Estadísticas"
+            bgSource={BG.stats}
+            onPress={() => navigation.navigate('Stats')}
+          >
+            <Text style={styles.sectionDescription}>
+              Consulta tus goles, asistencias, MVP y rankings completos.
+            </Text>
+          </SectionCard>
+
+          <SectionCard
+            title="EasyPass"
+            bgSource={BG.easyPass}
+            onPress={() => requireAuth('EasyPass')}
+          >
+            <Text style={styles.sectionDescription}>
+              Compra packs de EasyPass y reserva tus partidos más rápido.
+            </Text>
+          </SectionCard>
+
+          <View style={{ height: spacing(4) }} />
+        </ScrollView>
       </LinearGradient>
     </ImageBackground>
   );
@@ -235,14 +261,14 @@ const styles = StyleSheet.create({
     resizeMode: 'cover',
     opacity: 0.9,
   },
-
   glow: {
     position: 'absolute',
-    right: -80, top: -40,
-    width: 260, height: 260, borderRadius: 260,
+    right: -80,
+    top: -40,
+    width: 260,
+    height: 260,
+    borderRadius: 260,
   },
-
-  // Top bar compacto
   topBar: {
     paddingHorizontal: spacing(2),
     paddingBottom: spacing(1),
@@ -258,20 +284,28 @@ const styles = StyleSheet.create({
   },
   appLogo: { width: 28, height: 28, borderRadius: 6 },
   username: { color: '#fff', fontSize: 18, fontWeight: '800', maxWidth: 220 },
-
   avatarWrap: {
-    width: 40, height: 40, borderRadius: 20,
-    overflow: 'hidden', borderWidth: 2, borderColor: ORANGE,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    overflow: 'hidden',
+    borderWidth: 2,
+    borderColor: ORANGE,
   },
   avatarImg: { width: '100%', height: '100%' },
-  avatarPlaceholder: { flex: 1, backgroundColor: '#0f1114', alignItems: 'center', justifyContent: 'center' },
+  avatarPlaceholder: {
+    flex: 1,
+    backgroundColor: '#0f1114',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   avatarInitial: { color: '#fff', fontWeight: '800', fontSize: 16 },
-
-
-  // Stack
-  stack: { paddingHorizontal: spacing(2), paddingTop: spacing(0.5), paddingBottom: spacing(2), gap: 14 },
-
-  // Section card
+  stack: {
+    paddingHorizontal: spacing(2),
+    paddingTop: spacing(0.5),
+    paddingBottom: spacing(2),
+    gap: 14,
+  },
   sectionWrapper: { width: '100%' },
   bg: {
     width: '100%',
@@ -282,11 +316,9 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(255,255,255,0.08)',
   },
   bgImage: { resizeMode: 'cover' },
-
   sectionContent: { padding: 16, gap: 10 },
   sectionTitle: { color: '#fff', fontSize: 22, fontWeight: '800' },
-
-  // CTA pill (fondo traslúcido pero texto blanco)
+  sectionDescription: { color: '#fff', fontSize: 13, opacity: 0.9 },
   cta: {
     alignSelf: 'flex-start',
     marginTop: 4,
@@ -296,5 +328,4 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255,255,255,0.16)',
   },
   ctaText: { color: '#fff', fontWeight: '800', letterSpacing: 0.4 },
-
 });
