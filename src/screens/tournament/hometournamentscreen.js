@@ -15,7 +15,7 @@ import {
 import { useFocusEffect } from '@react-navigation/native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-const API_URL = 'https://easyfutbol.es/api';
+const API_URL = 'https://api.easyfutbol.es/api';
 
 const formatTournamentDate = (dateValue) => {
   if (!dateValue) return 'Fecha pendiente';

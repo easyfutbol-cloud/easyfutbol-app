@@ -1,6 +1,5 @@
 
-
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -9,14 +8,32 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-const API_URL = 'https://easyfutbol.es/api';
+const API_URL = 'https://api.easyfutbol.es/api';
 const SHIRT_SIZES = ['S', 'M', 'L', 'XL', 'XXL'];
+const REGISTRATION_TYPES = [
+  { key: 'solo', label: 'Solo yo', description: '1 jugador' },
+  { key: 'group', label: 'Con amigos', description: '2 a 7 jugadores' },
+  { key: 'full_team', label: 'Equipo completo', description: '8 a 10 jugadores' },
+];
+const MAX_PLAYERS = 10;
+
+const createEmptyPlayer = () => ({
+  full_name: '',
+  dni: '',
+  birth_date: '',
+  phone: '',
+  email: '',
+  shirt_size: 'L',
+  shirt_name: '',
+  shirt_number: '',
+});
 
 const formatTournamentDate = (dateValue) => {
   if (!dateValue) return 'Fecha pendiente';
@@ -64,10 +81,15 @@ const TournamentDetailScreen = ({ route, navigation }) => {
   const [tournament, setTournament] = useState(null);
   const [myInscription, setMyInscription] = useState(null);
   const [isInscribed, setIsInscribed] = useState(false);
-  const [selectedSize, setSelectedSize] = useState('L');
+  const [registrationType, setRegistrationType] = useState('solo');
+  const [players, setPlayers] = useState([createEmptyPlayer()]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+
+  const totalEasyPass = useMemo(() => {
+    return players.length * Number(tournament?.price_easypass || 7);
+  }, [players.length, tournament?.price_easypass]);
 
   const fetchJson = async (url, options = {}) => {
     const token = await AsyncStorage.getItem('token');
@@ -82,7 +104,15 @@ const TournamentDetailScreen = ({ route, navigation }) => {
       },
     });
 
-    const data = await response.json();
+    const rawText = await response.text();
+    let data = null;
+
+    try {
+      data = rawText ? JSON.parse(rawText) : null;
+    } catch (parseError) {
+      console.error('Tournament response is not JSON:', rawText.slice(0, 300));
+      throw new Error('El servidor no está devolviendo la ruta de torneos correctamente.');
+    }
 
     if (!response.ok) {
       throw new Error(data?.message || 'Ha ocurrido un error');
@@ -107,10 +137,6 @@ const TournamentDetailScreen = ({ route, navigation }) => {
       setTournament(tournamentData);
       setMyInscription(inscriptionData?.inscription || null);
       setIsInscribed(Boolean(inscriptionData?.is_inscribed));
-
-      if (inscriptionData?.inscription?.shirt_size) {
-        setSelectedSize(inscriptionData.inscription.shirt_size);
-      }
     } catch (error) {
       console.error('Error loading tournament detail:', error);
       Alert.alert('Error', error.message || 'No se pudo cargar el torneo');
@@ -131,29 +157,121 @@ const TournamentDetailScreen = ({ route, navigation }) => {
     loadTournament();
   };
 
+  const updateRegistrationType = (type) => {
+    setRegistrationType(type);
+
+    if (type === 'solo') {
+      setPlayers((currentPlayers) => [currentPlayers[0] || createEmptyPlayer()]);
+    } else if (type === 'full_team' && players.length < 8) {
+      setPlayers((currentPlayers) => {
+        const nextPlayers = [...currentPlayers];
+        while (nextPlayers.length < 8) {
+          nextPlayers.push(createEmptyPlayer());
+        }
+        return nextPlayers;
+      });
+    }
+  };
+
+  const updatePlayerField = (index, field, value) => {
+    setPlayers((currentPlayers) => {
+      const nextPlayers = [...currentPlayers];
+      nextPlayers[index] = {
+        ...nextPlayers[index],
+        [field]: value,
+      };
+      return nextPlayers;
+    });
+  };
+
+  const addPlayer = () => {
+    if (players.length >= MAX_PLAYERS) {
+      Alert.alert('Límite alcanzado', `Puedes añadir hasta ${MAX_PLAYERS} jugadores en una inscripción.`);
+      return;
+    }
+
+    setPlayers((currentPlayers) => [...currentPlayers, createEmptyPlayer()]);
+
+    if (registrationType === 'solo') {
+      setRegistrationType('group');
+    }
+  };
+
+  const removePlayer = (index) => {
+    if (players.length === 1) {
+      return;
+    }
+
+    setPlayers((currentPlayers) => currentPlayers.filter((_, playerIndex) => playerIndex !== index));
+  };
+
+  const validateForm = () => {
+    if (registrationType === 'solo' && players.length !== 1) {
+      return 'La inscripción individual debe tener 1 jugador.';
+    }
+
+    if (registrationType === 'full_team' && players.length < 8) {
+      return 'Para equipo completo tienes que añadir al menos 8 jugadores.';
+    }
+
+    for (let index = 0; index < players.length; index += 1) {
+      const player = players[index];
+      const number = Number(player.shirt_number);
+      const playerNumber = index + 1;
+
+      if (!player.full_name.trim()) return `Falta el nombre completo del jugador ${playerNumber}.`;
+      if (!player.dni.trim()) return `Falta el DNI del jugador ${playerNumber}.`;
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(player.birth_date.trim())) {
+        return `La fecha de nacimiento del jugador ${playerNumber} debe tener formato YYYY-MM-DD.`;
+      }
+      if (!player.phone.trim()) return `Falta el teléfono del jugador ${playerNumber}.`;
+      if (!player.email.trim()) return `Falta el correo electrónico del jugador ${playerNumber}.`;
+      if (!player.shirt_name.trim()) return `Falta el nombre para camiseta del jugador ${playerNumber}.`;
+      if (!Number.isInteger(number) || number < 1 || number > 99) {
+        return `El número de camiseta del jugador ${playerNumber} debe estar entre 1 y 99.`;
+      }
+    }
+
+    return null;
+  };
+
   const handleInscribe = () => {
-    if (!selectedSize) {
-      Alert.alert('Talla necesaria', 'Selecciona una talla de camiseta para apuntarte.');
+    const validationError = validateForm();
+
+    if (validationError) {
+      Alert.alert('Revisa los datos', validationError);
       return;
     }
 
     Alert.alert(
       'Confirmar inscripción',
-      `Te vas a apuntar al torneo por ${tournament?.price_easypass || 7} EasyPass con talla ${selectedSize}.`,
+      `Vas a apuntar ${players.length} jugador${players.length === 1 ? '' : 'es'} por ${totalEasyPass} EasyPass en total.`,
       [
         { text: 'Cancelar', style: 'cancel' },
         {
-          text: 'Apuntarme',
+          text: 'Confirmar',
           onPress: async () => {
             try {
               setSubmitting(true);
 
               await fetchJson(`${API_URL}/tournaments/${tournamentId}/inscribe`, {
                 method: 'POST',
-                body: JSON.stringify({ shirt_size: selectedSize }),
+                body: JSON.stringify({
+                  registration_type: registrationType,
+                  players: players.map((player) => ({
+                    full_name: player.full_name.trim(),
+                    dni: player.dni.trim(),
+                    birth_date: player.birth_date.trim(),
+                    phone: player.phone.trim(),
+                    email: player.email.trim(),
+                    shirt_size: player.shirt_size,
+                    shirt_name: player.shirt_name.trim(),
+                    shirt_number: Number(player.shirt_number),
+                  })),
+                }),
               });
 
-              Alert.alert('Inscripción confirmada', 'Ya estás apuntado al torneo.');
+              Alert.alert('Inscripción confirmada', 'La inscripción al torneo se ha completado correctamente.');
               await loadTournament();
             } catch (error) {
               console.error('Error inscribing tournament:', error);
@@ -170,7 +288,7 @@ const TournamentDetailScreen = ({ route, navigation }) => {
   const handleCancelInscription = () => {
     Alert.alert(
       'Cancelar inscripción',
-      'Puedes cancelar hasta 2 días antes del torneo. Si cancelas ahora, se te devolverán los EasyPass.',
+      'Puedes cancelar hasta 2 días antes del torneo. Si cancelas ahora, se te devolverán los EasyPass de esta inscripción.',
       [
         { text: 'No cancelar', style: 'cancel' },
         {
@@ -182,7 +300,9 @@ const TournamentDetailScreen = ({ route, navigation }) => {
 
               await fetchJson(`${API_URL}/tournaments/${tournamentId}/cancel`, {
                 method: 'POST',
-                body: JSON.stringify({}),
+                body: JSON.stringify({
+                  registration_group_id: myInscription?.registration_group_id,
+                }),
               });
 
               Alert.alert('Inscripción cancelada', 'Tu inscripción se ha cancelado correctamente.');
@@ -234,6 +354,7 @@ const TournamentDetailScreen = ({ route, navigation }) => {
     <SafeAreaView style={styles.safeArea}>
       <ScrollView
         contentContainerStyle={styles.container}
+        keyboardShouldPersistTaps="handled"
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />}
       >
         <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
@@ -268,7 +389,7 @@ const TournamentDetailScreen = ({ route, navigation }) => {
             </View>
             <View style={styles.infoItem}>
               <Text style={styles.infoLabel}>Precio</Text>
-              <Text style={styles.infoValue}>{tournament.price_easypass} EP</Text>
+              <Text style={styles.infoValue}>{tournament.price_easypass} EasyPass / jugador</Text>
             </View>
             <View style={styles.infoItem}>
               <Text style={styles.infoLabel}>Ciudad</Text>
@@ -336,28 +457,139 @@ const TournamentDetailScreen = ({ route, navigation }) => {
 
           {isInscribed ? (
             <View style={styles.confirmedBox}>
-              <Text style={styles.confirmedTitle}>Ya estás inscrito ✅</Text>
-              <Text style={styles.confirmedText}>Talla camiseta: {myInscription?.shirt_size || selectedSize}</Text>
+              <Text style={styles.confirmedTitle}>Ya tienes una inscripción confirmada ✅</Text>
+              <Text style={styles.confirmedText}>Tipo: {myInscription?.registration_type || 'Inscripción'}</Text>
+              <Text style={styles.confirmedText}>Jugadores: {myInscription?.total_players || 1}</Text>
+              <Text style={styles.confirmedText}>EasyPass usados: {myInscription?.easypass_used || tournament.price_easypass}</Text>
+              {Array.isArray(myInscription?.players) && myInscription.players.map((player, index) => (
+                <View key={player.player_registration_id || index} style={styles.confirmedPlayerBox}>
+                  <Text style={styles.confirmedPlayerName}>{index + 1}. {player.full_name}</Text>
+                  <Text style={styles.confirmedText}>Talla: {player.shirt_size} · Camiseta: {player.shirt_name} #{player.shirt_number}</Text>
+                </View>
+              ))}
               <Text style={styles.confirmedText}>Recuerda estar puntual para confirmar equipos y explicar las normas.</Text>
             </View>
           ) : (
             <>
-              <Text style={styles.bodyText}>Selecciona tu talla de camiseta antes de apuntarte.</Text>
-              <View style={styles.sizeGrid}>
-                {SHIRT_SIZES.map((size) => {
-                  const selected = selectedSize === size;
+              <Text style={styles.bodyText}>Puedes apuntarte solo, con amigos o reservar un equipo completo.</Text>
+
+              <View style={styles.registrationTypeGrid}>
+                {REGISTRATION_TYPES.map((type) => {
+                  const selected = registrationType === type.key;
                   return (
                     <TouchableOpacity
-                      key={size}
-                      style={[styles.sizeButton, selected && styles.sizeButtonSelected]}
-                      onPress={() => setSelectedSize(size)}
+                      key={type.key}
+                      style={[styles.registrationTypeButton, selected && styles.registrationTypeButtonSelected]}
+                      onPress={() => updateRegistrationType(type.key)}
                       activeOpacity={0.85}
                     >
-                      <Text style={[styles.sizeButtonText, selected && styles.sizeButtonTextSelected]}>{size}</Text>
+                      <Text style={[styles.registrationTypeTitle, selected && styles.registrationTypeTextSelected]}>{type.label}</Text>
+                      <Text style={[styles.registrationTypeDescription, selected && styles.registrationTypeTextSelected]}>{type.description}</Text>
                     </TouchableOpacity>
                   );
                 })}
               </View>
+
+              <View style={styles.summaryBox}>
+                <Text style={styles.summaryText}>Jugadores: {players.length}</Text>
+                <Text style={styles.summaryText}>Total: {totalEasyPass} EasyPass</Text>
+              </View>
+
+              {players.map((player, index) => (
+                <View key={`player-${index}`} style={styles.playerCard}>
+                  <View style={styles.playerHeader}>
+                    <Text style={styles.playerTitle}>Jugador {index + 1}</Text>
+                    {players.length > 1 && (
+                      <TouchableOpacity onPress={() => removePlayer(index)} style={styles.removeButton}>
+                        <Text style={styles.removeButtonText}>Quitar</Text>
+                      </TouchableOpacity>
+                    )}
+                  </View>
+
+                  <TextInput
+                    style={styles.input}
+                    placeholder="Nombre completo"
+                    placeholderTextColor="#64748B"
+                    value={player.full_name}
+                    onChangeText={(value) => updatePlayerField(index, 'full_name', value)}
+                  />
+                  <TextInput
+                    style={styles.input}
+                    placeholder="DNI"
+                    placeholderTextColor="#64748B"
+                    value={player.dni}
+                    autoCapitalize="characters"
+                    onChangeText={(value) => updatePlayerField(index, 'dni', value)}
+                  />
+                  <TextInput
+                    style={styles.input}
+                    placeholder="Fecha de nacimiento YYYY-MM-DD"
+                    placeholderTextColor="#64748B"
+                    value={player.birth_date}
+                    keyboardType="numbers-and-punctuation"
+                    onChangeText={(value) => updatePlayerField(index, 'birth_date', value)}
+                  />
+                  <TextInput
+                    style={styles.input}
+                    placeholder="Teléfono"
+                    placeholderTextColor="#64748B"
+                    value={player.phone}
+                    keyboardType="phone-pad"
+                    onChangeText={(value) => updatePlayerField(index, 'phone', value)}
+                  />
+                  <TextInput
+                    style={styles.input}
+                    placeholder="Correo electrónico"
+                    placeholderTextColor="#64748B"
+                    value={player.email}
+                    keyboardType="email-address"
+                    autoCapitalize="none"
+                    onChangeText={(value) => updatePlayerField(index, 'email', value)}
+                  />
+
+                  <Text style={styles.inputLabel}>Talla camiseta</Text>
+                  <View style={styles.sizeGrid}>
+                    {SHIRT_SIZES.map((size) => {
+                      const selected = player.shirt_size === size;
+                      return (
+                        <TouchableOpacity
+                          key={`${index}-${size}`}
+                          style={[styles.sizeButton, selected && styles.sizeButtonSelected]}
+                          onPress={() => updatePlayerField(index, 'shirt_size', size)}
+                          activeOpacity={0.85}
+                        >
+                          <Text style={[styles.sizeButtonText, selected && styles.sizeButtonTextSelected]}>{size}</Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+
+                  <TextInput
+                    style={styles.input}
+                    placeholder="Nombre camiseta"
+                    placeholderTextColor="#64748B"
+                    value={player.shirt_name}
+                    autoCapitalize="characters"
+                    maxLength={30}
+                    onChangeText={(value) => updatePlayerField(index, 'shirt_name', value)}
+                  />
+                  <TextInput
+                    style={styles.input}
+                    placeholder="Número camiseta 1-99"
+                    placeholderTextColor="#64748B"
+                    value={String(player.shirt_number)}
+                    keyboardType="number-pad"
+                    maxLength={2}
+                    onChangeText={(value) => updatePlayerField(index, 'shirt_number', value.replace(/[^0-9]/g, ''))}
+                  />
+                </View>
+              ))}
+
+              {players.length < MAX_PLAYERS && (
+                <TouchableOpacity style={styles.addPlayerButton} onPress={addPlayer}>
+                  <Text style={styles.addPlayerButtonText}>+ Añadir jugador</Text>
+                </TouchableOpacity>
+              )}
             </>
           )}
 
@@ -376,7 +608,7 @@ const TournamentDetailScreen = ({ route, navigation }) => {
               disabled={!isOpen || submitting}
             >
               <Text style={styles.primaryButtonText}>
-                {submitting ? 'Procesando...' : `Apuntarme por ${tournament.price_easypass} EP`}
+                {submitting ? 'Procesando...' : `Confirmar por ${totalEasyPass} EasyPass`}
               </Text>
             </TouchableOpacity>
           )}
@@ -580,12 +812,103 @@ const styles = StyleSheet.create({
     lineHeight: 23,
     marginBottom: 6,
   },
+  registrationTypeGrid: {
+    gap: 10,
+    marginTop: 8,
+    marginBottom: 14,
+  },
+  registrationTypeButton: {
+    backgroundColor: '#0F172A',
+    borderRadius: 16,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: '#334155',
+  },
+  registrationTypeButtonSelected: {
+    backgroundColor: '#F97316',
+    borderColor: '#F97316',
+  },
+  registrationTypeTitle: {
+    color: '#FFFFFF',
+    fontSize: 15,
+    fontWeight: '900',
+    marginBottom: 4,
+  },
+  registrationTypeDescription: {
+    color: '#CBD5E1',
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  registrationTypeTextSelected: {
+    color: '#FFFFFF',
+  },
+  summaryBox: {
+    backgroundColor: '#0F172A',
+    borderRadius: 16,
+    padding: 14,
+    marginBottom: 14,
+    borderWidth: 1,
+    borderColor: '#1E293B',
+  },
+  summaryText: {
+    color: '#FFFFFF',
+    fontSize: 15,
+    fontWeight: '900',
+    marginBottom: 4,
+  },
+  playerCard: {
+    backgroundColor: '#0F172A',
+    borderRadius: 18,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: '#1E293B',
+    marginBottom: 14,
+  },
+  playerHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  playerTitle: {
+    color: '#FFFFFF',
+    fontSize: 17,
+    fontWeight: '900',
+  },
+  removeButton: {
+    backgroundColor: '#7F1D1D',
+    borderRadius: 12,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+  },
+  removeButtonText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '900',
+  },
+  input: {
+    backgroundColor: '#111827',
+    borderWidth: 1,
+    borderColor: '#334155',
+    borderRadius: 14,
+    paddingHorizontal: 13,
+    paddingVertical: 12,
+    color: '#FFFFFF',
+    fontSize: 15,
+    fontWeight: '700',
+    marginBottom: 10,
+  },
+  inputLabel: {
+    color: '#CBD5E1',
+    fontSize: 14,
+    fontWeight: '900',
+    marginBottom: 8,
+  },
   sizeGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 10,
-    marginTop: 8,
-    marginBottom: 16,
+    marginBottom: 12,
   },
   sizeButton: {
     minWidth: 58,
@@ -593,7 +916,7 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     paddingHorizontal: 14,
     alignItems: 'center',
-    backgroundColor: '#0F172A',
+    backgroundColor: '#111827',
     borderWidth: 1,
     borderColor: '#334155',
   },
@@ -608,6 +931,20 @@ const styles = StyleSheet.create({
   },
   sizeButtonTextSelected: {
     color: '#FFFFFF',
+  },
+  addPlayerButton: {
+    backgroundColor: '#1E293B',
+    borderRadius: 16,
+    paddingVertical: 13,
+    alignItems: 'center',
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: '#334155',
+  },
+  addPlayerButtonText: {
+    color: '#FFFFFF',
+    fontSize: 15,
+    fontWeight: '900',
   },
   confirmedBox: {
     backgroundColor: 'rgba(34, 197, 94, 0.12)',
@@ -628,6 +965,18 @@ const styles = StyleSheet.create({
     fontSize: 14,
     lineHeight: 20,
     fontWeight: '700',
+  },
+  confirmedPlayerBox: {
+    backgroundColor: 'rgba(15, 23, 42, 0.5)',
+    borderRadius: 12,
+    padding: 10,
+    marginVertical: 6,
+  },
+  confirmedPlayerName: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '900',
+    marginBottom: 3,
   },
   primaryButton: {
     backgroundColor: '#F97316',
