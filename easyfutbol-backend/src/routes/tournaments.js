@@ -14,6 +14,8 @@ const ALLOWED_REGISTRATION_TYPES = ['solo', 'group', 'full_team'];
 const MIN_SHIRT_NUMBER = 1;
 const MAX_SHIRT_NUMBER = 99;
 const MAX_PLAYERS_PER_REGISTRATION = 10;
+const CANCELLATION_DEADLINE_HOURS = 120;
+const TOURNAMENT_REGISTRATION_DEADLINE = '2026-07-22 23:59:59';
 
 const getLocationIdFromCity = (city) => {
   const normalizedCity = String(city || '').toLowerCase().trim();
@@ -424,6 +426,20 @@ router.post('/:id/inscribe', requireAuth, async (req, res) => {
       return res.status(400).json({ message: 'Las inscripciones de este torneo no están abiertas' });
     }
 
+    const [deadlineRows] = await connection.query(
+      `
+      SELECT NOW() > ? AS registration_deadline_passed
+      `,
+      [TOURNAMENT_REGISTRATION_DEADLINE]
+    );
+
+    if (Number(deadlineRows[0]?.registration_deadline_passed || 0) === 1) {
+      await connection.rollback();
+      return res.status(400).json({
+        message: 'Las inscripciones del torneo están cerradas. El plazo terminó el miércoles 22 de julio.',
+      });
+    }
+
     const [confirmedRows] = await connection.query(getConfirmedPlayersCountQuery, [id]);
     const confirmedPlayers = Number(confirmedRows[0]?.confirmed_players || 0);
     const availableSpots = Number(tournament.max_players || 0) - confirmedPlayers;
@@ -593,7 +609,7 @@ router.post('/:id/inscribe', requireAuth, async (req, res) => {
 });
 
 // POST /api/tournaments/:id/cancel
-// Cancela todas las plazas de la última inscripción confirmada del usuario y devuelve los EasyPass si faltan al menos 2 días
+// Cancela una inscripción concreta del usuario y devuelve los EasyPass si faltan al menos 5 días
 router.post('/:id/cancel', requireAuth, async (req, res) => {
   const { id } = req.params;
   const { registration_group_id } = req.body || {};
@@ -601,6 +617,10 @@ router.post('/:id/cancel', requireAuth, async (req, res) => {
 
   if (!userId) {
     return res.status(401).json({ message: 'Usuario no autenticado' });
+  }
+
+  if (!registration_group_id) {
+    return res.status(400).json({ message: 'Selecciona la inscripción que quieres cancelar.' });
   }
 
   const connection = await pool.getConnection();
@@ -635,38 +655,24 @@ router.post('/:id/cancel', requireAuth, async (req, res) => {
     const locationId = getLocationIdFromCity(tournament.city);
     const hoursUntilTournament = Number(tournament.hours_until_tournament || 0);
 
-    if (hoursUntilTournament < 48) {
+    if (hoursUntilTournament < CANCELLATION_DEADLINE_HOURS) {
       await connection.rollback();
       return res.status(400).json({
-        message: 'No se puede cancelar la inscripción con menos de 2 días de antelación.',
+        message: 'No se puede cancelar la inscripción con menos de 5 días de antelación.',
       });
     }
 
-    const groupQueryParams = registration_group_id
-      ? [registration_group_id, id, userId]
-      : [id, userId];
-
     const [groupRows] = await connection.query(
-      registration_group_id
-        ? `
-        SELECT id, status, payment_method, easypass_used, total_players
-        FROM tournament_registration_groups
-        WHERE id = ?
-          AND tournament_id = ?
-          AND responsible_user_id = ?
-        LIMIT 1
-        FOR UPDATE
-        `
-        : `
-        SELECT id, status, payment_method, easypass_used, total_players
-        FROM tournament_registration_groups
-        WHERE tournament_id = ?
-          AND responsible_user_id = ?
-        ORDER BY created_at DESC
-        LIMIT 1
-        FOR UPDATE
-        `,
-      groupQueryParams
+      `
+      SELECT id, status, payment_method, easypass_used, total_players
+      FROM tournament_registration_groups
+      WHERE id = ?
+        AND tournament_id = ?
+        AND responsible_user_id = ?
+      LIMIT 1
+      FOR UPDATE
+      `,
+      [registration_group_id, id, userId]
     );
 
     if (groupRows.length === 0) {
@@ -742,6 +748,7 @@ router.post('/:id/cancel', requireAuth, async (req, res) => {
       tournament_id: Number(id),
       responsible_user_id: Number(userId),
       registration_group_id: Number(group.id),
+      cancelled_registration_group_id: Number(group.id),
       total_players_cancelled: Number(group.total_players || 0),
       easypass_refunded: easypassToRefund,
       easypass_balance: newBalance,

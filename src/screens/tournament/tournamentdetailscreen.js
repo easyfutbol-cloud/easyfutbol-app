@@ -99,10 +99,12 @@ const TournamentDetailScreen = ({ route, navigation }) => {
 
   const [tournament, setTournament] = useState(null);
   const [myInscription, setMyInscription] = useState(null);
+  const [myRegistrations, setMyRegistrations] = useState([]);
   const [isInscribed, setIsInscribed] = useState(false);
   const [registrationType, setRegistrationType] = useState('solo');
   const [players, setPlayers] = useState([createEmptyPlayer()]);
   const [birthDatePickerIndex, setBirthDatePickerIndex] = useState(null);
+  const [showFullRules, setShowFullRules] = useState(false);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -154,9 +156,14 @@ const TournamentDetailScreen = ({ route, navigation }) => {
         fetchJson(`${API_URL}/tournaments/${tournamentId}/my-inscription`),
       ]);
 
+      const confirmedRegistrations = Array.isArray(inscriptionData?.registrations)
+        ? inscriptionData.registrations.filter((registration) => registration.status === 'confirmed')
+        : [];
+
       setTournament(tournamentData);
-      setMyInscription(inscriptionData?.inscription || null);
-      setIsInscribed(Boolean(inscriptionData?.is_inscribed));
+      setMyRegistrations(confirmedRegistrations);
+      setMyInscription(confirmedRegistrations[0] || inscriptionData?.inscription || null);
+      setIsInscribed(confirmedRegistrations.length > 0 || Boolean(inscriptionData?.is_inscribed));
     } catch (error) {
       console.error('Error loading tournament detail:', error);
       Alert.alert('Error', error.message || 'No se pudo cargar el torneo');
@@ -327,10 +334,10 @@ const TournamentDetailScreen = ({ route, navigation }) => {
     );
   };
 
-  const handleCancelInscription = () => {
+  const handleCancelInscription = (registrationGroupId) => {
     Alert.alert(
       'Cancelar inscripción',
-      'Puedes cancelar hasta 2 días antes del torneo. Si cancelas ahora, se te devolverán los EasyPass de esta inscripción.',
+      'Puedes cancelar hasta 5 días antes del torneo. Si cancelas ahora, se te devolverán los EasyPass de esta inscripción.',
       [
         { text: 'No cancelar', style: 'cancel' },
         {
@@ -343,7 +350,7 @@ const TournamentDetailScreen = ({ route, navigation }) => {
               await fetchJson(`${API_URL}/tournaments/${tournamentId}/cancel`, {
                 method: 'POST',
                 body: JSON.stringify({
-                  registration_group_id: myInscription?.registration_group_id,
+                  registration_group_id: registrationGroupId,
                 }),
               });
 
@@ -491,29 +498,77 @@ const TournamentDetailScreen = ({ route, navigation }) => {
           <Text style={styles.ruleText}>• Puntualidad obligatoria.</Text>
           <Text style={styles.ruleText}>• Respeto y fairplay durante todo el torneo.</Text>
           <Text style={styles.ruleText}>• La organización decidirá en caso de duda importante.</Text>
-          <Text style={styles.ruleText}>• No se puede cancelar con menos de 2 días de antelación.</Text>
+          <Text style={styles.ruleText}>• No se puede cancelar con menos de 5 días de antelación.</Text>
+          <Text style={styles.ruleText}>• Inscripciones abiertas hasta el miércoles 22 de julio.</Text>
+
+          <TouchableOpacity
+            style={styles.rulesButton}
+            activeOpacity={0.85}
+            onPress={() => setShowFullRules((currentValue) => !currentValue)}
+          >
+            <Text style={styles.rulesButtonText}>
+              {showFullRules ? 'Ocultar reglamento completo' : 'Ver reglamento completo'}
+            </Text>
+          </TouchableOpacity>
+
+          {showFullRules && (
+            <View style={styles.fullRulesBox}>
+              <Text style={styles.fullRulesTitle}>Reglamento completo del torneo</Text>
+              <Text style={styles.fullRuleText}>1. Los equipos deberán estar preparados antes del inicio de cada partido.</Text>
+              <Text style={styles.fullRuleText}>2. Cada partido tendrá una duración de 15 minutos, salvo la final principal, que será de 20 minutos.</Text>
+              <Text style={styles.fullRuleText}>3. El torneo se jugará con fase de grupos, winner bracket y loser bracket.</Text>
+              <Text style={styles.fullRuleText}>4. Todos los jugadores deben respetar a rivales, compañeros, árbitros y organización.</Text>
+              <Text style={styles.fullRuleText}>5. Las decisiones arbitrales y de la organización serán definitivas durante el torneo.</Text>
+              <Text style={styles.fullRuleText}>6. Las conductas antideportivas podrán suponer expulsión del partido o del torneo.</Text>
+              <Text style={styles.fullRuleText}>7. No se podrá cancelar la inscripción con menos de 5 días de antelación.</Text>
+              <Text style={styles.fullRuleText}>8. Las inscripciones estarán abiertas hasta el miércoles 22 de julio o hasta completar plazas.</Text>
+              <Text style={styles.fullRuleText}>9. La organización podrá ajustar horarios, campos o emparejamientos por necesidades del torneo.</Text>
+            </View>
+          )}
         </View>
 
         <View style={styles.sectionCard}>
           <Text style={styles.sectionTitle}>Tu inscripción</Text>
 
-          {isInscribed ? (
+          {isInscribed && (
             <View style={styles.confirmedBox}>
-              <Text style={styles.confirmedTitle}>Ya tienes una inscripción confirmada ✅</Text>
-              <Text style={styles.confirmedText}>Tipo: {myInscription?.registration_type || 'Inscripción'}</Text>
-              <Text style={styles.confirmedText}>Jugadores: {myInscription?.total_players || 1}</Text>
-              <Text style={styles.confirmedText}>EasyPass usados: {myInscription?.easypass_used || tournament.price_easypass}</Text>
-              {Array.isArray(myInscription?.players) && myInscription.players.map((player, index) => (
-                <View key={player.player_registration_id || index} style={styles.confirmedPlayerBox}>
-                  <Text style={styles.confirmedPlayerName}>{index + 1}. {player.full_name}</Text>
-                  <Text style={styles.confirmedText}>Talla: {player.shirt_size} · Camiseta: {player.shirt_name} #{player.shirt_number}</Text>
+              <Text style={styles.confirmedTitle}>Tus inscripciones confirmadas ✅</Text>
+              <Text style={styles.confirmedText}>Puedes añadir más jugadores creando otra inscripción o cancelar una inscripción concreta.</Text>
+
+              {myRegistrations.map((registration, registrationIndex) => (
+                <View key={registration.registration_group_id || registrationIndex} style={styles.registrationSummaryCard}>
+                  <View style={styles.registrationSummaryHeader}>
+                    <Text style={styles.registrationSummaryTitle}>Inscripción {registrationIndex + 1}</Text>
+                    <Text style={styles.registrationSummaryTag}>{registration.total_players || 1} jugador{Number(registration.total_players || 1) === 1 ? '' : 'es'}</Text>
+                  </View>
+
+                  <Text style={styles.confirmedText}>Tipo: {registration.registration_type || 'Inscripción'}</Text>
+                  <Text style={styles.confirmedText}>EasyPass usados: {registration.easypass_used || tournament.price_easypass}</Text>
+
+                  {Array.isArray(registration.players) && registration.players.map((player, index) => (
+                    <View key={player.player_registration_id || index} style={styles.confirmedPlayerBox}>
+                      <Text style={styles.confirmedPlayerName}>{index + 1}. {player.full_name}</Text>
+                      <Text style={styles.confirmedText}>Talla: {player.shirt_size} · Camiseta: {player.shirt_name} #{player.shirt_number}</Text>
+                    </View>
+                  ))}
+
+                  <TouchableOpacity
+                    style={[styles.cancelSingleButton, submitting && styles.buttonDisabled]}
+                    onPress={() => handleCancelInscription(registration.registration_group_id)}
+                    disabled={submitting}
+                  >
+                    <Text style={styles.cancelSingleButtonText}>{submitting ? 'Procesando...' : 'Cancelar esta inscripción'}</Text>
+                  </TouchableOpacity>
                 </View>
               ))}
+
               <Text style={styles.confirmedText}>Recuerda estar puntual para confirmar equipos y explicar las normas.</Text>
             </View>
-          ) : (
+          )}
+
+          {isOpen ? (
             <>
-              <Text style={styles.bodyText}>Puedes apuntarte solo, con amigos o reservar un equipo completo.</Text>
+              <Text style={styles.bodyText}>{isInscribed ? 'Añade más jugadores creando una nueva inscripción.' : 'Puedes apuntarte solo, con amigos o reservar un equipo completo.'}</Text>
 
               <View style={styles.registrationTypeGrid}>
                 {REGISTRATION_TYPES.map((type) => {
@@ -653,21 +708,17 @@ const TournamentDetailScreen = ({ route, navigation }) => {
                 </TouchableOpacity>
               )}
             </>
+          ) : (
+            <View style={styles.closedBox}>
+              <Text style={styles.closedText}>Las inscripciones no están disponibles ahora mismo.</Text>
+            </View>
           )}
 
-          {isInscribed ? (
+          {isOpen && (
             <TouchableOpacity
-              style={[styles.cancelButton, submitting && styles.buttonDisabled]}
-              onPress={handleCancelInscription}
-              disabled={submitting}
-            >
-              <Text style={styles.cancelButtonText}>{submitting ? 'Procesando...' : 'Cancelar inscripción'}</Text>
-            </TouchableOpacity>
-          ) : (
-            <TouchableOpacity
-              style={[styles.primaryButton, (!isOpen || submitting) && styles.buttonDisabled]}
+              style={[styles.primaryButton, submitting && styles.buttonDisabled]}
               onPress={handleInscribe}
-              disabled={!isOpen || submitting}
+              disabled={submitting}
             >
               <Text style={styles.primaryButtonText}>
                 {submitting ? 'Procesando...' : `Confirmar por ${totalEasyPass} EasyPass`}
@@ -874,6 +925,41 @@ const styles = StyleSheet.create({
     lineHeight: 23,
     marginBottom: 6,
   },
+  rulesButton: {
+    backgroundColor: '#1E293B',
+    borderRadius: 16,
+    paddingVertical: 13,
+    alignItems: 'center',
+    marginTop: 12,
+    borderWidth: 1,
+    borderColor: '#334155',
+  },
+  rulesButtonText: {
+    color: '#FFFFFF',
+    fontSize: 15,
+    fontWeight: '900',
+  },
+  fullRulesBox: {
+    backgroundColor: '#0F172A',
+    borderRadius: 16,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: '#334155',
+    marginTop: 12,
+  },
+  fullRulesTitle: {
+    color: '#FFFFFF',
+    fontSize: 17,
+    fontWeight: '900',
+    marginBottom: 10,
+  },
+  fullRuleText: {
+    color: '#CBD5E1',
+    fontSize: 14,
+    lineHeight: 21,
+    marginBottom: 8,
+    fontWeight: '700',
+  },
   registrationTypeGrid: {
     gap: 10,
     marginTop: 8,
@@ -1076,6 +1162,57 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     padding: 10,
     marginVertical: 6,
+  },
+  registrationSummaryCard: {
+    backgroundColor: 'rgba(15, 23, 42, 0.65)',
+    borderRadius: 16,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(187, 247, 208, 0.22)',
+    marginTop: 12,
+  },
+  registrationSummaryHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: 10,
+    marginBottom: 8,
+  },
+  registrationSummaryTitle: {
+    color: '#FFFFFF',
+    fontSize: 15,
+    fontWeight: '900',
+  },
+  registrationSummaryTag: {
+    color: '#BBF7D0',
+    fontSize: 12,
+    fontWeight: '900',
+  },
+  cancelSingleButton: {
+    backgroundColor: '#7F1D1D',
+    borderRadius: 14,
+    paddingVertical: 11,
+    alignItems: 'center',
+    marginTop: 10,
+  },
+  cancelSingleButtonText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '900',
+  },
+  closedBox: {
+    backgroundColor: '#1E293B',
+    borderRadius: 16,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: '#334155',
+    marginBottom: 16,
+  },
+  closedText: {
+    color: '#CBD5E1',
+    fontSize: 14,
+    fontWeight: '800',
+    textAlign: 'center',
   },
   confirmedPlayerName: {
     color: '#FFFFFF',

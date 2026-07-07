@@ -12,7 +12,7 @@ function refundPercent(startsAtISO) {
   const starts = new Date(startsAtISO).getTime();
   const now = Date.now();
   const diffH = (starts - now) / 36e5;
-  return diffH > 6 ? 100 : 0;
+  return diffH > 8 ? 100 : 0;
 }
 
 function formatMatchDateTime(startsAtISO) {
@@ -272,6 +272,174 @@ router.post('/matches/:id/join-with-easypass', requireAuth, async (req, res) => 
   }
 });
 
+// --- Cancelar una entrada individual por inscription_id ---
+router.patch('/inscriptions/:id/cancel', requireAuth, async (req, res) => {
+  const conn = await pool.getConnection();
+
+  try {
+    const userId = req.user.id;
+    const inscriptionId = Number(req.params.id);
+
+    if (!inscriptionId) {
+      return res.status(400).json({ ok: false, msg: 'Entrada no válida' });
+    }
+
+    const [[row]] = await conn.query(
+      `SELECT i.id AS inscription_id,
+              i.status,
+              i.stripe_session_id,
+              i.ticket_type,
+              i.payment_type,
+              m.starts_at,
+              m.id AS match_id,
+              m.title,
+              m.city,
+              COALESCE(m.location_id, CASE WHEN LOWER(m.city) IN ('avilés','aviles','oviedo','gijón','gijon','asturias') THEN 2 ELSE 1 END) AS location_id,
+              COALESCE(m.easypass_cost, 1) AS easypass_cost
+       FROM inscriptions i
+       JOIN matches m ON m.id = i.match_id
+       WHERE i.id = ?
+         AND i.user_id = ?
+       LIMIT 1`,
+      [inscriptionId, userId]
+    );
+
+    if (!row) {
+      return res.status(404).json({ ok: false, msg: 'Entrada no encontrada' });
+    }
+
+    if (['cancelled', 'canceled'].includes(String(row.status || '').toLowerCase())) {
+      return res.status(400).json({ ok: false, msg: 'Esta entrada ya estaba cancelada' });
+    }
+
+    if (row.status === 'pending') {
+      await conn.beginTransaction();
+      await conn.query(
+        'DELETE FROM inscriptions WHERE id = ? AND user_id = ? AND status = "pending"',
+        [inscriptionId, userId]
+      );
+      await conn.commit();
+
+      return res.json({ ok: true, msg: 'Entrada cancelada (pendiente, sin pago)' });
+    }
+
+    if (row.status !== 'confirmed') {
+      return res.status(400).json({ ok: false, msg: 'Esta entrada no se puede cancelar' });
+    }
+
+    const pct = refundPercent(row.starts_at);
+    if (pct === 0) {
+      return res.status(400).json({ ok: false, msg: 'Solo se devuelve si cancelas con más de 8 horas de antelación' });
+    }
+
+    const isEasyPassInscription = !row.stripe_session_id && (
+      row.payment_type === 'easypass' ||
+      row.ticket_type === 'credit' ||
+      row.ticket_type === 'easypass' ||
+      row.ticket_type === 'white' ||
+      row.ticket_type === 'black'
+    );
+
+    if (isEasyPassInscription) {
+      await conn.beginTransaction();
+
+      const fallbackLocation = getFallbackLocationFromCity(row.city);
+      const locationId = Number(row.location_id || fallbackLocation.id);
+      const locationName = await getLocationName(conn, locationId, fallbackLocation.name);
+      const refundAmount = Math.max(1, Number(row.easypass_cost || 1));
+
+      await conn.query(
+        `INSERT INTO user_easypass_balances (user_id, location_id, balance)
+         VALUES (?, ?, ?)
+         ON DUPLICATE KEY UPDATE balance = balance + VALUES(balance)`,
+        [userId, locationId, refundAmount]
+      );
+
+      await conn.query(
+        'UPDATE users SET easypass_balance = COALESCE(easypass_balance, 0) + ? WHERE id=?',
+        [refundAmount, userId]
+      );
+
+      await conn.query(
+        `INSERT INTO easypass_transactions (user_id, type, amount, description, event_id, created_at)
+         VALUES (?, 'refund', ?, ?, ?, NOW())`,
+        [userId, refundAmount, `Cancelación de 1 entrada con devolución de ${refundAmount} EasyPass de ${locationName}`, row.match_id]
+      );
+
+      await conn.query(
+        'UPDATE inscriptions SET status="cancelled" WHERE id=? AND user_id=? AND status="confirmed"',
+        [inscriptionId, userId]
+      );
+
+      await conn.query(
+        'UPDATE matches SET spots_taken = GREATEST(spots_taken - 1, 0) WHERE id=?',
+        [row.match_id]
+      );
+
+      const [[updatedUser]] = await conn.query(
+        'SELECT easypass_balance AS easyPassBalance FROM users WHERE id=? LIMIT 1',
+        [userId]
+      );
+
+      await conn.commit();
+
+      return res.json({
+        ok: true,
+        msg: `Entrada cancelada y ${refundAmount} EasyPass de ${locationName} devuelto`,
+        pct,
+        refundedEasyPass: refundAmount,
+        location_id: locationId,
+        locationId,
+        locationName,
+        easyPassBalance: Number(updatedUser?.easyPassBalance || 0),
+      });
+    }
+
+    if (!row.stripe_session_id) {
+      return res.status(400).json({ ok: false, msg: 'No se encontró el pago en Stripe ni se pudo detectar como EasyPass' });
+    }
+
+    const session = await stripe.checkout.sessions.retrieve(row.stripe_session_id, {
+      expand: ['payment_intent.latest_charge'],
+    });
+
+    const charge = session?.payment_intent?.latest_charge;
+    if (!charge) {
+      return res.status(400).json({ ok: false, msg: 'Pago no localizable' });
+    }
+
+    await conn.beginTransaction();
+
+    const refund = await stripe.refunds.create({ charge: charge.id });
+
+    await conn.query(
+      'UPDATE inscriptions SET status="cancelled" WHERE id=? AND user_id=? AND status="confirmed"',
+      [inscriptionId, userId]
+    );
+
+    await conn.query(
+      'UPDATE matches SET spots_taken = GREATEST(spots_taken - 1, 0) WHERE id=?',
+      [row.match_id]
+    );
+
+    await conn.commit();
+
+    return res.json({ ok: true, msg: 'Entrada cancelada con reembolso', pct, refund_id: refund.id });
+  } catch (e) {
+    await conn.rollback();
+    console.error(e);
+    return res.status(500).json({ ok: false, msg: 'Error al cancelar la entrada' });
+  } finally {
+    conn.release();
+  }
+});
+
+router.post('/inscriptions/:id/cancel', requireAuth, async (req, res) => {
+  req.url = `/inscriptions/${req.params.id}/cancel`;
+  req.method = 'PATCH';
+  return router.handle(req, res);
+});
+
 // --- Cancelar (con posible reembolso) ---
 router.post('/matches/:id/cancel', requireAuth, async (req, res) => {
   const conn = await pool.getConnection();
@@ -329,7 +497,7 @@ router.post('/matches/:id/cancel', requireAuth, async (req, res) => {
       if (isEasyPassInscription) {
         const pct = refundPercent(row.starts_at);
         if (pct === 0) {
-          return res.status(400).json({ ok:false, msg:'Solo se devuelve el EasyPass si cancelas con más de 6 horas de antelación' });
+          return res.status(400).json({ ok:false, msg:'Solo se devuelve el EasyPass si cancelas con más de 8 horas de antelación' });
         }
 
         await conn.beginTransaction();
@@ -405,7 +573,7 @@ router.post('/matches/:id/cancel', requireAuth, async (req, res) => {
         return res.status(400).json({ ok:false, msg:'No se encontró el pago en Stripe ni se pudo detectar como EasyPass' });
       }
       if (pct === 0) {
-        return res.status(400).json({ ok:false, msg:'Solo se devuelve el pago si cancelas con más de 6 horas de antelación' });
+        return res.status(400).json({ ok:false, msg:'Solo se devuelve el pago si cancelas con más de 8 horas de antelación' });
       }
 
       // Obtener charge desde la sesión

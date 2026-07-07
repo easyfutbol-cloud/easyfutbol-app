@@ -156,9 +156,181 @@ function getPlayerTicket(player) {
   return player?.ticket_type || player?.ticketType || player?.camiseta || player?.shirt || '';
 }
 
+function getItemUserId(item) {
+  return item?.user_id || item?.userId || item?.user?.id || item?.player_id || item?.playerId || item?.id;
+}
+
+function getItemMatchId(item) {
+  return item?.match_id || item?.matchId || item?.match?.id || item?.id;
+}
+
+function getItemStartsAt(item) {
+  return (
+    item?.starts_at ||
+    item?.start_time ||
+    item?.date ||
+    item?.fecha ||
+    item?.match?.starts_at ||
+    item?.match?.start_time ||
+    item?.match?.date ||
+    item?.match?.fecha
+  );
+}
+
+function getItemEndsAt(item) {
+  return (
+    item?.ends_at ||
+    item?.end_time ||
+    item?.hora_fin ||
+    item?.match?.ends_at ||
+    item?.match?.end_time ||
+    item?.match?.hora_fin
+  );
+}
+
+function getItemResult(item) {
+  return (
+    item?.result ||
+    item?.resultado ||
+    item?.score ||
+    item?.final_score ||
+    item?.match?.result ||
+    item?.match?.resultado ||
+    item?.match?.score ||
+    item?.match?.final_score ||
+    'Resultado pendiente'
+  );
+}
+
+function getItemMvp(item) {
+  return (
+    item?.mvp_name ||
+    item?.mvp ||
+    item?.mvp_player ||
+    item?.match?.mvp_name ||
+    item?.match?.mvp ||
+    item?.match?.mvp_player ||
+    'MVP pendiente'
+  );
+}
+
+function getPersonalStatValue(item, keys, fallback = 0) {
+  for (const key of keys) {
+    if (item?.[key] !== undefined && item?.[key] !== null) return item[key];
+    if (item?.stats?.[key] !== undefined && item?.stats?.[key] !== null) return item.stats[key];
+    if (item?.personal_stats?.[key] !== undefined && item?.personal_stats?.[key] !== null) return item.personal_stats[key];
+  }
+
+  return fallback;
+}
+
+function getInscriptionId(entry) {
+  return entry?.inscription_id || entry?.inscriptionId || entry?.inscription?.id || entry?.id;
+}
+
+async function cancelInscriptionRequest(inscriptionId, token) {
+  const endpoints = [
+    { method: 'patch', url: `/inscriptions/${inscriptionId}/cancel` },
+    { method: 'post', url: `/inscriptions/${inscriptionId}/cancel` },
+    { method: 'delete', url: `/inscriptions/${inscriptionId}` },
+  ];
+
+  let lastError = null;
+
+  for (const endpoint of endpoints) {
+    try {
+      if (endpoint.method === 'delete') {
+        return await api.delete(endpoint.url, {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        });
+      }
+
+      return await api[endpoint.method](endpoint.url, null, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+    } catch (error) {
+      lastError = error;
+      const status = error?.response?.status;
+
+      if (status !== 404 && status !== 405) {
+        throw error;
+      }
+    }
+  }
+
+  throw lastError;
+}
+
+function getItemPlayers(item) {
+  return (
+    item?.players ||
+    item?.inscritos ||
+    item?.attendees ||
+    item?.inscriptions ||
+    item?.confirmedPlayers ||
+    item?.confirmed_players ||
+    item?.match?.players ||
+    item?.match?.inscritos ||
+    []
+  );
+}
+
+function extractArrayFromResponse(responseData) {
+  return Array.isArray(responseData)
+    ? responseData
+    : responseData?.data ||
+        responseData?.inscriptions ||
+        responseData?.matches ||
+        responseData?.partidos ||
+        responseData?.results ||
+        [];
+}
+
+async function fetchMyMatchesData(token) {
+  try {
+    const response = await api.get('/me/inscriptions', {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    });
+
+    console.log('Mis partidos cargado desde: /me/inscriptions');
+    return {
+      endpoint: '/me/inscriptions',
+      data: extractArrayFromResponse(response.data),
+    };
+  } catch (error) {
+    console.log('Error cargando /me/inscriptions:', error?.response?.data || error.message);
+    throw error;
+  }
+}
+
+function itemBelongsToUser(item, userId) {
+  if (!userId) return true;
+
+  const directUserId = item?.user_id || item?.userId || item?.user?.id || item?.inscription?.user_id;
+
+  if (directUserId && String(directUserId) === String(userId)) {
+    return true;
+  }
+
+  const players = getItemPlayers(item);
+
+  if (!Array.isArray(players) || players.length === 0) {
+    return false;
+  }
+
+  return players.some((player) => String(getItemUserId(player)) === String(userId));
+}
+
 export default function MisPartidosScreen({ navigation }) {
   const [matches, setMatches] = useState([]);
   const [selectedMatch, setSelectedMatch] = useState(null);
+  const [activeTab, setActiveTab] = useState('upcoming');
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
@@ -194,35 +366,67 @@ export default function MisPartidosScreen({ navigation }) {
         return;
       }
 
-      const response = await api.get('/inscriptions/me/inscriptions', {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
+      const storedUser = await AsyncStorage.getItem('user');
+      const user = storedUser ? JSON.parse(storedUser) : null;
+      const userId = user?.id;
+
+      const { data } = await fetchMyMatchesData(token);
+      console.log('Mis inscripciones recibidas:', data.length);
+
+      const groupedByMatch = data.reduce((acc, item) => {
+        const match = item.match || item;
+        const matchId = getItemMatchId(item);
+        const startsAt = getItemStartsAt(item);
+
+        if (!matchId || !startsAt) return acc;
+
+        const rawStatus = normalizeText(item.status || item.estado || item.inscription_status || item?.inscription?.status);
+        const isConfirmed = !rawStatus || rawStatus === 'confirmed' || rawStatus === 'confirmado';
+
+        if (!isConfirmed) return acc;
+
+        if (!acc[matchId]) {
+          acc[matchId] = {
+            ...match,
+            id: matchId,
+            date: startsAt,
+            start_time: startsAt,
+            end_time: getItemEndsAt(item),
+            title: item.title || item.match_title || item.nombre || item.name || match.title || match.nombre || match.name,
+            field: item.field_name || item.field || item.campo || item.location || match.field_name || match.field || match.campo || match.location,
+            status: 'Confirmado',
+            result: getItemResult(item),
+            mvp: getItemMvp(item),
+            inscriptions: [],
+            players: [],
+          };
+        }
+
+        acc[matchId].inscriptions.push({
+          ...item,
+          id: item.inscription_id || item.inscriptionId || item.inscription?.id || item.id,
+          ticket_type: item.ticket_type || item.ticketType || item.camiseta || item.inscription?.ticket_type,
+        });
+
+        acc[matchId].players.push({
+          ...item,
+          id: item.user_id || item.userId || item.player_id || item.playerId || item.user?.id || item.id,
+          name: item.name || item.nombre || item.user_name || item.user?.name || item.player_name || 'Jugador',
+          ticket_type: item.ticket_type || item.ticketType || item.camiseta || item.inscription?.ticket_type,
+        });
+
+        return acc;
+      }, {});
+
+      const groupedMatches = Object.values(groupedByMatch).sort((a, b) => {
+        return new Date(a.start_time).getTime() - new Date(b.start_time).getTime();
       });
 
-      const data = Array.isArray(response.data)
-        ? response.data
-        : response.data?.data || response.data?.matches || response.data?.partidos || [];
-
-      const upcomingMatches = data
-        .filter((item) => item.status === 'confirmed' && item.starts_at)
-        .filter((item) => new Date(item.starts_at).getTime() >= Date.now() - 2 * 60 * 60 * 1000)
-        .map((item) => ({
-          ...item,
-          id: item.match_id,
-          date: item.starts_at,
-          start_time: item.starts_at,
-          title: item.title,
-          field: item.field_name,
-          camiseta: item.ticket_type,
-          status: item.status === 'confirmed' ? 'Confirmado' : item.status,
-          players: item.players || item.inscritos || item.attendees || [],
-        }));
-
-      setMatches(upcomingMatches);
+      console.log('Mis partidos visibles:', groupedMatches.length);
+      setMatches(groupedMatches);
     } catch (error) {
       console.log('Error cargando mis inscripciones:', error?.response?.data || error.message);
-      Alert.alert('Error', 'No se han podido cargar tus partidos inscritos. Inténtalo de nuevo.');
+      setMatches([]);
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -252,6 +456,104 @@ export default function MisPartidosScreen({ navigation }) {
     loadMatches();
   };
 
+  const handleCancelInscription = (entry) => {
+    const inscriptionId = getInscriptionId(entry);
+
+    if (!inscriptionId) {
+      Alert.alert('No se puede cancelar', 'No se ha encontrado el identificador de esta entrada.');
+      return;
+    }
+
+    Alert.alert(
+      'Cancelar entrada',
+      '¿Quieres cancelar solo esta entrada? Las demás entradas del partido seguirán activas.',
+      [
+        { text: 'No', style: 'cancel' },
+        {
+          text: 'Sí, cancelar',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              const token = await AsyncStorage.getItem('token');
+
+              if (!token) {
+                Alert.alert('Sesión expirada', 'Vuelve a iniciar sesión para cancelar la entrada.');
+                return;
+              }
+
+              await cancelInscriptionRequest(inscriptionId, token);
+
+              setMatches((currentMatches) =>
+                currentMatches
+                  .map((match) => {
+                    const updatedInscriptions = (match.inscriptions || []).filter(
+                      (item) => String(getInscriptionId(item)) !== String(inscriptionId)
+                    );
+
+                    if (updatedInscriptions.length === 0) {
+                      return null;
+                    }
+
+                    return {
+                      ...match,
+                      inscriptions: updatedInscriptions,
+                      players: updatedInscriptions,
+                      camiseta:
+                        updatedInscriptions[0]?.ticket_type ||
+                        updatedInscriptions[0]?.ticketType ||
+                        updatedInscriptions[0]?.camiseta ||
+                        match.camiseta,
+                    };
+                  })
+                  .filter(Boolean)
+              );
+
+              setSelectedMatch((currentMatch) => {
+                if (!currentMatch) return currentMatch;
+
+                const updatedInscriptions = (currentMatch.inscriptions || []).filter(
+                  (item) => String(getInscriptionId(item)) !== String(inscriptionId)
+                );
+
+                if (updatedInscriptions.length === 0) {
+                  return null;
+                }
+
+                return {
+                  ...currentMatch,
+                  inscriptions: updatedInscriptions,
+                  players: updatedInscriptions,
+                  camiseta:
+                    updatedInscriptions[0]?.ticket_type ||
+                    updatedInscriptions[0]?.ticketType ||
+                    updatedInscriptions[0]?.camiseta ||
+                    currentMatch.camiseta,
+                };
+              });
+
+              Alert.alert('Entrada cancelada', 'Se ha cancelado solo esta entrada.');
+              loadMatches();
+            } catch (error) {
+              const message =
+                error?.response?.data?.message ||
+                error?.response?.data?.error ||
+                'No se ha podido cancelar la entrada. Inténtalo de nuevo.';
+
+              Alert.alert('No se pudo cancelar', message);
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  const now = Date.now();
+  const upcomingMatches = matches.filter((match) => new Date(match.start_time || match.date).getTime() >= now - 2 * 60 * 60 * 1000);
+  const pastMatches = matches
+    .filter((match) => new Date(match.start_time || match.date).getTime() < now - 2 * 60 * 60 * 1000)
+    .sort((a, b) => new Date(b.start_time || b.date).getTime() - new Date(a.start_time || a.date).getTime());
+  const visibleMatches = activeTab === 'upcoming' ? upcomingMatches : pastMatches;
+
   if (loading) {
     return (
       <View style={styles.centerContainer}>
@@ -268,6 +570,13 @@ export default function MisPartidosScreen({ navigation }) {
     const ticket = getTicketColor(selectedMatch.camiseta || selectedMatch.ticket_type || selectedMatch.ticketType);
     const status = selectedMatch.status || selectedMatch.estado || 'Confirmado';
     const totalPlayers = teamWhite.length + teamBlack.length + playersWithoutTeam.length;
+    const isPastMatch = new Date(date).getTime() < Date.now() - 2 * 60 * 60 * 1000;
+    const inscriptions = selectedMatch.inscriptions || [];
+    const firstInscription = inscriptions[0] || selectedMatch;
+    const goals = getPersonalStatValue(firstInscription, ['goals', 'goles']);
+    const assists = getPersonalStatValue(firstInscription, ['assists', 'asistencias']);
+    const saves = getPersonalStatValue(firstInscription, ['saves', 'paradas']);
+    const personalMvp = Boolean(firstInscription.is_mvp || firstInscription.mvp || firstInscription.es_mvp);
 
     return (
       <ScrollView style={styles.container} contentContainerStyle={styles.content}>
@@ -310,6 +619,73 @@ export default function MisPartidosScreen({ navigation }) {
           </View>
         </View>
 
+        {inscriptions.length > 0 && (
+          <View style={styles.card}>
+            <View style={styles.sectionHeader}>
+              <Ionicons name="ticket-outline" size={20} color={ORANGE} />
+              <Text style={styles.sectionTitle}>Tus entradas</Text>
+            </View>
+            {inscriptions.map((entry, index) => {
+              const entryId = getInscriptionId(entry);
+
+              return (
+                <View key={`entry-detail-${entryId || index}-${index}`} style={styles.entryRow}>
+                  <View style={styles.entryInfo}>
+                    <Text style={styles.entryText}>Entrada {index + 1}</Text>
+                    <Text style={styles.entryMuted}>Camiseta {getTicketColor(entry.ticket_type || entry.ticketType || entry.camiseta)}</Text>
+                  </View>
+
+                  {!isPastMatch && (
+                    <TouchableOpacity style={styles.cancelEntryButton} onPress={() => handleCancelInscription(entry)}>
+                      <Text style={styles.cancelEntryButtonText}>Cancelar</Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
+              );
+            })}
+          </View>
+        )}
+
+        {isPastMatch && (
+          <View style={styles.card}>
+            <View style={styles.sectionHeader}>
+              <Ionicons name="stats-chart-outline" size={20} color={ORANGE} />
+              <Text style={styles.sectionTitle}>Resumen del partido</Text>
+            </View>
+
+            <View style={styles.statsGrid}>
+              <View style={styles.statBox}>
+                <Text style={styles.smallCardLabel}>Resultado</Text>
+                <Text style={styles.statValue}>{selectedMatch.result || 'Pendiente'}</Text>
+              </View>
+              <View style={styles.statBox}>
+                <Text style={styles.smallCardLabel}>MVP</Text>
+                <Text style={styles.statValue}>{selectedMatch.mvp || 'Pendiente'}</Text>
+              </View>
+            </View>
+
+            <Text style={styles.personalStatsTitle}>Tus estadísticas</Text>
+            <View style={styles.statsGrid}>
+              <View style={styles.statBox}>
+                <Text style={styles.smallCardLabel}>Goles</Text>
+                <Text style={styles.statValue}>{goals}</Text>
+              </View>
+              <View style={styles.statBox}>
+                <Text style={styles.smallCardLabel}>Asistencias</Text>
+                <Text style={styles.statValue}>{assists}</Text>
+              </View>
+              <View style={styles.statBox}>
+                <Text style={styles.smallCardLabel}>Paradas</Text>
+                <Text style={styles.statValue}>{saves}</Text>
+              </View>
+              <View style={styles.statBox}>
+                <Text style={styles.smallCardLabel}>MVP</Text>
+                <Text style={styles.statValue}>{personalMvp ? 'Sí' : 'No'}</Text>
+              </View>
+            </View>
+          </View>
+        )}
+
         <TouchableOpacity style={styles.locationButton} onPress={() => openLocation(selectedField.mapsUrl)}>
           <Ionicons name="navigate" size={20} color={TEXT} />
           <Text style={styles.locationButtonText}>Abrir ubicación</Text>
@@ -347,7 +723,7 @@ export default function MisPartidosScreen({ navigation }) {
               <Text style={styles.teamTitle}>Equipo blanco</Text>
               {teamWhite.length > 0 ? (
                 teamWhite.map((player, index) => (
-                  <Text key={`white-${player.id || index}`} style={styles.playerText}>
+                  <Text key={`white-${getInscriptionId(player) || player.id || index}-${index}`} style={styles.playerText}>
                     {index + 1}. {getPlayerName(player)}
                   </Text>
                 ))
@@ -360,7 +736,7 @@ export default function MisPartidosScreen({ navigation }) {
               <Text style={styles.teamTitle}>Equipo negro</Text>
               {teamBlack.length > 0 ? (
                 teamBlack.map((player, index) => (
-                  <Text key={`black-${player.id || index}`} style={styles.playerText}>
+                  <Text key={`black-${getInscriptionId(player) || player.id || index}-${index}`} style={styles.playerText}>
                     {index + 1}. {getPlayerName(player)}
                   </Text>
                 ))
@@ -374,7 +750,7 @@ export default function MisPartidosScreen({ navigation }) {
             <View style={styles.pendingPlayersBox}>
               <Text style={styles.teamTitle}>Por confirmar camiseta</Text>
               {playersWithoutTeam.map((player, index) => (
-                <Text key={`pending-${player.id || index}`} style={styles.playerText}>
+                <Text key={`pending-${getInscriptionId(player) || player.id || index}-${index}`} style={styles.playerText}>
                   {index + 1}. {getPlayerName(player)}
                 </Text>
               ))}
@@ -408,26 +784,48 @@ export default function MisPartidosScreen({ navigation }) {
         <Text style={styles.refreshButtonText}>{refreshing ? 'Actualizando...' : 'Actualizar'}</Text>
       </TouchableOpacity>
 
-      {matches.length === 0 ? (
+      <View style={styles.tabsContainer}>
+        <TouchableOpacity
+          style={[styles.tabButton, activeTab === 'upcoming' && styles.tabButtonActive]}
+          onPress={() => setActiveTab('upcoming')}
+        >
+          <Text style={[styles.tabButtonText, activeTab === 'upcoming' && styles.tabButtonTextActive]}>
+            Próximos
+          </Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[styles.tabButton, activeTab === 'past' && styles.tabButtonActive]}
+          onPress={() => setActiveTab('past')}
+        >
+          <Text style={[styles.tabButtonText, activeTab === 'past' && styles.tabButtonTextActive]}>
+            Anteriores
+          </Text>
+        </TouchableOpacity>
+      </View>
+
+      {visibleMatches.length === 0 ? (
         <View style={styles.emptyCard}>
           <Ionicons name="football-outline" size={42} color={ORANGE} />
-          <Text style={styles.emptyTitle}>No tienes partidos próximos</Text>
-          <Text style={styles.emptyText}>Cuando te apuntes a un partido, aparecerá aquí toda la información importante.</Text>
+          <Text style={styles.emptyTitle}>{activeTab === 'upcoming' ? 'No tienes partidos próximos' : 'No tienes partidos anteriores'}</Text>
+          <Text style={styles.emptyText}>{activeTab === 'upcoming' ? 'Cuando te apuntes a un partido, aparecerá aquí toda la información importante.' : 'Cuando finalice un partido, podrás consultar aquí el resultado, el MVP y tus estadísticas personales.'}</Text>
           <TouchableOpacity style={styles.primaryButton} onPress={() => navigation?.navigate?.('Home')}>
             <Text style={styles.primaryButtonText}>Ver partidos disponibles</Text>
           </TouchableOpacity>
         </View>
       ) : (
-        matches.map((match, index) => {
+        visibleMatches.map((match, index) => {
           const field = getFieldDetails(match.field || match.campo || match.location);
           const date = match.date || match.fecha || match.start_date || match.starts_at;
           const startTime = match.start_time || match.hora_inicio || match.time || match.starts_at;
           const ticket = getTicketColor(match.camiseta || match.ticket_type || match.ticketType);
           const status = match.status || match.estado || 'Confirmado';
+          const entryCount = match.inscriptions?.length || 1;
+          const isPastCard = activeTab === 'past';
 
           return (
             <TouchableOpacity
-              key={match.id || index}
+              key={`match-card-${match.id || match.match_id || index}-${index}`}
               style={styles.matchCard}
               activeOpacity={0.85}
               onPress={() => setSelectedMatch(match)}
@@ -461,6 +859,20 @@ export default function MisPartidosScreen({ navigation }) {
                   <Text style={styles.matchInfoText}>{status}</Text>
                 </View>
               </View>
+
+              {entryCount > 1 && (
+                <View style={styles.entryHintBox}>
+                  <Ionicons name="ticket-outline" size={16} color={ORANGE} />
+                  <Text style={styles.entryHintText}>Tienes {entryCount} entradas. Pulsa para verlas todas.</Text>
+                </View>
+              )}
+
+              {isPastCard && (
+                <View style={styles.entryHintBox}>
+                  <Ionicons name="stats-chart-outline" size={16} color={ORANGE} />
+                  <Text style={styles.entryHintText}>Pulsa para ver resultado, MVP y tus estadísticas.</Text>
+                </View>
+              )}
             </TouchableOpacity>
           );
         })
@@ -760,5 +1172,105 @@ const styles = StyleSheet.create({
     color: MUTED,
     fontSize: 14,
     lineHeight: 22,
+  },
+  tabsContainer: {
+    flexDirection: 'row',
+    backgroundColor: CARD,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: BORDER,
+    padding: 4,
+    marginBottom: 14,
+  },
+  tabButton: {
+    flex: 1,
+    paddingVertical: 10,
+    borderRadius: 10,
+    alignItems: 'center',
+  },
+  tabButtonActive: {
+    backgroundColor: ORANGE,
+  },
+  tabButtonText: {
+    color: MUTED,
+    fontSize: 14,
+    fontWeight: '900',
+  },
+  tabButtonTextActive: {
+    color: TEXT,
+  },
+  entryHintBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 7,
+    backgroundColor: CARD_SOFT,
+    borderRadius: 12,
+    padding: 10,
+    marginTop: 12,
+  },
+  entryHintText: {
+    color: TEXT,
+    fontSize: 13,
+    fontWeight: '800',
+    flex: 1,
+  },
+  entryRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    borderBottomWidth: 1,
+    borderBottomColor: BORDER,
+    paddingVertical: 9,
+  },
+  entryText: {
+    color: TEXT,
+    fontSize: 14,
+    fontWeight: '800',
+  },
+  entryMuted: {
+    color: MUTED,
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  statsGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 10,
+  },
+  statBox: {
+    width: '48%',
+    backgroundColor: CARD_SOFT,
+    borderRadius: 14,
+    padding: 12,
+  },
+  statValue: {
+    color: TEXT,
+    fontSize: 18,
+    fontWeight: '900',
+    marginTop: 4,
+  },
+  personalStatsTitle: {
+    color: ORANGE,
+    fontSize: 15,
+    fontWeight: '900',
+    marginTop: 16,
+    marginBottom: 10,
+    textTransform: 'uppercase',
+  },
+  entryInfo: {
+    flex: 1,
+    paddingRight: 10,
+  },
+  cancelEntryButton: {
+    borderWidth: 1,
+    borderColor: '#ff3b30',
+    borderRadius: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+  },
+  cancelEntryButtonText: {
+    color: '#ff3b30',
+    fontSize: 13,
+    fontWeight: '900',
   },
 });
