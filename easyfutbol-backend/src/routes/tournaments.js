@@ -91,6 +91,18 @@ const validatePlayers = (players) => {
     const shirtNumber = rawShirtNumber === undefined || rawShirtNumber === null || rawShirtNumber === ''
       ? null
       : Number(rawShirtNumber);
+    const rawLevel = player.level ?? player.player_level ?? player.playerLevel;
+    const level = rawLevel === undefined || rawLevel === null || rawLevel === ''
+      ? 3
+      : Number(rawLevel);
+    const isGoalkeeper = player.is_goalkeeper === true
+      || player.is_goalkeeper === 1
+      || player.is_goalkeeper === '1'
+      || player.is_goalkeeper === 'true'
+      || player.isGoalkeeper === true
+      || player.isGoalkeeper === 1
+      || player.isGoalkeeper === '1'
+      || player.isGoalkeeper === 'true';
 
     if (!fullName) {
       return { valid: false, message: `Falta el nombre completo del jugador ${playerNumber}.` };
@@ -135,6 +147,13 @@ const validatePlayers = (players) => {
       };
     }
 
+    if (!Number.isInteger(level) || level < 1 || level > 5) {
+      return {
+        valid: false,
+        message: `El nivel del jugador ${playerNumber} debe estar entre 1 y 5.`,
+      };
+    }
+
     if (usedDnis.has(dni)) {
       return { valid: false, message: `El DNI del jugador ${playerNumber} está repetido en esta inscripción.` };
     }
@@ -155,6 +174,8 @@ const validatePlayers = (players) => {
       shirt_size: shirtSize,
       shirt_name: shirtName,
       shirt_number: shirtNumber,
+      level,
+      is_goalkeeper: isGoalkeeper ? 1 : 0,
     });
   }
 
@@ -334,6 +355,8 @@ router.get('/:id/my-inscription', requireAuth, async (req, res) => {
         shirt_size,
         shirt_name,
         shirt_number,
+        level,
+        is_goalkeeper,
         status,
         created_at
       FROM tournament_registration_players
@@ -549,6 +572,8 @@ router.post('/:id/inscribe', requireAuth, async (req, res) => {
       player.shirt_size,
       player.shirt_name,
       player.shirt_number,
+      player.level,
+      player.is_goalkeeper,
       'confirmed',
     ]);
 
@@ -566,6 +591,8 @@ router.post('/:id/inscribe', requireAuth, async (req, res) => {
         shirt_size,
         shirt_name,
         shirt_number,
+        level,
+        is_goalkeeper,
         status
       )
       VALUES ?
