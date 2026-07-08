@@ -279,6 +279,18 @@ const TournamentDetailScreen = ({ route, navigation }) => {
       if (!/^\d{4}-\d{2}-\d{2}$/.test(player.birth_date.trim())) {
         return `La fecha de nacimiento del jugador ${playerNumber} debe tener formato YYYY-MM-DD.`;
       }
+      const birthDate = new Date(`${player.birth_date.trim()}T00:00:00`);
+      const today = new Date();
+      let age = today.getFullYear() - birthDate.getFullYear();
+      const monthDiff = today.getMonth() - birthDate.getMonth();
+
+      if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate())) {
+        age -= 1;
+      }
+
+      if (age < 18) {
+        return `El jugador ${playerNumber} debe ser mayor de 18 años para inscribirse.`;
+      }
       if (!player.phone.trim()) return `Falta el teléfono del jugador ${playerNumber}.`;
       if (!player.email.trim()) return `Falta el correo electrónico del jugador ${playerNumber}.`;
       if (!player.shirt_name.trim()) return `Falta el nombre para camiseta del jugador ${playerNumber}.`;
@@ -518,6 +530,7 @@ const TournamentDetailScreen = ({ route, navigation }) => {
         <View style={styles.sectionCard}>
           <Text style={styles.sectionTitle}>Reglamento básico</Text>
           <Text style={styles.ruleText}>• Puntualidad obligatoria.</Text>
+          <Text style={styles.ruleText}>• Participación exclusiva para mayores de 18 años.</Text>
           <Text style={styles.ruleText}>• Respeto y fairplay durante todo el torneo.</Text>
           <Text style={styles.ruleText}>• La organización decidirá en caso de duda importante.</Text>
           <Text style={styles.ruleText}>• Cada equipo podrá tener hasta 10 jugadores inscritos.</Text>
@@ -634,6 +647,9 @@ const TournamentDetailScreen = ({ route, navigation }) => {
                       {player.birth_date || 'Fecha de nacimiento'}
                     </Text>
                   </TouchableOpacity>
+                  <Text style={styles.ageNotice}>
+                    Para participar en el torneo es obligatorio ser mayor de 18 años.
+                  </Text>
 
                   {birthDatePickerIndex === index && (
                     <View style={styles.datePickerBox}>
@@ -734,6 +750,9 @@ const TournamentDetailScreen = ({ route, navigation }) => {
                       {player.is_goalkeeper ? '✓ Soy portero' : 'Soy portero'}
                     </Text>
                   </TouchableOpacity>
+                  <Text style={styles.goalkeeperHelpText}>
+                    Selecciona esta casilla solo si prefieres jugar como portero.
+                  </Text>
                 </View>
               ))}
 
@@ -1095,6 +1114,13 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
     marginBottom: 10,
   },
+  ageNotice: {
+    color: '#FDBA74',
+    fontSize: 12.5,
+    fontWeight: '800',
+    marginTop: -4,
+    marginBottom: 12,
+  },
   dateButtonText: {
     color: '#FFFFFF',
     fontSize: 15,
@@ -1209,6 +1235,12 @@ const styles = StyleSheet.create({
   },
   goalkeeperButtonTextSelected: {
     color: '#FDBA74',
+  },
+  goalkeeperHelpText: {
+    color: '#94A3B8',
+    fontSize: 12,
+    fontWeight: '700',
+    marginTop: 8,
   },
   addPlayerButton: {
     backgroundColor: '#1E293B',

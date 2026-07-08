@@ -18,7 +18,7 @@ const CARD_BG = '#111827';
 const WARNING_BG = '#1F1308';
 const BORDER = '#263244';
 
-const rulesPdfUrl = 'https://easyfutbol.es/wp-content/uploads/2026/07/Reglamento_Torneo_EasyFutbol_CORREGIDO.pdf';
+const rulesPdfUrl = 'https://easyfutbol.es/wp-content/uploads/2026/07/Reglamento_Torneo_EasyFutbol_MAYORES_18.pdf';
 export default function TournamentRulesScreen({ navigation }) {
   const openFullRules = async () => {
     if (!rulesPdfUrl) {
@@ -59,7 +59,7 @@ export default function TournamentRulesScreen({ navigation }) {
           </View>
           <Text style={styles.title}>Reglamento del torneo</Text>
           <Text style={styles.subtitle}>
-            Consulta las normas principales antes de inscribirte o disputar cualquier partido.
+            Consulta las normas principales antes de inscribirte o disputar cualquier partido. Participación exclusiva para mayores de 18 años.
           </Text>
         </View>
 
@@ -75,6 +75,7 @@ export default function TournamentRulesScreen({ navigation }) {
             'Los 2 últimos equipos de cada grupo pasarán a la fase Redemption.',
             'Cada fase tendrá 2 semifinales y una final.',
             'Los partidos durarán 20 minutos, excepto la final, que tendrá 2 partes de 15 minutos.',
+            'La participación está reservada exclusivamente a jugadores mayores de 18 años.',
           ].map(renderRule)}
         </View>
 
