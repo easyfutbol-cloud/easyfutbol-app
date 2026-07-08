@@ -1,10 +1,11 @@
-const express = require('express');
-const router = express.Router();
-const db = require('../config/db');
+import express from 'express';
+import { pool } from '../config/db.js';
 
-router.get('/version', async (req, res) => {
+const router = express.Router();
+
+router.get('/version', async (_req, res) => {
   try {
-    const [rows] = await db.query(`
+    const [rows] = await pool.query(`
       SELECT setting_key, setting_value
       FROM app_settings
       WHERE setting_key IN ('min_app_version', 'android_store_url', 'ios_store_url')
@@ -29,4 +30,4 @@ router.get('/version', async (req, res) => {
   }
 });
 
-module.exports = router;
+export default router;
