@@ -18,28 +18,33 @@ router.get('/:tournamentId', requireAuth, async (req, res) => {
     const [rows] = await pool.query(
       `
       SELECT
-        ti.id AS inscription_id,
-        ti.tournament_id,
-        ti.user_id,
-        u.name AS player_name,
-        u.email,
-        u.phone,
+        trp.id AS player_registration_id,
+        trp.registration_group_id,
+        trp.tournament_id,
+        trp.linked_user_id AS user_id,
+        trp.full_name AS player_name,
+        trp.email,
+        trp.phone,
         u.city,
-        ti.status,
-        ti.shirt_size,
-        ti.payment_method,
-        ti.created_at,
-        ti.cancelled_at
-      FROM tournament_inscriptions ti
-      JOIN users u ON u.id = ti.user_id
-      WHERE ti.tournament_id = ?
+        trp.status,
+        trp.shirt_size,
+        trp.shirt_name,
+        trp.shirt_number,
+        trp.level,
+        trp.is_goalkeeper,
+        trp.created_at
+      FROM tournament_registration_players trp
+      LEFT JOIN users u ON u.id = trp.linked_user_id
+      WHERE trp.tournament_id = ?
       ORDER BY
         CASE
-          WHEN ti.status = 'confirmed' THEN 1
-          WHEN ti.status = 'cancelled' THEN 2
+          WHEN trp.status = 'confirmed' THEN 1
+          WHEN trp.status = 'cancelled' THEN 2
           ELSE 3
         END,
-        ti.created_at ASC
+        trp.created_at ASC,
+        trp.registration_group_id ASC,
+        trp.id ASC
       `,
       [tournamentId]
     );

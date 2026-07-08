@@ -52,6 +52,8 @@ const createEmptyPlayer = () => ({
   shirt_size: 'L',
   shirt_name: '',
   shirt_number: '',
+  level: 3,
+  is_goalkeeper: false,
 });
 
 const formatTournamentDate = (dateValue) => {
@@ -104,7 +106,6 @@ const TournamentDetailScreen = ({ route, navigation }) => {
   const [registrationType, setRegistrationType] = useState('solo');
   const [players, setPlayers] = useState([createEmptyPlayer()]);
   const [birthDatePickerIndex, setBirthDatePickerIndex] = useState(null);
-  const [showFullRules, setShowFullRules] = useState(false);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -182,6 +183,10 @@ const TournamentDetailScreen = ({ route, navigation }) => {
   const handleRefresh = () => {
     setRefreshing(true);
     loadTournament();
+  };
+
+  const handleOpenRules = () => {
+    navigation.navigate('TournamentRules');
   };
 
   const updateRegistrationType = (type) => {
@@ -266,6 +271,7 @@ const TournamentDetailScreen = ({ route, navigation }) => {
     for (let index = 0; index < players.length; index += 1) {
       const player = players[index];
       const number = Number(player.shirt_number);
+      const level = Number(player.level);
       const playerNumber = index + 1;
 
       if (!player.full_name.trim()) return `Falta el nombre completo del jugador ${playerNumber}.`;
@@ -278,6 +284,9 @@ const TournamentDetailScreen = ({ route, navigation }) => {
       if (!player.shirt_name.trim()) return `Falta el nombre para camiseta del jugador ${playerNumber}.`;
       if (!Number.isInteger(number) || number < 1 || number > 99) {
         return `El número de camiseta del jugador ${playerNumber} debe estar entre 1 y 99.`;
+      }
+      if (!Number.isInteger(level) || level < 1 || level > 5) {
+        return `El nivel del jugador ${playerNumber} debe estar entre 1 y 5.`;
       }
     }
 
@@ -316,6 +325,8 @@ const TournamentDetailScreen = ({ route, navigation }) => {
                     shirt_size: player.shirt_size,
                     shirt_name: player.shirt_name.trim(),
                     shirt_number: Number(player.shirt_number),
+                    level: Number(player.level),
+                    is_goalkeeper: Boolean(player.is_goalkeeper),
                   })),
                 }),
               });
@@ -423,6 +434,11 @@ const TournamentDetailScreen = ({ route, navigation }) => {
           <Text style={styles.title}>{tournament.title}</Text>
           <Text style={styles.description}>{tournament.description}</Text>
 
+          <View style={styles.highlightBox}>
+            <Text style={styles.highlightTitle}>Torneo de 8 equipos · 10 jugadores por equipo</Text>
+            <Text style={styles.highlightText}>Puedes apuntarte solo, con amigos o inscribir un equipo completo. Nosotros organizamos el torneo para que todos tengan una experiencia completa.</Text>
+          </View>
+
           <View style={styles.infoGrid}>
             <View style={styles.infoItem}>
               <Text style={styles.infoLabel}>Fecha</Text>
@@ -463,34 +479,40 @@ const TournamentDetailScreen = ({ route, navigation }) => {
         </View>
 
         <View style={styles.sectionCard}>
-          <Text style={styles.sectionTitle}>Qué incluye</Text>
+          <Text style={styles.sectionTitle}>Qué incluye tu inscripción</Text>
           <View style={styles.featureRow}>
             <Text style={styles.featureIcon}>⚽</Text>
-            <Text style={styles.featureText}>Mínimo 4 partidos por equipo.</Text>
+            <Text style={styles.featureText}>Mínimo 4 partidos de 20 minutos por equipo.</Text>
           </View>
           <View style={styles.featureRow}>
             <Text style={styles.featureIcon}>🎥</Text>
-            <Text style={styles.featureText}>Partidos grabados con 2 cámaras.</Text>
+            <Text style={styles.featureText}>Todos los partidos grabados para poder revivir las mejores jugadas.</Text>
           </View>
           <View style={styles.featureRow}>
             <Text style={styles.featureIcon}>👕</Text>
-            <Text style={styles.featureText}>Camiseta oficial del torneo incluida.</Text>
+            <Text style={styles.featureText}>Camiseta incluida.</Text>
           </View>
           <View style={styles.featureRow}>
             <Text style={styles.featureIcon}>🍻</Text>
-            <Text style={styles.featureText}>Consumición gratuita en La Herminia.</Text>
+            <Text style={styles.featureText}>Consumición gratuita en La Herminia: cerveza, refresco o tinto.</Text>
           </View>
           <View style={styles.featureRow}>
             <Text style={styles.featureIcon}>🏅</Text>
-            <Text style={styles.featureText}>Premios para campeones y premios individuales.</Text>
+            <Text style={styles.featureText}>Trofeo, medallas y premios para campeones, finalistas y premios individuales.</Text>
+          </View>
+          <View style={styles.featureRow}>
+            <Text style={styles.featureIcon}>📊</Text>
+            <Text style={styles.featureText}>Estadísticas, MVP y contenido del torneo en EasyFutbol.</Text>
           </View>
         </View>
 
         <View style={styles.sectionCard}>
-          <Text style={styles.sectionTitle}>Formato</Text>
-          <Text style={styles.bodyText}>8 equipos, fase de grupos, winner bracket y loser bracket.</Text>
-          <Text style={styles.bodyText}>Partidos de 15 minutos y final principal de 20 minutos.</Text>
-          <Text style={styles.bodyText}>Dos campos funcionando a la vez para que el torneo tenga ritmo.</Text>
+          <Text style={styles.sectionTitle}>Formato del torneo</Text>
+          <Text style={styles.bodyText}>8 equipos de hasta 10 jugadores.</Text>
+          <Text style={styles.bodyText}>Puedes inscribirte solo, con amigos o como equipo completo.</Text>
+          <Text style={styles.bodyText}>Fase de grupos, cuadro principal y Redemption Cup para que todos sigan compitiendo.</Text>
+          <Text style={styles.bodyText}>Partidos de 20 minutos y mínimo 4 partidos garantizados por equipo.</Text>
+          <Text style={styles.bodyText}>Dos campos funcionando a la vez para que el torneo tenga ritmo y no haya esperas largas.</Text>
         </View>
 
         <View style={styles.sectionCard}>
@@ -498,33 +520,17 @@ const TournamentDetailScreen = ({ route, navigation }) => {
           <Text style={styles.ruleText}>• Puntualidad obligatoria.</Text>
           <Text style={styles.ruleText}>• Respeto y fairplay durante todo el torneo.</Text>
           <Text style={styles.ruleText}>• La organización decidirá en caso de duda importante.</Text>
+          <Text style={styles.ruleText}>• Cada equipo podrá tener hasta 10 jugadores inscritos.</Text>
           <Text style={styles.ruleText}>• No se puede cancelar con menos de 5 días de antelación.</Text>
-          <Text style={styles.ruleText}>• Inscripciones abiertas hasta el miércoles 22 de julio.</Text>
+          <Text style={styles.ruleText}>• Inscripciones abiertas hasta el miércoles 22 de julio o hasta completar plazas.</Text>
 
           <TouchableOpacity
             style={styles.rulesButton}
             activeOpacity={0.85}
-            onPress={() => setShowFullRules((currentValue) => !currentValue)}
+            onPress={handleOpenRules}
           >
-            <Text style={styles.rulesButtonText}>
-              {showFullRules ? 'Ocultar reglamento completo' : 'Ver reglamento completo'}
-            </Text>
+            <Text style={styles.rulesButtonText}>Ver reglamento completo</Text>
           </TouchableOpacity>
-
-          {showFullRules && (
-            <View style={styles.fullRulesBox}>
-              <Text style={styles.fullRulesTitle}>Reglamento completo del torneo</Text>
-              <Text style={styles.fullRuleText}>1. Los equipos deberán estar preparados antes del inicio de cada partido.</Text>
-              <Text style={styles.fullRuleText}>2. Cada partido tendrá una duración de 15 minutos, salvo la final principal, que será de 20 minutos.</Text>
-              <Text style={styles.fullRuleText}>3. El torneo se jugará con fase de grupos, winner bracket y loser bracket.</Text>
-              <Text style={styles.fullRuleText}>4. Todos los jugadores deben respetar a rivales, compañeros, árbitros y organización.</Text>
-              <Text style={styles.fullRuleText}>5. Las decisiones arbitrales y de la organización serán definitivas durante el torneo.</Text>
-              <Text style={styles.fullRuleText}>6. Las conductas antideportivas podrán suponer expulsión del partido o del torneo.</Text>
-              <Text style={styles.fullRuleText}>7. No se podrá cancelar la inscripción con menos de 5 días de antelación.</Text>
-              <Text style={styles.fullRuleText}>8. Las inscripciones estarán abiertas hasta el miércoles 22 de julio o hasta completar plazas.</Text>
-              <Text style={styles.fullRuleText}>9. La organización podrá ajustar horarios, campos o emparejamientos por necesidades del torneo.</Text>
-            </View>
-          )}
         </View>
 
         <View style={styles.sectionCard}>
@@ -549,6 +555,7 @@ const TournamentDetailScreen = ({ route, navigation }) => {
                     <View key={player.player_registration_id || index} style={styles.confirmedPlayerBox}>
                       <Text style={styles.confirmedPlayerName}>{index + 1}. {player.full_name}</Text>
                       <Text style={styles.confirmedText}>Talla: {player.shirt_size} · Camiseta: {player.shirt_name} #{player.shirt_number}</Text>
+                      <Text style={styles.confirmedText}>Nivel: {player.level || '-'} / 5 · {player.is_goalkeeper ? 'Portero' : 'Jugador de campo'}</Text>
                     </View>
                   ))}
 
@@ -699,6 +706,34 @@ const TournamentDetailScreen = ({ route, navigation }) => {
                     maxLength={2}
                     onChangeText={(value) => updatePlayerField(index, 'shirt_number', value.replace(/[^0-9]/g, ''))}
                   />
+
+                  <Text style={styles.inputLabel}>Nivel de juego</Text>
+                  <View style={styles.levelGrid}>
+                    {[1, 2, 3, 4, 5].map((level) => {
+                      const selected = Number(player.level) === level;
+                      return (
+                        <TouchableOpacity
+                          key={`${index}-level-${level}`}
+                          style={[styles.levelButton, selected && styles.levelButtonSelected]}
+                          onPress={() => updatePlayerField(index, 'level', level)}
+                          activeOpacity={0.85}
+                        >
+                          <Text style={[styles.levelButtonText, selected && styles.levelButtonTextSelected]}>{level}</Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+                  <Text style={styles.levelHelpText}>1 principiante · 5 nivel alto</Text>
+
+                  <TouchableOpacity
+                    style={[styles.goalkeeperButton, player.is_goalkeeper && styles.goalkeeperButtonSelected]}
+                    onPress={() => updatePlayerField(index, 'is_goalkeeper', !player.is_goalkeeper)}
+                    activeOpacity={0.85}
+                  >
+                    <Text style={[styles.goalkeeperButtonText, player.is_goalkeeper && styles.goalkeeperButtonTextSelected]}>
+                      {player.is_goalkeeper ? '✓ Soy portero' : 'Soy portero'}
+                    </Text>
+                  </TouchableOpacity>
                 </View>
               ))}
 
@@ -832,6 +867,26 @@ const styles = StyleSheet.create({
     lineHeight: 22,
     marginBottom: 18,
   },
+  highlightBox: {
+    backgroundColor: 'rgba(249, 115, 22, 0.12)',
+    borderRadius: 18,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: 'rgba(249, 115, 22, 0.32)',
+    marginBottom: 18,
+  },
+  highlightTitle: {
+    color: '#FDBA74',
+    fontSize: 16,
+    fontWeight: '900',
+    marginBottom: 6,
+  },
+  highlightText: {
+    color: '#FFEDD5',
+    fontSize: 14,
+    lineHeight: 20,
+    fontWeight: '700',
+  },
   infoGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -938,27 +993,6 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 15,
     fontWeight: '900',
-  },
-  fullRulesBox: {
-    backgroundColor: '#0F172A',
-    borderRadius: 16,
-    padding: 14,
-    borderWidth: 1,
-    borderColor: '#334155',
-    marginTop: 12,
-  },
-  fullRulesTitle: {
-    color: '#FFFFFF',
-    fontSize: 17,
-    fontWeight: '900',
-    marginBottom: 10,
-  },
-  fullRuleText: {
-    color: '#CBD5E1',
-    fontSize: 14,
-    lineHeight: 21,
-    marginBottom: 8,
-    fontWeight: '700',
   },
   registrationTypeGrid: {
     gap: 10,
@@ -1122,6 +1156,59 @@ const styles = StyleSheet.create({
   },
   sizeButtonTextSelected: {
     color: '#FFFFFF',
+  },
+  levelGrid: {
+    flexDirection: 'row',
+    gap: 10,
+    marginBottom: 8,
+  },
+  levelButton: {
+    flex: 1,
+    borderRadius: 14,
+    paddingVertical: 12,
+    alignItems: 'center',
+    backgroundColor: '#111827',
+    borderWidth: 1,
+    borderColor: '#334155',
+  },
+  levelButtonSelected: {
+    backgroundColor: '#F97316',
+    borderColor: '#F97316',
+  },
+  levelButtonText: {
+    color: '#CBD5E1',
+    fontSize: 15,
+    fontWeight: '900',
+  },
+  levelButtonTextSelected: {
+    color: '#FFFFFF',
+  },
+  levelHelpText: {
+    color: '#94A3B8',
+    fontSize: 12,
+    fontWeight: '700',
+    marginBottom: 12,
+  },
+  goalkeeperButton: {
+    backgroundColor: '#111827',
+    borderRadius: 14,
+    paddingVertical: 13,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#334155',
+    marginBottom: 2,
+  },
+  goalkeeperButtonSelected: {
+    backgroundColor: 'rgba(249, 115, 22, 0.16)',
+    borderColor: '#F97316',
+  },
+  goalkeeperButtonText: {
+    color: '#CBD5E1',
+    fontSize: 15,
+    fontWeight: '900',
+  },
+  goalkeeperButtonTextSelected: {
+    color: '#FDBA74',
   },
   addPlayerButton: {
     backgroundColor: '#1E293B',

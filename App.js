@@ -57,6 +57,7 @@ import WorldCupScreen from './src/screens/worldcup/WorldCupScreen';
 import WorldCupSelectTeamScreen from './src/screens/worldcup/WorldCupSelectTeamScreen';
 import HomeTournamentScreen from './src/screens/tournament/hometournamentscreen';
 import TournamentDetailScreen from './src/screens/tournament/tournamentdetailscreen';
+import TournamentRulesScreen from './src/screens/tournament/TournamentRulesScreen';
 
 // Notificaciones (opcional)
 let Notifications = null;
@@ -655,6 +656,7 @@ function AppShell({ currentRouteName }) {
         <Stack.Screen name="WorldCupSelectTeam" component={WorldCupSelectTeamScreen} />
         <Stack.Screen name="HomeTournament" component={HomeTournamentScreen} />
         <Stack.Screen name="TournamentDetail" component={TournamentDetailScreen} />
+        <Stack.Screen name="TournamentRules" component={TournamentRulesScreen} />
         <Stack.Screen name="Achievements" component={AchievementsScreen} />
         <Stack.Screen name="EasyPass" component={EasyPassScreen} />
         <Stack.Screen name="AdminDashboard" component={AdminDashboardScreen} />
