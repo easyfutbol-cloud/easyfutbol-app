@@ -1,16 +1,16 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { View, Text, StyleSheet, StatusBar, TouchableOpacity, ActivityIndicator, Alert, ImageBackground, Image, ScrollView } from 'react-native';
-import { colors, spacing } from '../theme';
+import { colors, layout, radii, spacing, typography } from '../theme';
 import { api } from '../api/client';
 import { useFocusEffect } from '@react-navigation/native';
+import { LinearGradient } from 'expo-linear-gradient';
 
 
 const MAX_TICKETS_PER_PURCHASE = 8;
 const EASY_PASS_COST = 1;
 
-const WORLD_CUP_SCREEN_BG = {
-  uri: 'https://easyfutbol.es/wp-content/uploads/2026/05/posible-fondo-1.png',
-};
+const SCREEN_BACKGROUND = require('../../assets/matches/match-6.jpg');
+const EASYPASS_LOGO = require('../../assets/easypass-logo.png');
 
 
 const pitchImage = {
@@ -380,8 +380,8 @@ export default function MatchScreen({ route, navigation }) {
         'Inicia sesión o regístrate para apuntarte a este partido.',
         [
           { text: 'Cancelar', style: 'cancel' },
-          { text: 'Iniciar sesión', onPress: () => navigation?.navigate('Login') },
-          { text: 'Registrarme', onPress: () => navigation?.navigate('Register') },
+          { text: 'Iniciar sesión', onPress: () => navigation?.navigate('Access', { mode: 'login' }) },
+          { text: 'Registrarme', onPress: () => navigation?.navigate('Access', { mode: 'register' }) },
         ]
       );
       return;
@@ -440,8 +440,8 @@ export default function MatchScreen({ route, navigation }) {
           'Inicia sesión o regístrate para apuntarte a este partido.',
           [
             { text: 'Cancelar', style: 'cancel' },
-            { text: 'Iniciar sesión', onPress: () => navigation?.navigate('Login') },
-            { text: 'Registrarme', onPress: () => navigation?.navigate('Register') },
+            { text: 'Iniciar sesión', onPress: () => navigation?.navigate('Access', { mode: 'login' }) },
+            { text: 'Registrarme', onPress: () => navigation?.navigate('Access', { mode: 'register' }) },
           ]
         );
       } else {
@@ -503,7 +503,7 @@ export default function MatchScreen({ route, navigation }) {
 
   return (
     <ImageBackground
-      source={WORLD_CUP_SCREEN_BG}
+      source={SCREEN_BACKGROUND}
       style={styles.container}
       imageStyle={styles.worldCupBgImage}
     >
@@ -514,6 +514,17 @@ export default function MatchScreen({ route, navigation }) {
         contentContainerStyle={styles.scrollContent}
       >
 
+      <TouchableOpacity
+        style={styles.backButton}
+        onPress={() => navigation?.goBack?.()}
+        accessibilityRole="button"
+        accessibilityLabel="Volver a próximos partidos"
+      >
+        <Text style={styles.backButtonIcon}>‹</Text>
+        <Text style={styles.backButtonLabel}>Próximos partidos</Text>
+      </TouchableOpacity>
+
+      <Text style={styles.matchEyebrow}>PARTIDO EASYFUTBOL</Text>
       <Text style={styles.title}>{match.title}</Text>
 
       <View style={styles.heroCard}>
@@ -522,8 +533,10 @@ export default function MatchScreen({ route, navigation }) {
           style={styles.heroBg}
           imageStyle={styles.heroImage}
         >
-          <View style={styles.heroOverlay} />
-          <View style={styles.heroContent}>
+          <LinearGradient
+            colors={['rgba(5,7,10,0.12)', 'rgba(5,7,10,0.94)']}
+            style={styles.heroContent}
+          >
             {!!dateLabelNice && (
               <Text style={styles.heroDate}>{dateLabelNice}</Text>
             )}
@@ -534,33 +547,36 @@ export default function MatchScreen({ route, navigation }) {
               </Text>
             )}
 
-          </View>
+          </LinearGradient>
         </ImageBackground>
       </View>
 
-      <View style={styles.priceCard}>
-        <Text style={styles.priceLabel}>Coste del partido</Text>
-        <Text style={styles.price}>{easyPassCost} EasyPass</Text>
+      <View style={styles.matchSummary}>
+        <View style={styles.summaryItem}>
+          <Text style={styles.summaryLabel}>COSTE</Text>
+          <Text style={styles.summaryValue}>{easyPassCost}</Text>
+          <Text style={styles.summaryUnit}>EasyPass</Text>
+        </View>
+        <View style={styles.summaryDivider} />
+        <View style={styles.summaryItem}>
+          <Text style={styles.summaryLabel}>DISPONIBLES</Text>
+          <Text style={[styles.summaryValue, remainingSpots === 0 && styles.summaryValueFull]}>
+            {remainingSpots ?? '—'}
+          </Text>
+          <Text style={styles.summaryUnit}>plazas</Text>
+        </View>
+        <View style={styles.summaryDivider} />
+        <View style={styles.summaryItem}>
+          <Text style={styles.summaryLabel}>OCUPACIÓN</Text>
+          <Text style={styles.summaryValue}>{spotsTaken}</Text>
+          <Text style={styles.summaryUnit}>de {capacity ?? '—'}</Text>
+        </View>
       </View>
       {hasAftergame && (
         <View style={styles.aftergameCard}>
           <Text style={styles.aftergameTitle}>Aftergame incluido</Text>
           <Text style={styles.aftergameText}>
             Este partido incluye ofertas especiales del aftergame para los jugadores.
-          </Text>
-        </View>
-      )}
-
-      {!!capacity && (
-        <View style={styles.capacityRow}>
-          {remainingSpots != null && (
-            <View style={styles.capacityPill}>
-              <Text style={styles.capacityNumber}>{remainingSpots}</Text>
-              <Text style={styles.capacityLabel}>plazas disponibles</Text>
-            </View>
-          )}
-          <Text style={styles.capacityMeta}>
-            {spotsTaken}/{capacity} ocupadas
           </Text>
         </View>
       )}
@@ -663,6 +679,9 @@ export default function MatchScreen({ route, navigation }) {
         </View>
       ) : (
         <>
+          <View style={styles.reservationCard}>
+          <Text style={styles.reservationEyebrow}>CONFIGURA TU RESERVA</Text>
+          <Text style={styles.reservationTitle}>Tu plaza</Text>
           <Text style={styles.label}>Elige tu camiseta</Text>
           <View style={styles.shirtRow}>
             <TouchableOpacity
@@ -672,6 +691,8 @@ export default function MatchScreen({ route, navigation }) {
               ]}
               onPress={() => setTicketType('white')}
               disabled={!canPay}
+              accessibilityRole="radio"
+              accessibilityState={{ selected: ticketType === 'white', disabled: !canPay }}
             >
               <View style={styles.shirtIconWrapper}>
                 <View
@@ -692,6 +713,8 @@ export default function MatchScreen({ route, navigation }) {
               ]}
               onPress={() => setTicketType('black')}
               disabled={!canPay}
+              accessibilityRole="radio"
+              accessibilityState={{ selected: ticketType === 'black', disabled: !canPay }}
             >
               <View style={styles.shirtIconWrapper}>
                 <View
@@ -711,6 +734,8 @@ export default function MatchScreen({ route, navigation }) {
               style={[styles.quantityButton, quantity <= 1 && styles.quantityButtonDisabled]}
               onPress={() => quantity > 1 && setQuantity(quantity - 1)}
               disabled={!canPay || quantity <= 1}
+              accessibilityRole="button"
+              accessibilityLabel="Reducir número de entradas"
             >
               <Text style={styles.quantityButtonText}>-</Text>
             </TouchableOpacity>
@@ -733,6 +758,8 @@ export default function MatchScreen({ route, navigation }) {
                 !canPay ||
                 quantity >= Math.min(MAX_TICKETS_PER_PURCHASE, remainingSpots != null ? remainingSpots : MAX_TICKETS_PER_PURCHASE)
               }
+              accessibilityRole="button"
+              accessibilityLabel="Aumentar número de entradas"
             >
               <Text style={styles.quantityButtonText}>+</Text>
             </TouchableOpacity>
@@ -757,6 +784,8 @@ export default function MatchScreen({ route, navigation }) {
             style={styles.btn}
             onPress={handlePay}
             disabled={!canPay}
+            accessibilityRole="button"
+            accessibilityState={{ disabled: !canPay, busy: paying }}
           >
             <Text style={styles.btnText}>
               {!isPayable
@@ -770,9 +799,13 @@ export default function MatchScreen({ route, navigation }) {
                 : `Comprar EasyPass (${totalEasyPassCost}) para reservar`}
             </Text>
           </TouchableOpacity>
+          </View>
 
           <View style={styles.easyPassCard}>
-            <Text style={styles.easyPassTitle}>Tus EasyPass</Text>
+            <View style={styles.easyPassHeader}>
+              <Image source={EASYPASS_LOGO} style={styles.easyPassLogo} resizeMode="contain" />
+              <Text style={styles.easyPassTitle}>Tus EasyPass</Text>
+            </View>
             <Text style={styles.easyPassValue}>
               {easyPassLoading ? 'Cargando...' : easyPassBalance}
             </Text>
@@ -827,25 +860,31 @@ export default function MatchScreen({ route, navigation }) {
 }
 
 const styles = StyleSheet.create({
-  container:{ flex:1, backgroundColor:colors.black, padding:spacing(2) },
+  container:{ flex:1, backgroundColor:colors.background, paddingHorizontal:spacing(2) },
   worldCupBgImage: {
     resizeMode: 'cover',
-    opacity: 0.9,
+    opacity: 0.72,
   },
   worldCupOverlay: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0,0,0,0.78)',
+    backgroundColor: 'rgba(5,7,10,0.82)',
   },
-  scrollContent:{ paddingBottom: spacing(4) },
-  title:{ color:colors.white, fontSize:24, fontWeight:'800', marginBottom:spacing(1.5) },
-  meta:{ color:'#aaa', marginBottom:spacing(0.5) }, // keep meta for misc text
+  scrollContent:{ width:'100%', maxWidth:layout.maxContentWidth, alignSelf:'center', paddingTop:spacing(1), paddingBottom:spacing(5) },
+  backButton:{ minHeight:layout.minTouchTarget, alignSelf:'flex-start', flexDirection:'row', alignItems:'center', marginBottom:spacing(1.5) },
+  backButtonIcon:{ color:colors.white, fontSize:32, lineHeight:34, fontWeight:'300', marginRight:spacing(0.5), marginTop:-2 },
+  backButtonLabel:{ color:colors.textMuted, ...typography.caption },
+  matchEyebrow:{ color:colors.orange, ...typography.overline, marginBottom:spacing(0.5) },
+  title:{ color:colors.white, ...typography.title, marginBottom:spacing(2) },
+  meta:{ color:colors.textMuted, ...typography.caption, marginBottom:spacing(0.5) },
   heroCard: {
-    borderRadius: 18,
+    borderRadius: radii.large,
     overflow: 'hidden',
     marginBottom: spacing(2),
+    borderWidth: 1,
+    borderColor: colors.border,
   },
   heroBg: {
-    height: 180,
+    minHeight: 220,
     justifyContent: 'flex-end',
   },
   heroImage: {
@@ -853,9 +892,12 @@ const styles = StyleSheet.create({
   },
   heroOverlay: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0,0,0,0.45)',
+    backgroundColor: 'rgba(5,7,10,0.48)',
   },
   heroContent: {
+    flex: 1,
+    minHeight: 220,
+    justifyContent: 'flex-end',
     padding: spacing(2),
   },
   heroDate: {
@@ -874,29 +916,54 @@ const styles = StyleSheet.create({
     fontSize: 13,
     marginTop: spacing(0.5),
   },
-  priceCard: {
-    backgroundColor: '#111',
+  matchSummary: {
+    flexDirection: 'row',
+    alignItems: 'stretch',
+    backgroundColor: colors.surface,
     borderWidth: 1,
-    borderColor: '#2a2a2a',
-    borderRadius: 14,
-    padding: spacing(1.5),
-    marginBottom: spacing(1.2),
+    borderColor: colors.border,
+    borderRadius: radii.large,
+    paddingVertical: spacing(2),
+    marginBottom: spacing(1.5),
   },
-  priceLabel: {
-    color: '#aaaaaa',
-    fontSize: 12,
-    marginBottom: 4,
+  summaryItem: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: spacing(0.5),
   },
-  price: {
-    color: colors.orange,
-    fontSize: 20,
+  summaryDivider: {
+    width: 1,
+    backgroundColor: colors.border,
+  },
+  summaryLabel: {
+    color: colors.textSubtle,
+    fontSize: 9,
+    lineHeight: 13,
     fontWeight: '900',
+    letterSpacing: 0.7,
+    textAlign: 'center',
+  },
+  summaryValue: {
+    color: colors.orange,
+    fontSize: 26,
+    lineHeight: 32,
+    fontWeight: '900',
+    marginTop: spacing(0.25),
+  },
+  summaryValueFull: {
+    color: colors.danger,
+  },
+  summaryUnit: {
+    color: colors.textMuted,
+    fontSize: 11,
+    fontWeight: '700',
   },
   aftergameCard: {
-    backgroundColor: '#111',
+    backgroundColor: colors.surface,
     borderWidth: 1,
     borderColor: colors.orange,
-    borderRadius: 14,
+    borderRadius: radii.medium,
     padding: spacing(1.5),
     marginBottom: spacing(1.2),
   },
@@ -911,35 +978,23 @@ const styles = StyleSheet.create({
     fontSize: 13,
     lineHeight: 18,
   },
-  capacityRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: spacing(1.5),
-  },
-  capacityPill: {
-    flexDirection: 'row',
-    alignItems: 'baseline',
-    paddingHorizontal: spacing(1.5),
-    paddingVertical: spacing(0.6),
-    borderRadius: 999,
-    backgroundColor: '#151515',
+  reservationCard: {
+    padding: spacing(2),
+    marginTop: spacing(2),
+    borderRadius: radii.large,
+    backgroundColor: 'rgba(17,21,27,0.96)',
     borderWidth: 1,
-    borderColor: colors.orange,
+    borderColor: colors.border,
   },
-  capacityNumber: {
+  reservationEyebrow: {
     color: colors.orange,
-    fontSize: 18,
-    fontWeight: '800',
-    marginRight: 6,
+    ...typography.overline,
   },
-  capacityLabel: {
-    color: '#f5f5f5',
-    fontSize: 12,
-  },
-  capacityMeta: {
-    color: '#aaaaaa',
-    fontSize: 12,
+  reservationTitle: {
+    color: colors.white,
+    ...typography.heading,
+    marginTop: spacing(0.5),
+    marginBottom: spacing(0.5),
   },
   shirtIconWrapper: {
     marginBottom: spacing(0.5),
@@ -951,17 +1006,18 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#888',
   },
-  label:{ color:colors.white, fontWeight:'700', marginTop:spacing(2), marginBottom:spacing(1) },
+  label:{ color:colors.white, ...typography.bodyStrong, marginTop:spacing(2), marginBottom:spacing(1) },
   shirtRow:{ flexDirection:'row', marginBottom:spacing(1) },
   shirtOption:{
     flex:1,
+    minHeight:96,
     paddingVertical:spacing(1.2),
-    borderRadius:10,
+    borderRadius:radii.medium,
     borderWidth:1,
-    borderColor:'#555',
+    borderColor:colors.border,
     alignItems:'center',
     justifyContent: 'center',
-    backgroundColor:'#111',
+    backgroundColor:colors.surface,
     marginRight:spacing(1),
   },
   shirtOptionLast:{
@@ -969,7 +1025,7 @@ const styles = StyleSheet.create({
   },
   shirtOptionActive:{
     borderColor:colors.orange,
-    backgroundColor:'#222',
+    backgroundColor:colors.surfaceElevated,
   },
   shirtOptionText:{
     color:colors.white,
@@ -984,14 +1040,14 @@ const styles = StyleSheet.create({
     marginBottom: spacing(2),
   },
   quantityButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    width: layout.minTouchTarget,
+    height: layout.minTouchTarget,
+    borderRadius: radii.pill,
     borderWidth: 1,
-    borderColor: '#555',
+    borderColor: colors.border,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#111',
+    backgroundColor: colors.surface,
   },
   quantityButtonDisabled: {
     opacity: 0.4,
@@ -1016,10 +1072,10 @@ const styles = StyleSheet.create({
   loginPromptCard: {
     marginTop: spacing(2),
     padding: spacing(2),
-    borderRadius: 16,
-    backgroundColor: '#111',
+    borderRadius: radii.large,
+    backgroundColor: colors.surface,
     borderWidth: 1,
-    borderColor: '#2a2a2a',
+    borderColor: colors.border,
   },
   loginPromptTitle: {
     color: colors.white,
@@ -1035,16 +1091,25 @@ const styles = StyleSheet.create({
   easyPassCard: {
     marginTop: spacing(2),
     padding: spacing(2),
-    borderRadius: 16,
-    backgroundColor: '#111',
+    borderRadius: radii.large,
+    backgroundColor: colors.surface,
     borderWidth: 1,
-    borderColor: '#2a2a2a',
+    borderColor: colors.border,
+  },
+  easyPassHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: spacing(0.75),
+  },
+  easyPassLogo: {
+    width: 32,
+    height: 32,
+    marginRight: spacing(1),
   },
   easyPassTitle: {
     color: colors.orange,
     fontSize: 14,
     fontWeight: '800',
-    marginBottom: spacing(0.5),
   },
   easyPassValue: {
     color: colors.white,
@@ -1058,13 +1123,15 @@ const styles = StyleSheet.create({
     lineHeight: 18,
   },
   easyPassBtn: {
+    minHeight: layout.minTouchTarget,
     marginTop: spacing(1.5),
     backgroundColor: '#1b1b1b',
     borderWidth: 1,
     borderColor: colors.orange,
     paddingVertical: spacing(1.2),
-    borderRadius: 12,
+    borderRadius: radii.medium,
     alignItems: 'center',
+    justifyContent: 'center',
   },
   easyPassBtnText: {
     color: colors.white,
@@ -1083,7 +1150,7 @@ const styles = StyleSheet.create({
     marginRight: spacing(1),
   },
   loading:{ color:colors.gray, textAlign:'center', marginTop:spacing(4) },
-  btn:{ backgroundColor:colors.orange, paddingVertical:spacing(1.5), borderRadius:12, alignItems:'center', marginTop:spacing(3) },
+  btn:{ minHeight:layout.minTouchTarget, backgroundColor:colors.orange, paddingVertical:spacing(1.5), borderRadius:radii.medium, alignItems:'center', justifyContent:'center', marginTop:spacing(3) },
   btnText:{ color:colors.black, fontWeight:'800', fontSize:16 },
   attendeesSectionCard: {
   marginTop: spacing(2),
@@ -1091,10 +1158,10 @@ const styles = StyleSheet.create({
   paddingTop: spacing(1.5),
   paddingBottom: spacing(1),
   paddingLeft: spacing(1.5),
-  borderRadius: 18,
-  backgroundColor: '#181818',
+  borderRadius: radii.large,
+  backgroundColor: colors.surface,
   borderWidth: 1,
-  borderColor: '#2f2f2f',
+  borderColor: colors.border,
 },
 attendeesSectionTitle: {
   color: colors.white,

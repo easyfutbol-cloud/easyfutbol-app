@@ -49,6 +49,7 @@ router.get(
             COALESCE(assigned.email, buyer.email) AS email,
             i.goals,
             i.assists,
+            i.ticket_type,
             i.status,
             i.is_mvp
            FROM inscriptions i
@@ -68,6 +69,7 @@ router.get(
             u.email,
             i.goals,
             i.assists,
+            i.ticket_type,
             i.status,
             i.is_mvp
            FROM inscriptions i
@@ -94,6 +96,150 @@ router.get(
     } catch (e) {
       console.error('Error listando estadísticas', e);
       res.status(500).json({ ok: false, msg: 'Error listando estadísticas' });
+    }
+  }
+);
+
+/**
+ * Importar de forma atómica las estadísticas completas de un partido.
+ * Cada jugador debe estar asignado a una inscripción activa del partido.
+ */
+router.post(
+  '/admin/matches/:id/stats/bulk',
+  requireAuth,
+  requireAdmin,
+  async (req, res) => {
+    const matchId = Number(req.params.id);
+    const entries = req.body?.entries;
+
+    if (!Number.isInteger(matchId) || matchId <= 0) {
+      return res.status(400).json({ ok: false, msg: 'ID de partido inválido' });
+    }
+
+    if (!Array.isArray(entries) || entries.length === 0) {
+      return res.status(400).json({ ok: false, msg: 'No hay estadísticas para importar' });
+    }
+
+    const normalized = entries.map((entry) => ({
+      userId: Number(entry?.user_id),
+      goals: Number(entry?.goals),
+      assists: Number(entry?.assists),
+      isMvp: entry?.is_mvp === true || entry?.is_mvp === 1,
+      result: entry?.result,
+      team: entry?.team,
+    }));
+
+    const invalidEntry = normalized.find((entry) => (
+      !Number.isInteger(entry.userId) || entry.userId <= 0 ||
+      !Number.isInteger(entry.goals) || entry.goals < 0 ||
+      !Number.isInteger(entry.assists) || entry.assists < 0 ||
+      !['win', 'loss', 'draw'].includes(entry.result) ||
+      !['white', 'black'].includes(entry.team)
+    ));
+
+    if (invalidEntry) {
+      return res.status(400).json({ ok: false, msg: 'Hay filas con datos inválidos' });
+    }
+
+    const uniqueUserIds = new Set(normalized.map((entry) => entry.userId));
+    if (uniqueUserIds.size !== normalized.length) {
+      return res.status(400).json({ ok: false, msg: 'Hay IDs de jugador duplicados' });
+    }
+
+    if (normalized.filter((entry) => entry.isMvp).length > 1) {
+      return res.status(400).json({ ok: false, msg: 'Solo puede haber un MVP' });
+    }
+
+    const conn = await pool.getConnection();
+    try {
+      await conn.beginTransaction();
+
+      const [[match]] = await conn.query('SELECT id FROM matches WHERE id = ? FOR UPDATE', [matchId]);
+      if (!match) {
+        await conn.rollback();
+        return res.status(404).json({ ok: false, msg: 'Partido no encontrado' });
+      }
+
+      const hasAssignedUser = await hasAssignedUserIdColumn();
+      const [inscriptions] = await conn.query(
+        hasAssignedUser
+          ? `SELECT id, user_id, assigned_user_id, ticket_type
+             FROM inscriptions
+             WHERE match_id = ? AND status IN ('confirmed', 'paid', 'active')
+             FOR UPDATE`
+          : `SELECT id, user_id, NULL AS assigned_user_id, ticket_type
+             FROM inscriptions
+             WHERE match_id = ? AND status IN ('confirmed', 'paid', 'active')
+             FOR UPDATE`,
+        [matchId]
+      );
+
+      const inscriptionByUser = new Map();
+      inscriptions.forEach((inscription) => {
+        const statsUserId = Number(inscription.assigned_user_id || inscription.user_id);
+        if (!inscriptionByUser.has(statsUserId)) inscriptionByUser.set(statsUserId, inscription);
+      });
+
+      const missingIds = normalized
+        .filter((entry) => !inscriptionByUser.has(entry.userId))
+        .map((entry) => entry.userId);
+
+      if (missingIds.length) {
+        await conn.rollback();
+        return res.status(400).json({
+          ok: false,
+          msg: `Jugadores no inscritos o sin asignar: ${missingIds.join(', ')}`,
+        });
+      }
+
+      const wrongTeam = normalized.find((entry) => {
+        const ticketType = inscriptionByUser.get(entry.userId)?.ticket_type;
+        return ticketType && ticketType !== entry.team;
+      });
+
+      if (wrongTeam) {
+        await conn.rollback();
+        return res.status(400).json({
+          ok: false,
+          msg: `El jugador ${wrongTeam.userId} no pertenece al equipo indicado`,
+        });
+      }
+
+      // Evita conservar un MVP anterior que no aparezca en la nueva acta.
+      await conn.query('UPDATE match_player_stats SET is_mvp = 0 WHERE match_id = ?', [matchId]);
+      await conn.query('UPDATE inscriptions SET is_mvp = 0 WHERE match_id = ?', [matchId]);
+
+      for (const entry of normalized) {
+        const inscription = inscriptionByUser.get(entry.userId);
+        await conn.query(
+          `INSERT INTO match_player_stats (match_id, user_id, goals, assists, is_mvp, result)
+           VALUES (?, ?, ?, ?, ?, ?)
+           ON DUPLICATE KEY UPDATE
+             goals = VALUES(goals),
+             assists = VALUES(assists),
+             is_mvp = VALUES(is_mvp),
+             result = VALUES(result)`,
+          [matchId, entry.userId, entry.goals, entry.assists, entry.isMvp ? 1 : 0, entry.result]
+        );
+
+        await conn.query(
+          'UPDATE inscriptions SET goals = ?, assists = ?, is_mvp = ? WHERE id = ?',
+          [entry.goals, entry.assists, entry.isMvp ? 1 : 0, inscription.id]
+        );
+      }
+
+      await conn.commit();
+      return res.json({
+        ok: true,
+        msg: `Estadísticas de ${normalized.length} jugadores importadas`,
+        data: { match_id: matchId, updated: normalized.length },
+      });
+    } catch (e) {
+      await conn.rollback();
+      console.error('Error importando estadísticas masivas', e);
+      return res.status(500).json({ ok: false, msg: 'Error importando estadísticas' });
+    } finally {
+      conn.release();
     }
   }
 );

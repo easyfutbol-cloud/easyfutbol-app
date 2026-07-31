@@ -1,7 +1,14 @@
 import { View, Text, StyleSheet, StatusBar, FlatList, TouchableOpacity, Alert, ActivityIndicator } from 'react-native';
-import { colors, spacing } from '../theme';
+import { colors, layout, radii, spacing, typography } from '../theme';
 import { useEffect, useState, useCallback, useMemo } from 'react';
 import { api } from '../api/client';
+import ScreenHeader from '../components/ScreenHeader';
+import SegmentedControl from '../components/SegmentedControl';
+
+const TAB_OPTIONS = [
+  { value: 'future', label: 'Entradas futuras' },
+  { value: 'past', label: 'Entradas anteriores' },
+];
 
 function Badge({ status }) {
   const map = {
@@ -206,7 +213,7 @@ export default function MyMatchesScreen() {
     const blacks = item.blackCount || 0;
 
     return (
-      <View style={styles.card}>
+      <View style={styles.card} accessible accessibilityLabel={`${item.title}, ${item.status}`}>
         <View style={styles.cardHeader}>
           <Text style={styles.cardTitle}>{item.title}</Text>
           <Badge status={item.status} />
@@ -238,6 +245,7 @@ export default function MyMatchesScreen() {
           <TouchableOpacity
             style={styles.btnOutline}
             onPress={() => handleCancelPress(item.match_id, total)}
+            accessibilityRole="button"
           >
             <Text style={styles.btnOutlineText}>
               {total > 1 ? 'Cancelar 1 entrada' : 'Cancelar entrada'}
@@ -251,26 +259,17 @@ export default function MyMatchesScreen() {
   return (
     <View style={styles.container}>
       <StatusBar barStyle="light-content" />
-      <Text style={styles.title}>Mis partidos</Text>
-      <View style={styles.tabsWrap}>
-        <TouchableOpacity
-          style={[styles.tabBtn, tab === 'future' && styles.tabBtnActive]}
-          onPress={() => setTab('future')}
-        >
-          <Text style={[styles.tabText, tab === 'future' && styles.tabTextActive]}>
-            Entradas futuras
-          </Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={[styles.tabBtn, tab === 'past' && styles.tabBtnActive]}
-          onPress={() => setTab('past')}
-        >
-          <Text style={[styles.tabText, tab === 'past' && styles.tabTextActive]}>
-            Entradas anteriores
-          </Text>
-        </TouchableOpacity>
-      </View>
+      <ScreenHeader
+        eyebrow="TUS RESERVAS"
+        title="Mis entradas"
+        description="Consulta y gestiona las plazas que has reservado."
+      />
+      <SegmentedControl
+        options={TAB_OPTIONS}
+        value={tab}
+        onChange={setTab}
+        accessibilityLabel="Filtrar entradas"
+      />
       {loading ? (
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color={colors.orange} />
@@ -282,13 +281,19 @@ export default function MyMatchesScreen() {
           keyExtractor={(it) => String(it.match_id)}
           renderItem={renderItem}
           ListEmptyComponent={
-            <Text style={styles.empty}>
-              {tab === 'future'
-                ? 'Aún no tienes entradas futuras. Ve a la pestaña "Partidos" y reserva tu plaza ⚽️'
-                : 'Aún no tienes entradas anteriores.'}
-            </Text>
+            <View style={styles.emptyCard}>
+              <Text style={styles.emptyEyebrow}>SIN ENTRADAS</Text>
+              <Text style={styles.emptyTitle}>
+                {tab === 'future' ? 'Tu próximo partido empieza aquí' : 'Todavía no hay historial'}
+              </Text>
+              <Text style={styles.empty}>
+                {tab === 'future'
+                  ? 'Cuando reserves una plaza, encontrarás aquí todos sus detalles.'
+                  : 'Tus entradas anteriores aparecerán aquí cuando finalicen los partidos.'}
+              </Text>
+            </View>
           }
-          contentContainerStyle={{ paddingBottom: spacing(6) }}
+          contentContainerStyle={styles.listContent}
         />
       )}
     </View>
@@ -296,20 +301,18 @@ export default function MyMatchesScreen() {
 }
 
 const styles = StyleSheet.create({
-  container:{ flex:1, backgroundColor:colors.black, padding:spacing(2) },
-  title:{ color:colors.white, fontSize:22, fontWeight:'800', marginVertical:spacing(2), textAlign:'center' },
-  tabsWrap:{ flexDirection:'row', backgroundColor:'#111', borderRadius:14, padding:4, marginBottom:spacing(2) },
-  tabBtn:{ flex:1, paddingVertical:12, borderRadius:10, alignItems:'center' },
-  tabBtnActive:{ backgroundColor:colors.orange },
-  tabText:{ color:'#aaa', fontWeight:'700', fontSize:14 },
-  tabTextActive:{ color:'#000', fontWeight:'800' },
+  container:{ flex:1, backgroundColor:colors.background, padding:spacing(2) },
+  listContent:{ width:'100%', maxWidth:layout.maxContentWidth, alignSelf:'center', paddingBottom:spacing(6) },
   loadingContainer:{ flex:1, justifyContent:'center', alignItems:'center' },
   loading:{ color:colors.gray, textAlign:'center', marginTop:spacing(2) },
-  empty:{ color:colors.gray, textAlign:'center', marginTop:spacing(4) },
-  card:{ backgroundColor:'#111', borderColor:'#222', borderWidth:1, borderRadius:14, padding:spacing(2), marginBottom:spacing(2) },
+  emptyCard:{ backgroundColor:colors.surface, borderWidth:1, borderColor:colors.border, borderRadius:radii.large, padding:spacing(3), alignItems:'center', marginTop:spacing(2) },
+  emptyEyebrow:{ color:colors.orange, ...typography.overline },
+  emptyTitle:{ color:colors.white, ...typography.heading, textAlign:'center', marginTop:spacing(1) },
+  empty:{ color:colors.textMuted, ...typography.body, textAlign:'center', marginTop:spacing(1) },
+  card:{ backgroundColor:colors.surface, borderColor:colors.border, borderWidth:1, borderRadius:radii.large, padding:spacing(2), marginBottom:spacing(2) },
   cardHeader:{ flexDirection:'row', alignItems:'center', justifyContent:'space-between', marginBottom:spacing(1) },
   cardTitle:{ color:colors.white, fontSize:18, fontWeight:'800' },
-  cardMeta:{ color:'#aaa', fontSize:13, marginBottom:4 },
+  cardMeta:{ color:colors.textMuted, fontSize:13, marginBottom:4 },
   entriesSummaryWrap:{ marginTop:spacing(1), marginBottom:spacing(0.5) },
   cardMetaStrong:{ color:colors.white, fontSize:13, fontWeight:'700', marginBottom:4 },
   entryCountBlock:{ marginBottom:6 },
@@ -321,7 +324,7 @@ const styles = StyleSheet.create({
   shirtIconCancelled:{ opacity:0.45 },
   shirtIconText:{ fontSize:13, lineHeight:16 },
   shirtIconTextWhite:{ color:'#111' },
-  entryShirtText:{ color:'#d7d7d7', fontSize:12, fontWeight:'700' },
-  btnOutline:{ borderWidth:1, borderColor:'#555', paddingVertical:spacing(1.2), borderRadius:12, alignItems:'center', marginTop:spacing(1) },
-  btnOutlineText:{ color:'#ddd', fontWeight:'800', fontSize:14 }
+  entryShirtText:{ color:colors.textMuted, fontSize:12, fontWeight:'700' },
+  btnOutline:{ minHeight:layout.minTouchTarget, borderWidth:1, borderColor:colors.border, paddingVertical:spacing(1.2), borderRadius:radii.medium, alignItems:'center', justifyContent:'center', marginTop:spacing(1) },
+  btnOutlineText:{ color:colors.white, fontWeight:'800', fontSize:14 }
 });

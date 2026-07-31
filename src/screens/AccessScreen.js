@@ -20,6 +20,7 @@ import { BlurView } from 'expo-blur';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { api } from '../api/client';
 import { registerForPushNotificationsAsync } from '../utils/notifications';
+import { colors, layout, radii, spacing, typography } from '../theme';
 
 const BG_IMG = {
   uri: 'https://images.unsplash.com/photo-1517747614396-d21a78b850e8?q=80&w=1200&auto=format',
@@ -41,6 +42,12 @@ export default function AccessScreen({ navigation, route }) {
 
   useEffect(() => {
     const prefill = route?.params?.prefill;
+    const requestedMode = route?.params?.mode;
+
+    if (requestedMode === 'login' || requestedMode === 'register') {
+      setMode(requestedMode);
+    }
+
     if (prefill?.identifier) {
       const v = String(prefill.identifier);
       setIdentifier(v);
@@ -406,13 +413,19 @@ export default function AccessScreen({ navigation, route }) {
           >
             {/* Contenido existente */}
             <Image source={APP_LOGO} style={styles.logo} />
+            <Text style={styles.eyebrow}>BIENVENIDO A</Text>
             <Text style={styles.title}>EasyFutbol</Text>
+            <Text style={styles.intro}>
+              Entra al campo, reserva partidos y sigue tu evolución.
+            </Text>
 
             <View style={styles.switchRow}>
               <TouchableOpacity
                 style={[styles.switchBtn, showLogin && styles.switchBtnActive]}
                 onPress={() => { setMode('login'); setShowForgot(false); }}
                 disabled={loading}
+                accessibilityRole="tab"
+                accessibilityState={{ selected: showLogin, disabled: loading }}
               >
                 <Text style={[styles.switchText, showLogin && styles.switchTextActive]}>Iniciar sesión</Text>
               </TouchableOpacity>
@@ -420,6 +433,8 @@ export default function AccessScreen({ navigation, route }) {
                 style={[styles.switchBtn, !showLogin && styles.switchBtnActive]}
                 onPress={() => { setMode('register'); setShowForgot(false); }}
                 disabled={loading}
+                accessibilityRole="tab"
+                accessibilityState={{ selected: !showLogin, disabled: loading }}
               >
                 <Text style={[styles.switchText, !showLogin && styles.switchTextActive]}>Registrarme</Text>
               </TouchableOpacity>
@@ -670,52 +685,78 @@ export default function AccessScreen({ navigation, route }) {
 }
 
 const styles = StyleSheet.create({
-  bg: { flex: 1 },
+  bg: { flex: 1, backgroundColor: colors.background },
   container: {
     flexGrow: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    padding: 20,
-    paddingBottom: 40,
+    paddingHorizontal: layout.screenPadding,
+    paddingVertical: spacing(4),
+    paddingBottom: spacing(6),
   },
-  logo: { width: 80, height: 80, marginBottom: 10 },
-  title: { color: '#fff', fontSize: 28, fontWeight: '800', marginBottom: 14 },
-  subtitle: { color: '#ccc', alignSelf: 'flex-start', marginBottom: 6 },
+  logo: { width: 72, height: 72, borderRadius: radii.large, marginBottom: spacing(2) },
+  eyebrow: { color: colors.orange, ...typography.overline, marginBottom: spacing(0.5) },
+  title: { color: colors.white, ...typography.display },
+  intro: {
+    color: colors.textMuted,
+    ...typography.body,
+    textAlign: 'center',
+    maxWidth: 360,
+    marginTop: spacing(0.75),
+    marginBottom: spacing(2.5),
+  },
+  subtitle: { color: colors.textMuted, ...typography.caption, alignSelf: 'flex-start', marginBottom: 6 },
 
   switchRow: {
     flexDirection: 'row',
-    backgroundColor: '#111',
-    borderRadius: 12,
+    width: '100%',
+    maxWidth: 420,
+    backgroundColor: colors.surface,
+    borderRadius: radii.medium,
     padding: 4,
     marginBottom: 16,
+    borderWidth: 1,
+    borderColor: colors.border,
   },
   switchBtn: {
+    flex: 1,
+    minHeight: layout.minTouchTarget,
     paddingVertical: 10,
-    paddingHorizontal: 14,
-    borderRadius: 10,
+    paddingHorizontal: spacing(1),
+    borderRadius: radii.small,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   switchBtnActive: {
-    backgroundColor: '#ff5a00',
+    backgroundColor: colors.orange,
   },
   switchText: {
-    color: '#bbb',
+    color: colors.textMuted,
     fontWeight: '800',
   },
   switchTextActive: {
-    color: '#000',
+    color: colors.black,
   },
 
   form: {
     width: '100%',
     maxWidth: 420,
+    backgroundColor: 'rgba(17, 21, 27, 0.94)',
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radii.large,
+    padding: spacing(2),
   },
   input: {
     width: '100%',
-    backgroundColor: '#111',
-    borderRadius: 12,
-    paddingVertical: 12,
+    minHeight: 52,
+    backgroundColor: colors.surfaceElevated,
+    borderRadius: radii.medium,
+    paddingVertical: 13,
     paddingHorizontal: 14,
-    color: '#fff',
+    color: colors.white,
+    borderWidth: 1,
+    borderColor: colors.border,
   },
   locationSelector: {
     flexDirection: 'row',
@@ -724,23 +765,24 @@ const styles = StyleSheet.create({
   },
   locationOption: {
     flex: 1,
-    backgroundColor: '#111',
-    borderRadius: 12,
+    minHeight: layout.minTouchTarget,
+    backgroundColor: colors.surfaceElevated,
+    borderRadius: radii.medium,
     paddingVertical: 13,
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: '#222',
+    borderColor: colors.border,
   },
   locationOptionActive: {
-    backgroundColor: '#ff5a00',
-    borderColor: '#ff5a00',
+    backgroundColor: colors.orange,
+    borderColor: colors.orange,
   },
   locationOptionText: {
-    color: '#ddd',
+    color: colors.textMuted,
     fontWeight: '900',
   },
   locationOptionTextActive: {
-    color: '#000',
+    color: colors.black,
   },
 
   passwordRow: {
@@ -757,22 +799,25 @@ const styles = StyleSheet.create({
     right: 10,
     height: '100%',
     justifyContent: 'center',
+    minWidth: layout.minTouchTarget,
     paddingHorizontal: 10,
+    alignItems: 'center',
   },
   eyeText: {
-    color: '#fff',
+    color: colors.white,
     fontSize: 18,
   },
 
   primaryBtn: {
     marginTop: 16,
-    backgroundColor: '#ff5a00',
-    borderRadius: 12,
+    minHeight: layout.minTouchTarget,
+    backgroundColor: colors.orange,
+    borderRadius: radii.medium,
     paddingVertical: 14,
     alignItems: 'center',
   },
   primaryText: {
-    color: '#000',
+    color: colors.black,
     fontWeight: '900',
     fontSize: 16,
   },
@@ -783,33 +828,34 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
   },
   forgotText: {
-    color: '#ff5a00',
+    color: colors.orange,
     fontWeight: '800',
   },
   forgotBox: {
     marginTop: 12,
-    backgroundColor: '#0d0d0d',
-    borderRadius: 12,
+    backgroundColor: colors.background,
+    borderRadius: radii.medium,
     padding: 12,
     borderWidth: 1,
-    borderColor: '#222',
+    borderColor: colors.border,
   },
   forgotTitle: {
-    color: '#fff',
+    color: colors.white,
     fontWeight: '900',
     marginBottom: 8,
   },
   secondaryBtn: {
     marginTop: 12,
-    backgroundColor: '#111',
-    borderRadius: 12,
+    minHeight: layout.minTouchTarget,
+    backgroundColor: colors.surfaceElevated,
+    borderRadius: radii.medium,
     paddingVertical: 14,
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: '#ff5a00',
+    borderColor: colors.orange,
   },
   secondaryText: {
-    color: '#ff5a00',
+    color: colors.orange,
     fontWeight: '900',
     fontSize: 16,
   },
@@ -826,7 +872,7 @@ const styles = StyleSheet.create({
     height: 22,
     borderRadius: 6,
     borderWidth: 2,
-    borderColor: '#ff5a00',
+    borderColor: colors.orange,
     backgroundColor: 'rgba(255,255,255,0.04)',
     alignItems: 'center',
     justifyContent: 'center',
@@ -834,20 +880,20 @@ const styles = StyleSheet.create({
     marginTop: 1,
   },
   checkboxActive: {
-    backgroundColor: '#ff5a00',
+    backgroundColor: colors.orange,
   },
   checkboxTick: {
-    color: '#000',
+    color: colors.black,
     fontWeight: '900',
     fontSize: 14,
   },
   checkText: {
     flex: 1,
-    color: '#d6d6d6',
+    color: colors.textMuted,
     lineHeight: 20,
   },
   linkText: {
-    color: '#ff5a00',
+    color: colors.orange,
     fontWeight: '800',
     textDecorationLine: 'underline',
   }

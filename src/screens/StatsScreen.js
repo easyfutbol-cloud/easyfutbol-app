@@ -1,10 +1,10 @@
 // src/screens/StatsScreen.js
 import React, { useEffect, useMemo, useState, useCallback } from 'react';
 import { View, Text, StyleSheet, StatusBar, FlatList, TouchableOpacity, ImageBackground, ActivityIndicator, Image } from 'react-native';
-import { BlurView } from 'expo-blur';
-import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-import { colors, spacing } from '../theme';
+import { LinearGradient } from 'expo-linear-gradient';
+import { colors, layout, radii, spacing, typography } from '../theme';
 import { api } from '../api/client';
+import ScreenHeader from '../components/ScreenHeader';
 
 const ORANGE = '#ff5a00';
 const DEFAULT_PLAYER_AVATAR = 'https://easyfutbol.es/wp-content/uploads/2026/05/Diseno-sin-titulo-7.png';
@@ -28,18 +28,7 @@ function buildAvatarUrl(rawAvatar) {
   return assetBase ? `${assetBase}/${value.replace(/^\/+/, '')}` : value;
 }
 
-// Imágenes de fondo de fútbol
-const BG_IMAGES = [
-  {
-    uri: 'https://images.unsplash.com/photo-1517927033932-b3d18e61fb3a?q=80&w=1600&auto=format&fit=crop',
-  },
-  {
-    uri: 'https://images.unsplash.com/photo-1518091043644-c1f4fa6bda4c?q=80&w=1600&auto=format&fit=crop',
-  },
-  {
-    uri: 'https://images.unsplash.com/photo-1461896836934-ffe607ba8211?q=80&w=1600&auto=format&fit=crop',
-  },
-];
+const SCREEN_BACKGROUND = require('../../assets/matches/match-5.jpg');
 
 const PERIODS = [
   { key: 'monthly', label: 'Mensual' },
@@ -54,12 +43,10 @@ const LOCATIONS = [
 ];
 
 export default function StatsScreen() {
-  const insets = useSafeAreaInsets();
   const [period, setPeriod] = useState('monthly');
   const [location, setLocation] = useState('national');
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [bgIndex, setBgIndex] = useState(0);
   const [error, setError] = useState('');
 
   const selectedLocation = useMemo(
@@ -69,7 +56,7 @@ export default function StatsScreen() {
 
   const title = useMemo(() => {
     const p = PERIODS.find(p => p.key === period)?.label || '';
-    return `🏆 Goleadores ${p} · ${selectedLocation.label}`;
+    return `Goleadores ${p} · ${selectedLocation.label}`;
   }, [period, selectedLocation]);
 
   const fetchStats = useCallback(async () => {
@@ -96,7 +83,6 @@ export default function StatsScreen() {
 
   useEffect(() => {
     fetchStats();
-    setBgIndex(prev => (prev + 1) % BG_IMAGES.length); // cambia sutilmente el fondo al cambiar filtros
   }, [fetchStats]);
 
   const renderRow = ({ item, index }) => {
@@ -105,7 +91,7 @@ export default function StatsScreen() {
     const avatar = buildAvatarUrl(rawAvatar);
     const displayName = item.username || item.name || 'Usuario';
     return (
-      <View style={styles.row}>
+      <View style={[styles.row, index < 3 && styles.rowPodium]} accessible accessibilityLabel={`Posición ${index + 1}, ${displayName}, ${item.goals ?? 0} goles, ${item.assists ?? 0} asistencias`}>
         <Text style={[styles.rank, index < 3 && styles.rankMedal]}>{medal}</Text>
 
         <Image source={{ uri: avatar || DEFAULT_PLAYER_AVATAR }} style={styles.avatar} resizeMode="cover" />
@@ -132,7 +118,7 @@ export default function StatsScreen() {
   );
 
   const Pill = ({ active, label, onPress }) => (
-    <TouchableOpacity onPress={onPress} activeOpacity={0.8} style={[styles.pill, active && styles.pillActive]}>
+    <TouchableOpacity onPress={onPress} activeOpacity={0.8} style={[styles.pill, active && styles.pillActive]} accessibilityRole="radio" accessibilityState={{ selected: active }}>
       <Text style={[styles.pillText, active && styles.pillTextActive]}>{label}</Text>
     </TouchableOpacity>
   );
@@ -140,16 +126,14 @@ export default function StatsScreen() {
   return (
     <View style={styles.flex1}>
       <StatusBar barStyle="light-content" />
-      <ImageBackground source={BG_IMAGES[bgIndex]} style={styles.bg} resizeMode="cover">
-        {/* Capa oscura + blur para legibilidad */}
-        <View style={styles.overlay} />
-        <BlurView intensity={70} tint="dark" style={StyleSheet.absoluteFill} />
-        <SafeAreaView style={[styles.safe, { paddingTop: insets.top || 12 }]}>
-          {/* Header */}
-          <View style={styles.header}>
-            <Text style={styles.screenTitle}>Estadísticas</Text>
-            <Text style={styles.subtitle}>Top goleadores por periodo y ciudad</Text>
-          </View>
+      <ImageBackground source={SCREEN_BACKGROUND} style={styles.bg} resizeMode="cover" imageStyle={styles.backgroundImage}>
+        <LinearGradient colors={['rgba(8,10,14,0.80)', 'rgba(8,10,14,0.98)']} style={StyleSheet.absoluteFill} />
+        <View style={styles.safe}>
+          <ScreenHeader
+            eyebrow="RANKING EASYFUTBOL"
+            title="Estadísticas"
+            description="Compara el rendimiento de los jugadores por periodo y ciudad."
+          />
 
           {/* Controles */}
           <View style={styles.controlsCard}>
@@ -207,39 +191,37 @@ export default function StatsScreen() {
               />
             )}
           </View>
-        </SafeAreaView>
+        </View>
       </ImageBackground>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  flex1: { flex: 1, backgroundColor: colors.black },
+  flex1: { flex: 1, backgroundColor: colors.background },
   bg: { flex: 1 },
-  overlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.45)' },
-  safe: { flex: 1, paddingHorizontal: spacing(2) },
-
-  header: { marginBottom: spacing(2) },
-  screenTitle: { color: colors.white, fontSize: 26, fontWeight: '800', textAlign: 'left' },
-  subtitle: { color: '#cfcfcf', marginTop: 4 },
+  backgroundImage: { opacity: 0.58 },
+  safe: { flex: 1, width: '100%', maxWidth: layout.maxContentWidth, alignSelf: 'center', paddingHorizontal: spacing(2), paddingTop: spacing(1) },
 
   controlsCard: {
-    backgroundColor: 'rgba(17,17,17,0.75)',
-    borderRadius: 16,
+    backgroundColor: 'rgba(17,21,27,0.92)',
+    borderRadius: radii.large,
     padding: spacing(2),
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.06)',
+    borderColor: colors.border,
     marginBottom: spacing(2),
   },
   segmentBlock: { marginBottom: spacing(1.5) },
-  segmentLabel: { color: '#ddd', marginBottom: spacing(1), fontWeight: '600' },
-  cityHelp: { color: '#a8a8a8', fontSize: 12, fontWeight: '600', marginTop: 8, lineHeight: 17 },
+  segmentLabel: { color: colors.white, marginBottom: spacing(1), ...typography.caption },
+  cityHelp: { color: colors.textSubtle, fontSize: 12, fontWeight: '600', marginTop: 8, lineHeight: 17 },
   segmentRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
 
   pill: {
+    minHeight: layout.minTouchTarget,
+    justifyContent: 'center',
     paddingVertical: 8,
     paddingHorizontal: 14,
-    borderRadius: 999,
+    borderRadius: radii.pill,
     backgroundColor: 'rgba(255,255,255,0.08)',
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.12)',
@@ -253,30 +235,30 @@ const styles = StyleSheet.create({
 
   dynamicTitle: {
     color: colors.white,
-    fontSize: 18,
-    fontWeight: '800',
+    ...typography.heading,
     marginBottom: spacing(1),
   },
 
   listCard: {
     flex: 1,
-    backgroundColor: 'rgba(17,17,17,0.8)',
-    borderRadius: 16,
+    backgroundColor: 'rgba(17,21,27,0.92)',
+    borderRadius: radii.large,
     padding: spacing(1),
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.06)',
+    borderColor: colors.border,
   },
 
   row: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#0f0f10',
+    backgroundColor: colors.surface,
     padding: spacing(1.5),
-    borderRadius: 12,
+    borderRadius: radii.medium,
     marginBottom: spacing(1),
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.05)',
+    borderColor: colors.border,
   },
+  rowPodium: { borderColor: 'rgba(255,90,0,0.42)', backgroundColor: 'rgba(255,90,0,0.08)' },
   rank: { color: ORANGE, fontSize: 16, fontWeight: '800', width: 36, textAlign: 'center' },
   rankMedal: { fontSize: 18 },
   avatar: {

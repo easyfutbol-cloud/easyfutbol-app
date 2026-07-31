@@ -1,14 +1,26 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, ActivityIndicator, Alert, Linking, Image } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, ActivityIndicator, Alert, Linking, Image, ImageBackground } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { api } from '../api/client';
-import { colors, spacing } from '../theme';
+import { colors, layout, radii, spacing, typography } from '../theme';
 import { useFocusEffect, useNavigation, useRoute } from '@react-navigation/native';
 import easypassLogo from '../../assets/easypass-logo.png';
+import { LinearGradient } from 'expo-linear-gradient';
+import ScreenHeader from '../components/ScreenHeader';
 
 const ORANGE = '#ff5a00';
+const SCREEN_BACKGROUND = require('../../assets/matches/match-3.jpg');
 
 const formatEuro = (cents) => `${(Number(cents || 0) / 100).toFixed(2)}€`;
+
+function ScreenBackdrop({ children }) {
+  return (
+    <ImageBackground source={SCREEN_BACKGROUND} style={styles.screen} imageStyle={styles.screenImage}>
+      <LinearGradient colors={['rgba(8,10,14,0.82)', 'rgba(8,10,14,0.99)']} style={StyleSheet.absoluteFill} />
+      {children}
+    </ImageBackground>
+  );
+}
 
 export default function EasyPassScreen() {
   const [packs, setPacks] = useState([]);
@@ -28,6 +40,7 @@ export default function EasyPassScreen() {
 
   const displayPacks = packs.map((pack) => ({
     ...pack,
+    displayAmount: Number(pack?.easyPassAmount ?? pack?.credits ?? 0),
     displayName: `${Number(pack?.easyPassAmount ?? pack?.credits ?? 0)} EasyPass`,
     displayPriceCents: Number(pack?.price_cents || pack?.priceCents || 0),
   }));
@@ -165,13 +178,18 @@ export default function EasyPassScreen() {
 
   if (!isAuthenticated) {
     return (
-      <View style={{ flex:1, backgroundColor: colors.black }}>
-        <ScrollView contentContainerStyle={{ padding: spacing(2), paddingBottom: spacing(6), flexGrow: 1 }}>
+      <ScreenBackdrop>
+        <ScrollView contentContainerStyle={styles.content}>
+          <ScreenHeader
+            eyebrow="EASYPASS"
+            title="Juega sin límites"
+            description="Compra saldo y reserva tu plaza en los próximos partidos."
+          />
           <View style={styles.heroHeader}>
             <View style={styles.heroLogoWrap}>
               <Image source={easypassLogo} style={styles.heroLogo} resizeMode="contain" />
             </View>
-            <Text style={styles.title}>🎟️ EasyPass</Text>
+            <Text style={styles.title}>EasyPass</Text>
           </View>
 
           <View style={styles.loginRequiredCard}>
@@ -190,7 +208,7 @@ export default function EasyPassScreen() {
 
             <TouchableOpacity
               style={styles.loginPrimaryBtn}
-              onPress={() => navigation.navigate('Login')}
+              onPress={() => navigation.navigate('Access', { mode: 'login' })}
               activeOpacity={0.85}
             >
               <Text style={styles.loginPrimaryBtnText}>Iniciar sesión</Text>
@@ -198,25 +216,30 @@ export default function EasyPassScreen() {
 
             <TouchableOpacity
               style={styles.loginSecondaryBtn}
-              onPress={() => navigation.navigate('Register')}
+              onPress={() => navigation.navigate('Access', { mode: 'register' })}
               activeOpacity={0.85}
             >
               <Text style={styles.loginSecondaryBtnText}>Crear cuenta</Text>
             </TouchableOpacity>
           </View>
         </ScrollView>
-      </View>
+      </ScreenBackdrop>
     );
   }
 
   return (
-    <View style={{ flex:1, backgroundColor: colors.black }}>
-      <ScrollView contentContainerStyle={{ padding: spacing(2), paddingBottom: spacing(6) }}>
+    <ScreenBackdrop>
+      <ScrollView contentContainerStyle={styles.content}>
+        <ScreenHeader
+          eyebrow="TU SALDO"
+          title="EasyPass"
+          description="Elige la ciudad correcta y compra el pack que mejor encaje contigo."
+        />
         <View style={styles.heroHeader}>
           <View style={styles.heroLogoWrap}>
             <Image source={easypassLogo} style={styles.heroLogo} resizeMode="contain" />
           </View>
-          <Text style={styles.title}>🎟️ EasyPass</Text>
+          <Text style={styles.title}>Listo para jugar</Text>
         </View>
 
         <View style={styles.balanceCard}>
@@ -255,6 +278,8 @@ export default function EasyPassScreen() {
                   style={[styles.locationBtn, isSelected && styles.locationBtnActive]}
                   onPress={() => setSelectedLocationId(Number(location.id))}
                   activeOpacity={0.85}
+                  accessibilityRole="radio"
+                  accessibilityState={{ selected: isSelected }}
                 >
                   <Text style={[styles.locationBtnText, isSelected && styles.locationBtnTextActive]}>
                     {location.name}
@@ -279,7 +304,11 @@ export default function EasyPassScreen() {
 
         {displayPacks.map((p) => (
           <View key={p.id} style={styles.packCard}>
-            <View style={{ flex:1 }}>
+            <View style={styles.packAmountBadge}>
+              <Text style={styles.packAmount}>{p.displayAmount}</Text>
+              <Text style={styles.packAmountLabel}>EASYPASS</Text>
+            </View>
+            <View style={styles.packCopy}>
               <Text style={styles.packName}>{p.displayName}</Text>
               <Text style={styles.packMeta}>Válido solo para {selectedLocationName}</Text>
             </View>
@@ -291,6 +320,8 @@ export default function EasyPassScreen() {
                 onPress={() => buyPack(p)}
                 activeOpacity={0.85}
                 disabled={buyingPackId !== null}
+                accessibilityRole="button"
+                accessibilityState={{ disabled: buyingPackId !== null, busy: buyingPackId === p.id }}
               >
                 <Text style={styles.buyText}>
                   {buyingPackId === p.id ? 'Abriendo pago...' : 'Comprar'}
@@ -306,34 +337,37 @@ export default function EasyPassScreen() {
           </Text>
         )}
       </ScrollView>
-    </View>
+    </ScreenBackdrop>
   );
 }
 
 const styles = StyleSheet.create({
-  loader:{ flex:1, backgroundColor:'#000', alignItems:'center', justifyContent:'center' },
+  screen:{ flex:1, backgroundColor:colors.background },
+  screenImage:{ resizeMode:'cover', opacity:0.55 },
+  content:{ width:'100%', maxWidth:layout.maxContentWidth, alignSelf:'center', padding:spacing(2), paddingBottom:spacing(6), flexGrow:1 },
+  loader:{ flex:1, backgroundColor:colors.background, alignItems:'center', justifyContent:'center' },
 
-  heroHeader:{ alignItems:'center', marginBottom: 14 },
-  heroLogoWrap:{ width:88, height:88, borderRadius:44, backgroundColor:'transparent', overflow:'hidden', alignItems:'center', justifyContent:'center', marginBottom:10 },
+  heroHeader:{ flexDirection:'row', alignItems:'center', marginBottom:spacing(2) },
+  heroLogoWrap:{ width:72, height:72, borderRadius:radii.large, backgroundColor:'rgba(255,90,0,0.10)', overflow:'hidden', alignItems:'center', justifyContent:'center', marginRight:spacing(1.5), borderWidth:1, borderColor:'rgba(255,90,0,0.35)' },
   heroLogo:{ width:'100%', height:'100%' },
-  title:{ color:'#fff', fontSize:22, fontWeight:'900', textAlign:'center' },
+  title:{ color:colors.white, ...typography.heading },
 
   balanceCard:{
-    backgroundColor:'rgba(17,17,17,0.92)',
-    borderRadius:16,
-    padding: 16,
+    backgroundColor:'rgba(17,21,27,0.94)',
+    borderRadius:radii.large,
+    padding: spacing(2.5),
     borderWidth:1,
-    borderColor:'rgba(255,255,255,0.06)',
+    borderColor:colors.border,
     marginBottom: 18,
     marginTop: 4
   },
-  balanceLabel:{ color:'#bbb', fontWeight:'800' },
-  balanceValue:{ color:'#fff', fontSize:34, fontWeight:'900', marginTop: 6 },
-  balanceHint:{ color:'#9f9f9f', marginTop: 6, fontWeight:'700', fontSize:12 },
+  balanceLabel:{ color:colors.orange, ...typography.overline },
+  balanceValue:{ color:colors.white, fontSize:48, lineHeight:56, fontWeight:'900', marginTop:spacing(0.5) },
+  balanceHint:{ color:colors.textMuted, marginTop:spacing(0.5), ...typography.body },
 
   loginRequiredCard:{
     backgroundColor:'rgba(17,17,17,0.96)',
-    borderRadius:18,
+    borderRadius:radii.large,
     padding: 20,
     borderWidth:1,
     borderColor:'rgba(255,90,0,0.32)',
@@ -354,9 +388,9 @@ const styles = StyleSheet.create({
   },
   loginWarningTitle:{ color:ORANGE, fontWeight:'900', marginBottom: 4, textAlign:'center' },
   loginWarningText:{ color:'#f1f1f1', fontSize:12, fontWeight:'700', lineHeight:18, textAlign:'center' },
-  loginPrimaryBtn:{ width:'100%', marginTop: 18, backgroundColor: ORANGE, paddingVertical:13, borderRadius:14, alignItems:'center' },
+  loginPrimaryBtn:{ width:'100%', minHeight:layout.minTouchTarget, marginTop:18, backgroundColor:ORANGE, paddingVertical:13, borderRadius:radii.medium, alignItems:'center', justifyContent:'center' },
   loginPrimaryBtnText:{ color:'#000', fontWeight:'900', fontSize:15 },
-  loginSecondaryBtn:{ width:'100%', marginTop: 10, backgroundColor:'#1b1b1b', borderWidth:1, borderColor:'rgba(255,255,255,0.14)', paddingVertical:13, borderRadius:14, alignItems:'center' },
+  loginSecondaryBtn:{ width:'100%', minHeight:layout.minTouchTarget, marginTop:10, backgroundColor:colors.surfaceElevated, borderWidth:1, borderColor:colors.border, paddingVertical:13, borderRadius:radii.medium, alignItems:'center', justifyContent:'center' },
   loginSecondaryBtnText:{ color:'#fff', fontWeight:'900', fontSize:15 },
 
   backToMatchBtn:{
@@ -364,7 +398,8 @@ const styles = StyleSheet.create({
     backgroundColor:'#1b1b1b',
     borderWidth:1,
     borderColor:ORANGE,
-    borderRadius:12,
+    minHeight:layout.minTouchTarget,
+    borderRadius:radii.medium,
     paddingVertical:12,
     alignItems:'center',
   },
@@ -374,22 +409,24 @@ const styles = StyleSheet.create({
 
   locationCard:{
     backgroundColor:'rgba(17,17,17,0.96)',
-    borderRadius:18,
+    borderRadius:radii.large,
     padding: 16,
     borderWidth:1,
-    borderColor:'rgba(255,90,0,0.28)',
+    borderColor:colors.border,
     marginBottom: 16,
   },
   locationEyebrow:{ color:ORANGE, fontSize:12, fontWeight:'900', textTransform:'uppercase', letterSpacing:0.5 },
   locationTitle:{ color:'#fff', fontSize:19, fontWeight:'900', marginTop: 4 },
   locationHint:{ color:'#bdbdbd', fontSize:12, fontWeight:'700', lineHeight:18, marginTop: 8 },
-  locationGrid:{ flexDirection:'row', gap:10, marginTop: 14 },
+  locationGrid:{ flexDirection:'row', flexWrap:'wrap', gap:10, marginTop:14 },
   locationBtn:{
     flex:1,
     backgroundColor:'#171717',
     borderWidth:1,
     borderColor:'rgba(255,255,255,0.12)',
-    borderRadius:14,
+    minWidth:140,
+    minHeight:72,
+    borderRadius:radii.medium,
     paddingVertical:13,
     paddingHorizontal:10,
     alignItems:'center',
@@ -413,19 +450,24 @@ const styles = StyleSheet.create({
 
   packCard:{
     flexDirection:'row',
+    alignItems:'center',
     gap: 12,
-    backgroundColor:'rgba(17,17,17,0.92)',
-    borderRadius:16,
+    backgroundColor:'rgba(17,21,27,0.94)',
+    borderRadius:radii.large,
     padding: 16,
     borderWidth:1,
-    borderColor:'rgba(255,255,255,0.06)',
+    borderColor:colors.border,
     marginBottom: 12
   },
+  packAmountBadge:{ width:58, height:58, borderRadius:radii.medium, backgroundColor:'rgba(255,90,0,0.14)', borderWidth:1, borderColor:'rgba(255,90,0,0.42)', alignItems:'center', justifyContent:'center' },
+  packAmount:{ color:colors.white, fontSize:22, fontWeight:'900', lineHeight:26 },
+  packAmountLabel:{ color:colors.orange, fontSize:7, fontWeight:'900', letterSpacing:0.5 },
+  packCopy:{ flex:1 },
   packName:{ color:'#fff', fontSize:16, fontWeight:'900' },
   packMeta:{ color:'#bdbdbd', fontSize:12, fontWeight:'700', marginTop: 4 },
   packPrice:{ color:'#fff', fontSize:16, fontWeight:'900' },
 
-  buyBtn:{ marginTop: 8, backgroundColor: ORANGE, paddingVertical:10, paddingHorizontal:14, borderRadius:12 },
+  buyBtn:{ minHeight:layout.minTouchTarget, marginTop:8, backgroundColor:ORANGE, paddingVertical:10, paddingHorizontal:14, borderRadius:radii.medium, justifyContent:'center' },
   buyBtnDisabled:{ opacity:0.7 },
   buyText:{ color:'#000', fontWeight:'900' },
 });

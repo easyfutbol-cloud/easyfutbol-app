@@ -1,57 +1,61 @@
-// src/screens/HomeScreen.js
-import { View, Text, StyleSheet, StatusBar, TouchableOpacity, ImageBackground, Image, ScrollView, Alert } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
-import { BlurView } from 'expo-blur';
-import { spacing } from '../theme';
-import { useEffect, useState, useCallback } from 'react';
+import React, { useCallback, useState } from 'react';
+import {
+  Alert,
+  Image,
+  ImageBackground,
+  ScrollView,
+  StatusBar,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  useWindowDimensions,
+  View,
+} from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useFocusEffect } from '@react-navigation/native';
+import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-// Importa el controlador para abrir el menú
 import { menuController } from '../../App';
+import { api } from '../api/client';
+import SportsFeatureCard from '../components/SportsFeatureCard';
+import {
+  colors,
+  gradients,
+  layout,
+  radii,
+  spacing,
+  typography,
+} from '../theme';
 
-const ORANGE = '#ff5a00';
-
-// ✅ Logo en assets/ en la raíz del proyecto
 const APP_LOGO = require('../../assets/Logo.png');
+const EASYPASS_LOGO = require('../../assets/easypass-logo.png');
 
-const WORLD_CUP_SCREEN_BG = {
-  uri: 'https://easyfutbol.es/wp-content/uploads/2026/05/posible-fondo-1.png',
-};
+const SCREEN_BACKGROUND = require('../../assets/matches/match-6.jpg');
 
-const BG = {
-  myMatches: {
-    uri: 'https://easyfutbol.es/wp-content/uploads/2024/10/siluetas-futbol-7.jpeg',
-  },
-  worldCup: {
-    uri: 'https://easyfutbol.es/wp-content/uploads/2025/02/grass-2616911_1280.jpg',
-  },
-  tournament: {
-    uri: 'https://easyfutbol.es/wp-content/uploads/2025/02/grass-2616911_1280.jpg',
-  },
-  upcoming: {
-    uri: 'https://easyfutbol.es/wp-content/uploads/2025/01/Imagen-eventos_1.avif',
-  },
-  stats: {
-    uri: 'https://easyfutbol.es/wp-content/uploads/2025/02/Registro-8-scaled.jpeg',
-  },
-  easyPass: {
-    uri: 'https://easyfutbol.es/wp-content/uploads/2025/02/imagen-registro-2-scaled.jpeg',
-  },
-  adminCreate: {
-    uri: 'https://easyfutbol.es/wp-content/uploads/2025/02/grass-2616911_1280.jpg',
-  },
+const CARD_IMAGES = {
+  myMatches: require('../../assets/matches/match-8.jpg'),
+  tickets: require('../../assets/matches/match-2.jpg'),
+  tournament: { uri: 'https://easyfutbol.es/wp-content/uploads/2025/02/grass-2616911_1280.jpg' },
+  upcoming: { uri: 'https://easyfutbol.es/wp-content/uploads/2025/01/Imagen-eventos_1.avif' },
+  stats: { uri: 'https://easyfutbol.es/wp-content/uploads/2025/02/Registro-8-scaled.jpeg' },
+  easyPass: { uri: 'https://easyfutbol.es/wp-content/uploads/2025/02/imagen-registro-2-scaled.jpeg' },
+  adminCreate: { uri: 'https://easyfutbol.es/wp-content/uploads/2025/02/grass-2616911_1280.jpg' },
 };
 
 export default function HomeScreen({ navigation }) {
   const insets = useSafeAreaInsets();
+  const { width } = useWindowDimensions();
+  const useTwoColumns = width >= 720;
 
   const [isLogged, setIsLogged] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
   const [avatar, setAvatar] = useState(null);
   const [displayName, setDisplayName] = useState('');
+  const [easyPassBalance, setEasyPassBalance] = useState(0);
+  const [easyPassLoading, setEasyPassLoading] = useState(false);
 
-  const requireAuth = (targetScreen) => {
+  const requireAuth = useCallback((targetScreen) => {
     if (isLogged) {
       navigation.navigate(targetScreen);
       return;
@@ -65,267 +69,366 @@ export default function HomeScreen({ navigation }) {
         { text: 'Iniciar sesión / Registrarme', onPress: () => navigation.navigate('Access') },
       ]
     );
-  };
+  }, [isLogged, navigation]);
 
   const readSession = useCallback(async () => {
     try {
       const token = await AsyncStorage.getItem('token');
       const rawUser = await AsyncStorage.getItem('user');
-      const u = rawUser ? JSON.parse(rawUser) : {};
-
-      console.log('USER EN HOMESCREEN:', u);
-
+      const user = rawUser ? JSON.parse(rawUser) : {};
       const adminFlag =
-        u?.role === 'admin' ||
-        u?.role === 'ADMIN' ||
-        u?.is_admin === true ||
-        u?.is_admin === 1 ||
-        u?.is_admin === '1';
+        user?.role === 'admin' ||
+        user?.role === 'ADMIN' ||
+        user?.is_admin === true ||
+        user?.is_admin === 1 ||
+        user?.is_admin === '1';
 
-      console.log('¿ES ADMIN?:', adminFlag);
-
-      setIsLogged(!!token);
+      setIsLogged(Boolean(token));
       setIsAdmin(adminFlag);
-      setAvatar(u?.avatar_url || u?.avatar || null);
-      setDisplayName(u?.username || u?.name || '');
-    } catch (err) {
-      console.log('Error leyendo sesión en HomeScreen:', err);
+      setAvatar(user?.avatar_url || user?.avatar || null);
+      setDisplayName(user?.username || user?.name || '');
+
+      if (token) {
+        setEasyPassLoading(true);
+        try {
+          const response = await api.get('/me/credits');
+          const payload = response?.data || {};
+          setEasyPassBalance(Number(payload?.easyPassBalance ?? payload?.credits ?? 0) || 0);
+        } catch (balanceError) {
+          console.log('Error cargando saldo EasyPass en HomeScreen:', balanceError?.message);
+          setEasyPassBalance(0);
+        } finally {
+          setEasyPassLoading(false);
+        }
+      } else {
+        setEasyPassBalance(0);
+        setEasyPassLoading(false);
+      }
+    } catch (error) {
+      console.log('Error leyendo sesión en HomeScreen:', error);
       setIsLogged(false);
       setIsAdmin(false);
       setAvatar(null);
       setDisplayName('');
+      setEasyPassBalance(0);
+      setEasyPassLoading(false);
     }
   }, []);
 
-  useEffect(() => {
-    readSession();
-  }, [readSession]);
-
-  const onPressAvatar = () => menuController.open?.();
-  const onLongPressAvatar = () => navigation.navigate(isLogged ? 'Profile' : 'Access');
-
-  const SectionCard = ({ title, bgSource, onPress, children }) => (
-    <TouchableOpacity activeOpacity={0.9} onPress={onPress} style={styles.sectionWrapper}>
-      <ImageBackground source={bgSource} style={styles.bg} imageStyle={styles.bgImage}>
-        <BlurView intensity={70} tint="dark" style={StyleSheet.absoluteFillObject} />
-        <LinearGradient
-          colors={['rgba(0,0,0,0.55)', 'rgba(0,0,0,0.25)']}
-          style={StyleSheet.absoluteFillObject}
-        />
-        <View style={styles.sectionContent}>
-          <Text style={styles.sectionTitle}>{title}</Text>
-          {children}
-          <View style={styles.cta}>
-            <Text style={styles.ctaText}>VER MÁS</Text>
-          </View>
-        </View>
-      </ImageBackground>
-    </TouchableOpacity>
+  useFocusEffect(
+    useCallback(() => {
+      readSession();
+    }, [readSession])
   );
 
+  const cards = [
+    {
+      key: 'tournament',
+      title: 'Torneo EasyFutbol',
+      eyebrow: 'EVENTO DESTACADO',
+      description: '25 de julio · 19:00 a 23:00 · camiseta oficial, partidos grabados, premios y consumición en La Herminia.',
+      imageSource: CARD_IMAGES.tournament,
+      onPress: () => requireAuth('HomeTournament'),
+      accent: true,
+    },
+    {
+      key: 'upcoming',
+      title: 'Próximos partidos',
+      eyebrow: 'JUEGA ESTA SEMANA',
+      description: 'Encuentra tu próximo partido y reserva tu plaza.',
+      imageSource: CARD_IMAGES.upcoming,
+      onPress: () => requireAuth('Matchs'),
+    },
+    {
+      key: 'myMatches',
+      title: 'Mis partidos',
+      eyebrow: 'TU AGENDA',
+      description: 'Consulta camiseta, ubicación, hora e información importante antes de jugar.',
+      imageSource: CARD_IMAGES.myMatches,
+      onPress: () => requireAuth('MisPartidos'),
+    },
+    {
+      key: 'tickets',
+      title: 'Mis entradas',
+      eyebrow: 'RESERVAS',
+      description: 'Revisa tus entradas compradas y el estado de tus reservas.',
+      imageSource: CARD_IMAGES.tickets,
+      onPress: () => requireAuth('MyMatches'),
+    },
+    {
+      key: 'stats',
+      title: 'Estadísticas',
+      eyebrow: 'TU RENDIMIENTO',
+      description: 'Consulta tus goles, asistencias, MVP y rankings completos.',
+      imageSource: CARD_IMAGES.stats,
+      onPress: () => navigation.navigate('Stats'),
+    },
+    {
+      key: 'easyPass',
+      title: 'EasyPass',
+      eyebrow: 'JUEGA MÁS',
+      description: 'Compra packs de EasyPass y reserva tus partidos más rápido.',
+      imageSource: CARD_IMAGES.easyPass,
+      onPress: () => requireAuth('EasyPass'),
+      accent: true,
+    },
+  ];
+
   return (
-    <ImageBackground
-      source={WORLD_CUP_SCREEN_BG}
-      style={styles.container}
-      imageStyle={styles.worldCupBgImage}
-    >
-      <LinearGradient
-        colors={['rgba(0,0,0,0.88)', 'rgba(0,0,0,0.76)', 'rgba(0,0,0,0.92)']}
-        start={{ x: 0.1, y: 0 }}
-        end={{ x: 1, y: 1 }}
-        style={styles.container}
+    <View style={styles.container}>
+      <StatusBar barStyle="light-content" translucent backgroundColor="transparent" />
+      <ImageBackground source={SCREEN_BACKGROUND} style={StyleSheet.absoluteFill} imageStyle={styles.backgroundImage}>
+        <LinearGradient colors={gradients.screen} style={StyleSheet.absoluteFill} />
+      </ImageBackground>
+
+      <ScrollView
+        contentContainerStyle={[
+          styles.scrollContent,
+          {
+            paddingTop: spacing(1),
+            paddingBottom: Math.max(insets.bottom, spacing(2)) + spacing(3),
+          },
+        ]}
+        showsVerticalScrollIndicator={false}
       >
-        <StatusBar barStyle="light-content" translucent backgroundColor="transparent" />
+        <View style={styles.contentBoundary}>
+          <View style={styles.topBar}>
+            <TouchableOpacity
+              onPress={() => navigation.canGoBack() && navigation.goBack()}
+              disabled={!navigation.canGoBack()}
+              style={[styles.backButton, !navigation.canGoBack() && styles.backButtonDisabled]}
+              accessibilityRole="button"
+              accessibilityLabel="Volver atrás"
+              accessibilityState={{ disabled: !navigation.canGoBack() }}
+            >
+              <Text style={styles.backButtonText}>‹</Text>
+            </TouchableOpacity>
 
-        <LinearGradient
-          colors={['rgba(255,90,0,0.12)', 'rgba(255,90,0,0)']}
-          style={styles.glow}
-          start={{ x: 1, y: 0 }}
-          end={{ x: 0.3, y: 0.7 }}
-        />
+            <View style={styles.brand}>
+              <Image source={APP_LOGO} style={styles.logo} resizeMode="cover" />
+              <View style={styles.brandCopy}>
+                <Text style={styles.brandName}>EASYFUTBOL</Text>
+                <Text numberOfLines={1} style={styles.userName}>
+                  {isLogged ? `Hola, ${displayName || 'jugador'}` : 'Fútbol para todos'}
+                </Text>
+              </View>
+            </View>
 
-        <View style={[styles.topBar, { paddingTop: spacing(1) + insets.top * 0 }]}> 
-          <View style={styles.leftBlock}>
-            <Image source={APP_LOGO} style={styles.appLogo} />
-            <Text numberOfLines={1} style={styles.username}>
-              {displayName || 'Usuario'}
-            </Text>
+            <View style={styles.headerActions}>
+              <TouchableOpacity
+                onPress={() => requireAuth('EasyPass')}
+                style={styles.balanceButton}
+                accessibilityRole="button"
+                accessibilityLabel={isLogged ? `${easyPassBalance} EasyPass disponibles` : 'Consultar EasyPass'}
+              >
+                <Text style={styles.balanceValue}>{easyPassLoading ? '…' : easyPassBalance}</Text>
+                <Image source={EASYPASS_LOGO} style={styles.balanceLogo} resizeMode="contain" />
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                onPress={() => menuController.open?.()}
+                onLongPress={() => navigation.navigate(isLogged ? 'Profile' : 'Access')}
+                style={styles.avatarButton}
+                accessibilityRole="button"
+                accessibilityLabel="Abrir menú"
+                accessibilityHint="Mantén pulsado para abrir tu perfil"
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              >
+                {avatar ? (
+                  <Image source={{ uri: avatar }} style={styles.avatarImage} />
+                ) : (
+                  <Text style={styles.avatarInitial}>
+                    {(displayName || 'E').charAt(0).toUpperCase()}
+                  </Text>
+                )}
+              </TouchableOpacity>
+            </View>
           </View>
 
-          <TouchableOpacity
-            onPress={onPressAvatar}
-            onLongPress={onLongPressAvatar}
-            style={styles.avatarWrap}
-            accessibilityLabel="Abrir menú / Perfil"
-            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-          >
-            {avatar ? (
-              <Image source={{ uri: avatar }} style={styles.avatarImg} />
-            ) : (
-              <View style={styles.avatarPlaceholder}>
-                <Text style={styles.avatarInitial}>{(displayName || 'U').charAt(0).toUpperCase()}</Text>
+          {isAdmin ? (
+            <View style={styles.adminSection}>
+              <Text style={styles.sectionLabel}>GESTIÓN</Text>
+              <SportsFeatureCard
+                title="Crear partido"
+                eyebrow="ADMINISTRACIÓN"
+                description="Publica un nuevo partido de EasyFutbol desde la app."
+                imageSource={CARD_IMAGES.adminCreate}
+                onPress={() => navigation.navigate('AdminCreateMatch')}
+                accent
+                compact
+              />
+            </View>
+          ) : null}
+
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>Explora EasyFutbol</Text>
+            <Text style={styles.sectionSubtitle}>Todo lo que necesitas para jugar y competir.</Text>
+          </View>
+
+          <View style={styles.cardGrid}>
+            {cards.map((card) => (
+              <View
+                key={card.key}
+                style={[styles.cardCell, useTwoColumns && styles.cardCellWide]}
+              >
+                <SportsFeatureCard {...card} compact={useTwoColumns} />
               </View>
-            )}
-          </TouchableOpacity>
+            ))}
+          </View>
         </View>
-
-        <ScrollView contentContainerStyle={styles.stack}>
-          {isAdmin && (
-            <SectionCard
-              title="Crear partido"
-              bgSource={BG.adminCreate}
-              onPress={() => navigation.navigate('AdminCreateMatch')}
-            >
-              <Text style={styles.sectionDescription}>
-                Publica nuevos partidos de EasyFutbol desde la app (solo administradores).
-              </Text>
-            </SectionCard>
-          )}
-
-          <SectionCard
-            title="🏆 Torneo EasyFutbol"
-            bgSource={BG.tournament}
-            onPress={() => requireAuth('HomeTournament')}
-          >
-            <Text style={styles.sectionDescription}>
-              25 de julio · 19:00 a 23:00 · camiseta oficial, partidos grabados, premios y consumición en La Herminia.
-            </Text>
-          </SectionCard>
-
-          <SectionCard
-            title="Próximos partidos"
-            bgSource={BG.upcoming}
-            onPress={() => requireAuth('Matchs')}
-          />
-
-          <SectionCard
-            title="Mis partidos"
-            bgSource={BG.myMatches}
-            onPress={() => requireAuth('MisPartidos')}
-          >
-            <Text style={styles.sectionDescription}>
-              Consulta tus partidos inscritos, camiseta, ubicación, hora e información importante antes de jugar.
-            </Text>
-          </SectionCard>
-
-          <SectionCard
-            title="Mis entradas"
-            bgSource={BG.myMatches}
-            onPress={() => requireAuth('MyMatches')}
-          >
-            <Text style={styles.sectionDescription}>
-              Revisa tus entradas compradas y el estado de tus reservas.
-            </Text>
-          </SectionCard>
-
-          <SectionCard
-            title="Mundial EasyFutbol"
-            bgSource={BG.worldCup}
-            onPress={() => navigation.navigate('WorldCup')}
-          >
-            <Text style={styles.sectionDescription}>
-              Elige tu selección, suma puntos con tus goles, asistencias, MVP y victorias, y compite por el ranking del Mundial.
-            </Text>
-          </SectionCard>
-
-          <SectionCard
-            title="Estadísticas"
-            bgSource={BG.stats}
-            onPress={() => navigation.navigate('Stats')}
-          >
-            <Text style={styles.sectionDescription}>
-              Consulta tus goles, asistencias, MVP y rankings completos.
-            </Text>
-          </SectionCard>
-
-          <SectionCard
-            title="EasyPass"
-            bgSource={BG.easyPass}
-            onPress={() => requireAuth('EasyPass')}
-          >
-            <Text style={styles.sectionDescription}>
-              Compra packs de EasyPass y reserva tus partidos más rápido.
-            </Text>
-          </SectionCard>
-
-          <View style={{ height: spacing(4) }} />
-        </ScrollView>
-      </LinearGradient>
-    </ImageBackground>
+      </ScrollView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, position: 'relative' },
-  worldCupBgImage: {
-    resizeMode: 'cover',
-    opacity: 0.9,
+  container: {
+    flex: 1,
+    backgroundColor: colors.background,
   },
-  glow: {
-    position: 'absolute',
-    right: -80,
-    top: -40,
-    width: 260,
-    height: 260,
-    borderRadius: 260,
+  backgroundImage: {
+    resizeMode: 'cover',
+    opacity: 0.56,
+  },
+  scrollContent: {
+    flexGrow: 1,
+    paddingHorizontal: layout.screenPadding,
+  },
+  contentBoundary: {
+    width: '100%',
+    maxWidth: layout.maxContentWidth,
+    alignSelf: 'center',
   },
   topBar: {
-    paddingHorizontal: spacing(2),
-    paddingBottom: spacing(1),
+    minHeight: 64,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    marginBottom: spacing(2),
   },
-  leftBlock: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    flexShrink: 1,
-  },
-  appLogo: { width: 28, height: 28, borderRadius: 6 },
-  username: { color: '#fff', fontSize: 18, fontWeight: '800', maxWidth: 220 },
-  avatarWrap: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    overflow: 'hidden',
-    borderWidth: 2,
-    borderColor: ORANGE,
-  },
-  avatarImg: { width: '100%', height: '100%' },
-  avatarPlaceholder: {
-    flex: 1,
-    backgroundColor: '#0f1114',
+  backButton: {
+    width: layout.minTouchTarget,
+    height: layout.minTouchTarget,
+    borderRadius: radii.pill,
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  avatarInitial: { color: '#fff', fontWeight: '800', fontSize: 16 },
-  stack: {
-    paddingHorizontal: spacing(2),
-    paddingTop: spacing(0.5),
-    paddingBottom: spacing(2),
-    gap: 14,
-  },
-  sectionWrapper: { width: '100%' },
-  bg: {
-    width: '100%',
-    minHeight: 140,
-    borderRadius: 20,
-    overflow: 'hidden',
+    backgroundColor: colors.surface,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.08)',
+    borderColor: colors.border,
+    marginRight: spacing(1),
   },
-  bgImage: { resizeMode: 'cover' },
-  sectionContent: { padding: 16, gap: 10 },
-  sectionTitle: { color: '#fff', fontSize: 22, fontWeight: '800' },
-  sectionDescription: { color: '#fff', fontSize: 13, opacity: 0.9 },
-  cta: {
-    alignSelf: 'flex-start',
-    marginTop: 4,
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 12,
-    backgroundColor: 'rgba(255,255,255,0.16)',
+  backButtonDisabled: {
+    opacity: 0.35,
   },
-  ctaText: { color: '#fff', fontWeight: '800', letterSpacing: 0.4 },
+  backButtonText: {
+    color: colors.white,
+    fontSize: 34,
+    lineHeight: 36,
+    fontWeight: '300',
+    marginTop: -2,
+  },
+  brand: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginRight: spacing(1),
+  },
+  logo: {
+    width: 44,
+    height: 44,
+    borderRadius: radii.medium,
+  },
+  brandCopy: {
+    flex: 1,
+    marginLeft: spacing(1.25),
+  },
+  brandName: {
+    color: colors.orange,
+    ...typography.overline,
+  },
+  userName: {
+    color: colors.white,
+    ...typography.bodyStrong,
+    marginTop: 2,
+  },
+  headerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing(1),
+  },
+  balanceButton: {
+    minWidth: 62,
+    height: layout.minTouchTarget,
+    paddingHorizontal: spacing(1.25),
+    borderRadius: radii.pill,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255, 90, 0, 0.14)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 90, 0, 0.50)',
+  },
+  balanceValue: {
+    color: colors.white,
+    fontSize: 15,
+    fontWeight: '900',
+  },
+  balanceLogo: {
+    width: 22,
+    height: 22,
+    marginLeft: 4,
+  },
+  avatarButton: {
+    width: layout.minTouchTarget,
+    height: layout.minTouchTarget,
+    borderRadius: radii.pill,
+    overflow: 'hidden',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.surfaceElevated,
+    borderWidth: 2,
+    borderColor: colors.orange,
+  },
+  avatarImage: {
+    width: '100%',
+    height: '100%',
+  },
+  avatarInitial: {
+    color: colors.white,
+    fontSize: 17,
+    fontWeight: '900',
+  },
+  adminSection: {
+    marginBottom: spacing(3),
+  },
+  sectionLabel: {
+    color: colors.orange,
+    ...typography.overline,
+    marginBottom: spacing(1),
+  },
+  sectionHeader: {
+    marginBottom: spacing(2),
+  },
+  sectionTitle: {
+    color: colors.white,
+    ...typography.title,
+  },
+  sectionSubtitle: {
+    color: colors.textMuted,
+    ...typography.body,
+    marginTop: spacing(0.5),
+  },
+  cardGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    marginHorizontal: -spacing(0.75),
+  },
+  cardCell: {
+    width: '100%',
+    paddingHorizontal: spacing(0.75),
+    marginBottom: spacing(1.5),
+  },
+  cardCellWide: {
+    width: '50%',
+  },
 });

@@ -4,6 +4,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  ImageBackground,
   Linking,
   ScrollView,
   StyleSheet,
@@ -13,15 +14,37 @@ import {
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
 import { api } from '../api/client';
+import ScreenHeader from '../components/ScreenHeader';
+import SegmentedControl from '../components/SegmentedControl';
+import { colors, layout, radii, spacing } from '../theme';
 
-const ORANGE = '#ff5a00';
-const DARK = '#050505';
-const CARD = '#151515';
-const CARD_SOFT = '#1f1f1f';
-const TEXT = '#ffffff';
-const MUTED = '#aaaaaa';
-const BORDER = '#2a2a2a';
+const ORANGE = colors.orange;
+const DARK = colors.background;
+const CARD = colors.surface;
+const CARD_SOFT = colors.surfaceElevated;
+const TEXT = colors.white;
+const MUTED = colors.textMuted;
+const BORDER = colors.border;
+
+const TAB_OPTIONS = [
+  { value: 'upcoming', label: 'Próximos' },
+  { value: 'past', label: 'Anteriores' },
+];
+
+const MATCH_IMAGES = [
+  require('../../assets/matches/match-1.jpg'),
+  require('../../assets/matches/match-3.jpg'),
+  require('../../assets/matches/match-7.jpg'),
+  require('../../assets/matches/match-9.jpg'),
+];
+
+function getMatchImage(match) {
+  const rawId = Number(match?.id ?? match?.match_id);
+  const index = Number.isFinite(rawId) ? Math.abs(rawId) % MATCH_IMAGES.length : 0;
+  return MATCH_IMAGES[index];
+}
 
 const fieldInfo = {
   rondilla: {
@@ -580,12 +603,24 @@ export default function MisPartidosScreen({ navigation }) {
 
     return (
       <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-        <TouchableOpacity style={styles.backButton} onPress={() => setSelectedMatch(null)}>
+        <TouchableOpacity
+          style={styles.backButton}
+          onPress={() => setSelectedMatch(null)}
+          accessibilityRole="button"
+        >
           <Ionicons name="chevron-back" size={22} color={TEXT} />
           <Text style={styles.backButtonText}>Volver a mis partidos</Text>
         </TouchableOpacity>
 
-        <View style={styles.heroCard}>
+        <ImageBackground
+          source={getMatchImage(selectedMatch)}
+          style={styles.heroCard}
+          imageStyle={styles.heroCardImage}
+        >
+          <LinearGradient
+            colors={['rgba(8,10,14,0.24)', 'rgba(8,10,14,0.96)']}
+            style={styles.heroCardContent}
+          >
           <Text style={styles.heroLabel}>Partido EasyFutbol</Text>
           <Text style={styles.heroTitle}>{selectedMatch.title || selectedMatch.nombre || selectedMatch.name || 'Tu partido'}</Text>
 
@@ -605,7 +640,8 @@ export default function MisPartidosScreen({ navigation }) {
             <Ionicons name="location-outline" size={18} color={ORANGE} />
             <Text style={styles.infoText}>{selectedField?.name}</Text>
           </View>
-        </View>
+          </LinearGradient>
+        </ImageBackground>
 
         <View style={styles.twoColumns}>
           <View style={styles.smallCard}>
@@ -774,35 +810,23 @@ export default function MisPartidosScreen({ navigation }) {
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      <View style={styles.header}>
-        <Text style={styles.title}>Mis partidos</Text>
-        <Text style={styles.subtitle}>Consulta tus próximos partidos, camiseta, ubicación e inscritos.</Text>
-      </View>
+      <ScreenHeader
+        eyebrow="TU AGENDA"
+        title="Mis partidos"
+        description="Consulta horarios, camiseta, ubicación y jugadores inscritos."
+      />
 
       <TouchableOpacity style={styles.refreshButton} onPress={handleRefresh} disabled={refreshing}>
         <Ionicons name="refresh" size={18} color={ORANGE} />
         <Text style={styles.refreshButtonText}>{refreshing ? 'Actualizando...' : 'Actualizar'}</Text>
       </TouchableOpacity>
 
-      <View style={styles.tabsContainer}>
-        <TouchableOpacity
-          style={[styles.tabButton, activeTab === 'upcoming' && styles.tabButtonActive]}
-          onPress={() => setActiveTab('upcoming')}
-        >
-          <Text style={[styles.tabButtonText, activeTab === 'upcoming' && styles.tabButtonTextActive]}>
-            Próximos
-          </Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={[styles.tabButton, activeTab === 'past' && styles.tabButtonActive]}
-          onPress={() => setActiveTab('past')}
-        >
-          <Text style={[styles.tabButtonText, activeTab === 'past' && styles.tabButtonTextActive]}>
-            Anteriores
-          </Text>
-        </TouchableOpacity>
-      </View>
+      <SegmentedControl
+        options={TAB_OPTIONS}
+        value={activeTab}
+        onChange={setActiveTab}
+        accessibilityLabel="Filtrar partidos"
+      />
 
       {visibleMatches.length === 0 ? (
         <View style={styles.emptyCard}>
@@ -822,6 +846,7 @@ export default function MisPartidosScreen({ navigation }) {
           const status = match.status || match.estado || 'Confirmado';
           const entryCount = match.inscriptions?.length || 1;
           const isPastCard = activeTab === 'past';
+          const matchImage = getMatchImage(match);
 
           return (
             <TouchableOpacity
@@ -829,14 +854,33 @@ export default function MisPartidosScreen({ navigation }) {
               style={styles.matchCard}
               activeOpacity={0.85}
               onPress={() => setSelectedMatch(match)}
+              accessibilityRole="button"
+              accessibilityHint="Abre la información completa del partido"
             >
+              <ImageBackground
+                source={matchImage}
+                style={styles.matchCardBackground}
+                imageStyle={styles.matchCardImage}
+              >
+              <LinearGradient
+                colors={['rgba(8,10,14,0.24)', 'rgba(8,10,14,0.97)']}
+                style={styles.matchCardContent}
+              >
               <View style={styles.matchCardTop}>
-                <View>
-                  <Text style={styles.matchDate}>{formatDate(date)}</Text>
-                  <Text style={styles.matchTitle}>{match.title || match.nombre || match.name || field.name}</Text>
+                <View style={styles.matchCardBadges}>
+                  <View style={styles.dateBadge}>
+                    <Text style={styles.matchDate}>{formatDate(date)}</Text>
+                  </View>
+                  <View style={styles.statusBadge}>
+                    <Text style={styles.statusBadgeText}>{status}</Text>
+                  </View>
                 </View>
-                <Ionicons name="chevron-forward" size={22} color={MUTED} />
+                <View style={styles.cardArrow}>
+                  <Ionicons name="chevron-forward" size={22} color={TEXT} />
+                </View>
               </View>
+
+              <Text style={styles.matchTitle}>{match.title || match.nombre || match.name || field.name}</Text>
 
               <View style={styles.matchInfoGrid}>
                 <View style={styles.matchInfoItem}>
@@ -873,6 +917,8 @@ export default function MisPartidosScreen({ navigation }) {
                   <Text style={styles.entryHintText}>Pulsa para ver resultado, MVP y tus estadísticas.</Text>
                 </View>
               )}
+              </LinearGradient>
+              </ImageBackground>
             </TouchableOpacity>
           );
         })
@@ -887,8 +933,11 @@ const styles = StyleSheet.create({
     backgroundColor: DARK,
   },
   content: {
-    padding: 18,
-    paddingBottom: 40,
+    width: '100%',
+    maxWidth: layout.maxContentWidth,
+    alignSelf: 'center',
+    padding: layout.screenPadding,
+    paddingBottom: spacing(5),
   },
   centerContainer: {
     flex: 1,
@@ -905,18 +954,6 @@ const styles = StyleSheet.create({
   header: {
     marginBottom: 18,
   },
-  title: {
-    color: TEXT,
-    fontSize: 30,
-    fontWeight: '900',
-    textTransform: 'uppercase',
-  },
-  subtitle: {
-    color: MUTED,
-    fontSize: 15,
-    marginTop: 6,
-    lineHeight: 21,
-  },
   refreshButton: {
     alignSelf: 'flex-start',
     flexDirection: 'row',
@@ -925,7 +962,8 @@ const styles = StyleSheet.create({
     backgroundColor: CARD,
     borderWidth: 1,
     borderColor: BORDER,
-    borderRadius: 12,
+    minHeight: layout.minTouchTarget,
+    borderRadius: radii.medium,
     paddingHorizontal: 12,
     paddingVertical: 9,
     marginBottom: 14,
@@ -936,7 +974,7 @@ const styles = StyleSheet.create({
   },
   emptyCard: {
     backgroundColor: CARD,
-    borderRadius: 20,
+    borderRadius: radii.large,
     borderWidth: 1,
     borderColor: BORDER,
     padding: 24,
@@ -959,7 +997,8 @@ const styles = StyleSheet.create({
   },
   primaryButton: {
     backgroundColor: ORANGE,
-    borderRadius: 14,
+    minHeight: layout.minTouchTarget,
+    borderRadius: radii.medium,
     paddingVertical: 13,
     paddingHorizontal: 18,
     marginTop: 18,
@@ -971,42 +1010,99 @@ const styles = StyleSheet.create({
   },
   matchCard: {
     backgroundColor: CARD,
-    borderRadius: 18,
+    borderRadius: radii.large,
     borderWidth: 1,
     borderColor: BORDER,
-    padding: 16,
     marginBottom: 14,
+    overflow: 'hidden',
+  },
+  matchCardBackground: {
+    minHeight: 260,
+  },
+  matchCardImage: {
+    resizeMode: 'cover',
+  },
+  matchCardContent: {
+    flex: 1,
+    minHeight: 260,
+    padding: spacing(2),
+    justifyContent: 'flex-end',
   },
   matchCardTop: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     justifyContent: 'space-between',
-    marginBottom: 12,
+    marginBottom: 'auto',
+  },
+  matchCardBadges: {
+    flex: 1,
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing(0.75),
+    marginRight: spacing(1),
+  },
+  dateBadge: {
+    paddingHorizontal: spacing(1.25),
+    paddingVertical: spacing(0.65),
+    borderRadius: radii.pill,
+    backgroundColor: ORANGE,
+  },
+  statusBadge: {
+    paddingHorizontal: spacing(1.25),
+    paddingVertical: spacing(0.65),
+    borderRadius: radii.pill,
+    backgroundColor: 'rgba(57,217,138,0.18)',
+    borderWidth: 1,
+    borderColor: 'rgba(57,217,138,0.50)',
+  },
+  statusBadgeText: {
+    color: TEXT,
+    fontSize: 10,
+    fontWeight: '900',
+    letterSpacing: 0.6,
+    textTransform: 'uppercase',
+  },
+  cardArrow: {
+    width: layout.minTouchTarget,
+    height: layout.minTouchTarget,
+    borderRadius: radii.pill,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255,255,255,0.14)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.16)',
   },
   matchDate: {
-    color: ORANGE,
+    color: colors.black,
     fontWeight: '900',
-    fontSize: 13,
+    fontSize: 10,
+    letterSpacing: 0.4,
     textTransform: 'uppercase',
   },
   matchTitle: {
     color: TEXT,
-    fontSize: 20,
+    fontSize: 23,
     fontWeight: '900',
-    marginTop: 3,
+    marginBottom: spacing(1.25),
   },
   matchInfoGrid: {
-    gap: 8,
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing(0.75),
   },
   matchInfoItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: 6,
+    paddingHorizontal: spacing(1),
+    paddingVertical: spacing(0.75),
+    borderRadius: radii.pill,
+    backgroundColor: 'rgba(255,255,255,0.10)',
   },
   matchInfoText: {
-    color: MUTED,
-    fontSize: 14,
-    fontWeight: '600',
+    color: TEXT,
+    fontSize: 12,
+    fontWeight: '700',
   },
   backButton: {
     flexDirection: 'row',
@@ -1024,8 +1120,18 @@ const styles = StyleSheet.create({
     borderRadius: 22,
     borderWidth: 1,
     borderColor: BORDER,
-    padding: 18,
     marginBottom: 14,
+    minHeight: 260,
+    overflow: 'hidden',
+  },
+  heroCardImage: {
+    resizeMode: 'cover',
+  },
+  heroCardContent: {
+    flex: 1,
+    minHeight: 260,
+    justifyContent: 'flex-end',
+    padding: spacing(2.25),
   },
   heroLabel: {
     color: ORANGE,
@@ -1203,7 +1309,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 7,
-    backgroundColor: CARD_SOFT,
+    backgroundColor: 'rgba(17,21,27,0.82)',
     borderRadius: 12,
     padding: 10,
     marginTop: 12,

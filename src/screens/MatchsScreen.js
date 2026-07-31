@@ -10,14 +10,16 @@ import {
   RefreshControl,
   StatusBar,
   ImageBackground,
-  ScrollView,
 } from 'react-native';
 import api from '../api/client';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { colors, spacing } from '../theme';
+import { LinearGradient } from 'expo-linear-gradient';
+import ScreenHeader from '../components/ScreenHeader';
+import { colors, layout, radii, spacing, typography } from '../theme';
 
 const STORAGE_CITY_KEY = 'ef_selected_city';
 const FALLBACK_CITIES = ['Valladolid', 'Avilés'];
+const SCREEN_BACKGROUND = require('../../assets/matches/match-6.jpg');
 
 const MATCH_CARD_IMAGES = [
   require('../../assets/matches/match-2.jpg'),
@@ -93,6 +95,22 @@ function groupMatchesByDay(matches) {
   return Object.keys(groups)
     .sort()
     .map((key) => groups[key]);
+}
+
+function ScreenBackdrop({ children }) {
+  return (
+    <ImageBackground
+      source={SCREEN_BACKGROUND}
+      style={styles.container}
+      imageStyle={styles.screenBackgroundImage}
+    >
+      <LinearGradient
+        colors={['rgba(8,10,14,0.82)', 'rgba(8,10,14,0.98)']}
+        style={StyleSheet.absoluteFill}
+      />
+      {children}
+    </ImageBackground>
+  );
 }
 
 export default function MatchsScreen({ navigation }) {
@@ -195,38 +213,74 @@ export default function MatchsScreen({ navigation }) {
     const fieldName = item.field_name || '';
     const city = item.city || '';
     const cardImage = getMatchCardImage(item);
+    const hasCapacity = item.capacity !== null && item.capacity !== undefined && item.capacity !== '';
+    const hasSpotsTaken = item.spots_taken !== null && item.spots_taken !== undefined && item.spots_taken !== '';
+    const hasApiRemaining = item.spots_remaining !== null && item.spots_remaining !== undefined && item.spots_remaining !== '';
+    const capacity = hasCapacity ? Number(item.capacity) : null;
+    const spotsTaken = hasSpotsTaken ? Number(item.spots_taken) : null;
+    const apiRemaining = hasApiRemaining ? Number(item.spots_remaining) : null;
+    const remainingSpots = hasApiRemaining && Number.isFinite(apiRemaining)
+      ? Math.max(0, apiRemaining)
+      : Number.isFinite(capacity) && Number.isFinite(spotsTaken)
+      ? Math.max(0, capacity - spotsTaken)
+      : null;
+    const isFull = item.is_full === true || Number(item.is_full) === 1 || remainingSpots === 0;
 
     const handlePress = () => {
       navigation.navigate('Match', { matchId: item.id });
     };
 
     return (
-      <TouchableOpacity style={styles.cardWrapper} activeOpacity={0.9} onPress={handlePress}>
+      <TouchableOpacity
+        style={styles.cardWrapper}
+        activeOpacity={0.9}
+        onPress={handlePress}
+        accessibilityRole="button"
+        accessibilityLabel={`${item.title}. ${timeLabel}. ${fieldName}${fieldName && city ? ', ' : ''}${city}${remainingSpots != null ? `. ${remainingSpots} plazas disponibles` : ''}`}
+        accessibilityHint="Abre los detalles para reservar este partido"
+      >
         <ImageBackground
           source={cardImage}
           defaultSource={cardImage}
           style={styles.cardBackground}
           imageStyle={styles.cardImage}
         >
-          <View style={styles.cardOverlay}>
-            <Text style={styles.title}>{item.title}</Text>
-
-            {!!timeLabel && <Text style={styles.meta}>{timeLabel}</Text>}
-
-            {(fieldName || city) && (
-              <Text style={styles.meta}>
-                {fieldName}
-                {fieldName && city ? ' · ' : ''}
-                {city}
-              </Text>
-            )}
-
-            <View style={styles.ctaRow}>
-              <TouchableOpacity style={styles.ctaButton} onPress={handlePress}>
-                <Text style={styles.ctaText}>Reservar ahora</Text>
-              </TouchableOpacity>
+          <LinearGradient
+            colors={['rgba(8,10,14,0.20)', 'rgba(8,10,14,0.96)']}
+            start={{ x: 0.5, y: 0 }}
+            end={{ x: 0.5, y: 1 }}
+            style={styles.cardOverlay}
+          >
+            <View style={styles.cardTopRow}>
+              <View style={styles.cardBadges}>
+                <View style={styles.timeBadge}>
+                  <Text style={styles.timeBadgeText}>{timeLabel || 'HORA PENDIENTE'}</Text>
+                </View>
+                {remainingSpots != null ? (
+                  <View style={[styles.availabilityBadge, isFull && styles.availabilityBadgeFull]}>
+                    <Text style={styles.availabilityBadgeText}>
+                      {isFull ? 'COMPLETO' : `${remainingSpots} PLAZA${remainingSpots === 1 ? '' : 'S'}`}
+                    </Text>
+                  </View>
+                ) : null}
+              </View>
+              <View style={styles.cardArrow} accessible={false}>
+                <Text style={styles.cardArrowText}>›</Text>
+              </View>
             </View>
-          </View>
+
+            <View>
+              <Text style={styles.title}>{item.title}</Text>
+              {(fieldName || city) && (
+                <Text style={styles.meta}>
+                  {fieldName}
+                  {fieldName && city ? ' · ' : ''}
+                  {city}
+                </Text>
+              )}
+              <Text style={styles.reserveText}>RESERVAR PLAZA</Text>
+            </View>
+          </LinearGradient>
         </ImageBackground>
       </TouchableOpacity>
     );
@@ -252,26 +306,26 @@ export default function MatchsScreen({ navigation }) {
 
   if (loading) {
     return (
-      <View style={styles.container}>
+      <ScreenBackdrop>
         <StatusBar barStyle="light-content" />
         <View style={styles.center}>
           <ActivityIndicator color={colors.orange} />
           <Text style={styles.loadingText}>Cargando partidos…</Text>
         </View>
-      </View>
+      </ScreenBackdrop>
     );
   }
 
   if (!loading && initialCityLoaded && (!selectedCity || citySelectorOpen)) {
     return (
-      <View style={styles.container}>
+      <ScreenBackdrop>
         <StatusBar barStyle="light-content" />
         <View style={styles.citySelectorFull}>
-          <Text style={styles.citySelectorEyebrow}>EasyFutbol</Text>
-          <Text style={styles.citySelectorTitle}>¿Dónde quieres jugar?</Text>
-          <Text style={styles.citySelectorText}>
-            Elige una ciudad para ver su calendario de partidos. La guardaremos como predeterminada y podrás cambiarla cuando quieras.
-          </Text>
+          <ScreenHeader
+            eyebrow="EASYFUTBOL"
+            title="¿Dónde quieres jugar?"
+            description="Elige una ciudad para ver su calendario. La guardaremos como predeterminada y podrás cambiarla cuando quieras."
+          />
 
           <View style={styles.citySelectorGrid}>
             {availableCities.map((c) => {
@@ -282,6 +336,8 @@ export default function MatchsScreen({ navigation }) {
                   activeOpacity={0.86}
                   onPress={() => changeCity(c)}
                   style={[styles.citySelectorCard, active && styles.citySelectorCardActive]}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: active }}
                 >
                   <Text style={[styles.citySelectorCardTitle, active && styles.citySelectorCardTitleActive]}>{c}</Text>
                   <Text style={[styles.citySelectorCardMeta, active && styles.citySelectorCardMetaActive]}>
@@ -292,14 +348,19 @@ export default function MatchsScreen({ navigation }) {
             })}
           </View>
         </View>
-      </View>
+      </ScreenBackdrop>
     );
   }
 
   if (!loading && selectedCity && filteredMatches.length === 0) {
     return (
-      <View style={styles.container}>
+      <ScreenBackdrop>
         <StatusBar barStyle="light-content" />
+        <ScreenHeader
+          eyebrow="PRÓXIMOS PARTIDOS"
+          title="Elige tu próximo partido"
+          description="Nuevas oportunidades para jugar cada semana."
+        />
         <View style={styles.topCityHeader}>
           <View style={styles.topCityAccent} />
           <View style={styles.topCityInfo}>
@@ -315,23 +376,30 @@ export default function MatchsScreen({ navigation }) {
           <Text style={styles.emptyTitle}>No hay partidos disponibles</Text>
           <Text style={styles.emptyText}>No hay partidos abiertos en {selectedCity} ahora mismo.</Text>
         </View>
-      </View>
+      </ScreenBackdrop>
     );
   }
 
   return (
-    <View style={styles.container}>
+    <ScreenBackdrop>
       <StatusBar barStyle="light-content" />
-      <View style={styles.topCityHeader}>
-        <View style={styles.topCityAccent} />
-        <View style={styles.topCityInfo}>
-          <Text style={styles.topCityLabel}>Calendario de partidos</Text>
-          <Text style={styles.topCityName}>{selectedCity}</Text>
-          <Text style={styles.topCityHint}>Partidos disponibles por fecha</Text>
+      <View style={styles.contentBoundary}>
+        <ScreenHeader
+          eyebrow="PRÓXIMOS PARTIDOS"
+          title="Elige tu próximo partido"
+          description="Reserva tu plaza y sal al campo esta semana."
+        />
+        <View style={styles.topCityHeader}>
+          <View style={styles.topCityAccent} />
+          <View style={styles.topCityInfo}>
+            <Text style={styles.topCityLabel}>TU CIUDAD</Text>
+            <Text style={styles.topCityName}>{selectedCity}</Text>
+            <Text style={styles.topCityHint}>{filteredMatches.length} partido{filteredMatches.length === 1 ? '' : 's'} disponible{filteredMatches.length === 1 ? '' : 's'}</Text>
+          </View>
+          <TouchableOpacity style={styles.changeCityBtn} onPress={() => setCitySelectorOpen(true)} activeOpacity={0.85} accessibilityRole="button">
+            <Text style={styles.changeCityText}>Cambiar</Text>
+          </TouchableOpacity>
         </View>
-        <TouchableOpacity style={styles.changeCityBtn} onPress={() => setCitySelectorOpen(true)} activeOpacity={0.85}>
-          <Text style={styles.changeCityText}>Cambiar ciudad</Text>
-        </TouchableOpacity>
       </View>
       <SectionList
         sections={sections}
@@ -339,7 +407,7 @@ export default function MatchsScreen({ navigation }) {
         renderItem={renderItem}
         renderSectionHeader={renderSectionHeader}
         stickySectionHeadersEnabled={false}
-        contentContainerStyle={{ paddingVertical: spacing(1) }}
+        contentContainerStyle={styles.listContent}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
@@ -348,15 +416,32 @@ export default function MatchsScreen({ navigation }) {
           />
         }
       />
-    </View>
+    </ScreenBackdrop>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: colors.black,
+    backgroundColor: colors.background,
     paddingHorizontal: spacing(2),
+  },
+  screenBackgroundImage: {
+    resizeMode: 'cover',
+    opacity: 0.48,
+  },
+  contentBoundary: {
+    width: '100%',
+    maxWidth: layout.maxContentWidth,
+    alignSelf: 'center',
+    paddingTop: spacing(1),
+  },
+  listContent: {
+    width: '100%',
+    maxWidth: layout.maxContentWidth,
+    alignSelf: 'center',
+    paddingVertical: spacing(1),
+    paddingBottom: spacing(4),
   },
   center: {
     flex: 1,
@@ -373,8 +458,8 @@ const styles = StyleSheet.create({
   calendarBadge: {
     width: 50,
     minHeight: 58,
-    borderRadius: 14,
-    backgroundColor: '#121212',
+    borderRadius: radii.medium,
+    backgroundColor: colors.surface,
     borderWidth: 1,
     borderColor: 'rgba(255,90,0,0.45)',
     alignItems: 'center',
@@ -403,7 +488,7 @@ const styles = StyleSheet.create({
     lineHeight: 24,
   },
   calendarMonth: {
-    color: '#bdbdbd',
+    color: colors.textMuted,
     fontSize: 9,
     fontWeight: '900',
   },
@@ -416,7 +501,7 @@ const styles = StyleSheet.create({
     fontWeight: '800',
   },
   sectionHeaderSubText: {
-    color: '#999',
+    color: colors.textSubtle,
     fontSize: 12,
     fontWeight: '700',
     marginTop: 2,
@@ -424,37 +509,20 @@ const styles = StyleSheet.create({
   citySelectorFull: {
     flex: 1,
     justifyContent: 'center',
+    width: '100%',
+    maxWidth: 640,
+    alignSelf: 'center',
     paddingHorizontal: spacing(1),
-  },
-  citySelectorEyebrow: {
-    color: colors.orange,
-    fontSize: 13,
-    fontWeight: '900',
-    textTransform: 'uppercase',
-    letterSpacing: 0.8,
-    marginBottom: spacing(0.75),
-  },
-  citySelectorTitle: {
-    color: colors.white,
-    fontSize: 31,
-    fontWeight: '900',
-    marginBottom: spacing(1),
-  },
-  citySelectorText: {
-    color: '#bdbdbd',
-    fontSize: 14,
-    fontWeight: '700',
-    lineHeight: 21,
-    marginBottom: spacing(2),
   },
   citySelectorGrid: {
     gap: spacing(1.2),
   },
   citySelectorCard: {
-    backgroundColor: '#111',
+    minHeight: 84,
+    backgroundColor: colors.surface,
     borderWidth: 1,
-    borderColor: '#252525',
-    borderRadius: 20,
+    borderColor: colors.border,
+    borderRadius: radii.large,
     paddingVertical: spacing(2),
     paddingHorizontal: spacing(2),
   },
@@ -480,13 +548,12 @@ const styles = StyleSheet.create({
     color: colors.orange,
   },
   topCityHeader: {
-    marginTop: spacing(1),
-    marginBottom: spacing(1.25),
-    backgroundColor: '#0f0f0f',
+    marginBottom: spacing(1.5),
+    backgroundColor: 'rgba(17,21,27,0.92)',
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.08)',
-    borderRadius: 20,
-    padding: spacing(1.4),
+    borderRadius: radii.large,
+    padding: spacing(1.5),
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing(1.1),
@@ -520,6 +587,8 @@ const styles = StyleSheet.create({
     marginTop: 3,
   },
   changeCityBtn: {
+    minHeight: layout.minTouchTarget,
+    justifyContent: 'center',
     backgroundColor: 'rgba(255,90,0,0.12)',
     borderWidth: 1,
     borderColor: 'rgba(255,90,0,0.45)',
@@ -533,49 +602,94 @@ const styles = StyleSheet.create({
     fontWeight: '900',
   },
   cardWrapper: {
-    marginBottom: spacing(1.25),
-    borderRadius: 18,
+    marginBottom: spacing(1.5),
+    borderRadius: radii.large,
     overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
   },
   cardBackground: {
-    height: 140,
-    justifyContent: 'flex-end',
+    minHeight: 210,
   },
   cardImage: {
-    borderRadius: 18,
-    opacity: 0.38,
+    borderRadius: radii.large,
   },
   cardOverlay: {
     flex: 1,
-    paddingHorizontal: spacing(1.8),
-    paddingVertical: spacing(1.4),
+    minHeight: 210,
+    padding: spacing(2),
     justifyContent: 'space-between',
+  },
+  cardTopRow: {
+    minHeight: layout.minTouchTarget,
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+  },
+  cardBadges: {
+    flex: 1,
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing(0.75),
+    marginRight: spacing(1),
+  },
+  timeBadge: {
+    paddingHorizontal: spacing(1.25),
+    paddingVertical: spacing(0.65),
+    borderRadius: radii.pill,
+    backgroundColor: colors.orange,
+  },
+  timeBadgeText: {
+    color: colors.black,
+    ...typography.overline,
+  },
+  availabilityBadge: {
+    paddingHorizontal: spacing(1.25),
+    paddingVertical: spacing(0.65),
+    borderRadius: radii.pill,
+    backgroundColor: 'rgba(57,217,138,0.18)',
+    borderWidth: 1,
+    borderColor: 'rgba(57,217,138,0.55)',
+  },
+  availabilityBadgeFull: {
+    backgroundColor: 'rgba(255,92,92,0.18)',
+    borderColor: 'rgba(255,92,92,0.55)',
+  },
+  availabilityBadgeText: {
+    color: colors.white,
+    ...typography.overline,
+  },
+  cardArrow: {
+    width: layout.minTouchTarget,
+    height: layout.minTouchTarget,
+    borderRadius: radii.pill,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255,255,255,0.14)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.16)',
+  },
+  cardArrowText: {
+    color: colors.white,
+    fontSize: 32,
+    lineHeight: 34,
+    fontWeight: '300',
+    marginTop: -2,
   },
   title: {
     color: colors.white,
-    fontSize: 18,
-    fontWeight: '800',
-    marginBottom: 4,
+    ...typography.heading,
   },
   meta: {
-    color: '#f0f0f0',
-    fontSize: 13,
+    color: colors.textMuted,
+    ...typography.body,
+    marginTop: spacing(0.5),
   },
-  ctaRow: {
-    marginTop: spacing(1.5),
-    flexDirection: 'row',
-    justifyContent: 'flex-end',
-  },
-  ctaButton: {
-    backgroundColor: colors.orange,
-    paddingHorizontal: spacing(1.6),
-    paddingVertical: spacing(0.7),
-    borderRadius: 999,
-  },
-  ctaText: {
-    color: colors.black,
-    fontWeight: '700',
-    fontSize: 14,
+  reserveText: {
+    color: colors.orange,
+    ...typography.overline,
+    marginTop: spacing(1.25),
   },
   loadingText: {
     color: colors.gray,

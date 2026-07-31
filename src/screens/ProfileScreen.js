@@ -4,20 +4,21 @@ import {
   View, Text, StyleSheet, StatusBar, ActivityIndicator, TouchableOpacity,
   Alert, TextInput, ScrollView, ImageBackground, Image, Linking, Modal
 } from 'react-native';
-import { colors, spacing } from '../theme';
+import { colors, layout, radii, spacing, typography } from '../theme';
 import { api } from '../api/client';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as ImagePicker from 'expo-image-picker';
 import { LinearGradient } from 'expo-linear-gradient';
-import { BlurView } from 'expo-blur';
 import { useFocusEffect, CommonActions } from '@react-navigation/native';
 import easypassLogo from '../../assets/easypass-logo.png';
+import ScreenHeader from '../components/ScreenHeader';
+
+const HERMINIA_LOGO = require('../../assets/La herminia.png');
+const NUINO_LOGO = require('../../assets/Nuino_Wordmark-White.png');
 
 const ORANGE = '#ff5a00';
 const WHATSAPP_GROUP_URL = 'https://chat.whatsapp.com/HWUQF9eynLvD2XhiPgR01c?mode=gi_t';
-const FIELD_BG = {
-  uri: 'https://images.unsplash.com/photo-1486286701208-1d58e9338013?q=80&w=2400&auto=format&fit=crop'
-};
+const FIELD_BG = require('../../assets/matches/match-1.jpg');
 
 export default function ProfileScreen({ navigation }) {
   const [data, setData] = useState(null);
@@ -418,24 +419,23 @@ export default function ProfileScreen({ navigation }) {
   }
 
   return (
-    <View style={{ flex:1, backgroundColor: colors.black }}>
+    <View style={styles.screen}>
       <StatusBar barStyle="light-content" />
       <ImageBackground source={FIELD_BG} style={styles.bg} resizeMode="cover">
-        <BlurView intensity={40} tint="dark" style={StyleSheet.absoluteFill} />
-        <LinearGradient colors={['rgba(0,0,0,0.45)','rgba(0,0,0,0.9)']} style={StyleSheet.absoluteFill} />
+        <LinearGradient colors={['rgba(8,10,14,0.78)','rgba(8,10,14,0.98)']} style={StyleSheet.absoluteFill} />
 
         <ScrollView
-          contentContainerStyle={{
-            paddingHorizontal: spacing(2),
-            paddingTop: spacing(2),
-            paddingBottom: spacing(6),
-          }}
+          contentContainerStyle={styles.content}
         >
-          <Text style={styles.title}>Mi Perfil</Text>
+          <ScreenHeader
+            eyebrow="TU IDENTIDAD"
+            title="Mi perfil"
+            description="Gestiona tu cuenta, consulta tu saldo y sigue tu progreso en EasyFutbol."
+          />
 
           {/* Avatar simple */}
           <View style={styles.avatarWrapper}>
-            <TouchableOpacity onPress={pickImage} disabled={uploading} activeOpacity={0.85}>
+            <TouchableOpacity onPress={pickImage} disabled={uploading} activeOpacity={0.85} accessibilityRole="button" accessibilityLabel="Cambiar foto de perfil" accessibilityState={{ disabled: uploading, busy: uploading }}>
               {avatarPreviewUri ? (
                 <Image
                   key={`preview-${avatarNonce}`}
@@ -459,17 +459,31 @@ export default function ProfileScreen({ navigation }) {
             <Text style={styles.tapHint}>
               {uploading ? 'Subiendo foto...' : 'Toca la foto para cambiarla'}
             </Text>
+            <Text style={styles.profileHeroName}>{user?.name || 'Jugador EasyFutbol'}</Text>
+            <Text style={styles.profileHeroMeta}>Jugador #{user?.id || '—'}</Text>
           </View>
 
           <View style={styles.collabCard}>
-            <Text style={styles.section}>🤝 Colaboraciones</Text>
+            <Text style={styles.section}>COLABORACIONES</Text>
+            <Text style={styles.collabTitle}>Ventajas por jugar con EasyFutbol</Text>
             <Text style={styles.collabIntro}>
-              Enseña tu perfil de EasyFutbol y tu ID de jugador para acceder a las colaboraciones activas.
+              Enseña tu perfil y tu ID de jugador para disfrutar de ofertas exclusivas.
             </Text>
+            <View style={styles.partnerPreviewRow}>
+              <View style={styles.partnerPreviewCard}>
+                <Image source={HERMINIA_LOGO} style={styles.partnerPreviewLogo} resizeMode="contain" />
+                <Text style={styles.partnerPreviewOffer}>Aftergame desde 10€</Text>
+              </View>
+              <View style={styles.partnerPreviewCard}>
+                <Image source={NUINO_LOGO} style={styles.partnerPreviewLogo} resizeMode="contain" />
+                <Text style={styles.partnerPreviewOffer}>10% en servicios</Text>
+              </View>
+            </View>
             <TouchableOpacity
               style={styles.collabBtn}
               onPress={() => { setActiveCollaboration('herminia'); setCollaborationsVisible(true); }}
               activeOpacity={0.85}
+              accessibilityRole="button"
             >
               <Text style={styles.collabBtnText}>Ver colaboraciones</Text>
             </TouchableOpacity>
@@ -541,7 +555,7 @@ export default function ProfileScreen({ navigation }) {
               )}
             </View>
 
-            <TouchableOpacity style={styles.passBtn} onPress={buyEasyPass} activeOpacity={0.85}>
+            <TouchableOpacity style={styles.passBtn} onPress={buyEasyPass} activeOpacity={0.85} accessibilityRole="button">
               <Text style={styles.passBtnText}>Adquirir más</Text>
             </TouchableOpacity>
           </View>
@@ -551,7 +565,7 @@ export default function ProfileScreen({ navigation }) {
             <Text style={styles.communityText}>
               Únete al grupo de WhatsApp para enterarte de todas las novedades, partidos y avisos.
             </Text>
-            <TouchableOpacity style={styles.communityBtn} onPress={openWhatsAppGroup} activeOpacity={0.85}>
+            <TouchableOpacity style={styles.communityBtn} onPress={openWhatsAppGroup} activeOpacity={0.85} accessibilityRole="link">
               <Text style={styles.communityBtnText}>Entrar al grupo de WhatsApp</Text>
             </TouchableOpacity>
           </View>
@@ -565,6 +579,7 @@ export default function ProfileScreen({ navigation }) {
               style={styles.achievementsBtn}
               onPress={() => navigation.navigate('Achievements')}
               activeOpacity={0.85}
+              accessibilityRole="button"
             >
               <Text style={styles.achievementsBtnText}>Ver mis logros</Text>
             </TouchableOpacity>
@@ -616,10 +631,13 @@ export default function ProfileScreen({ navigation }) {
                     style={[styles.collaborationTab, activeCollaboration === 'herminia' && styles.collaborationTabActive]}
                     onPress={() => setActiveCollaboration('herminia')}
                     activeOpacity={0.85}
+                    accessibilityRole="tab"
+                    accessibilityLabel="La Herminia, ofertas de aftergame"
+                    accessibilityState={{ selected: activeCollaboration === 'herminia' }}
                   >
-                    <Text style={[styles.collaborationTabText, activeCollaboration === 'herminia' && styles.collaborationTabTextActive]}>
-                      La Herminia
-                    </Text>
+                    <View style={styles.collaborationTabLogoWrap}>
+                      <Image source={HERMINIA_LOGO} style={styles.collaborationTabLogo} resizeMode="contain" />
+                    </View>
                     <Text style={[styles.collaborationTabSub, activeCollaboration === 'herminia' && styles.collaborationTabSubActive]}>
                       Aftergame
                     </Text>
@@ -629,10 +647,13 @@ export default function ProfileScreen({ navigation }) {
                     style={[styles.collaborationTab, activeCollaboration === 'nuino' && styles.collaborationTabActive]}
                     onPress={() => setActiveCollaboration('nuino')}
                     activeOpacity={0.85}
+                    accessibilityRole="tab"
+                    accessibilityLabel="Nuino, descuento en servicios para botas"
+                    accessibilityState={{ selected: activeCollaboration === 'nuino' }}
                   >
-                    <Text style={[styles.collaborationTabText, activeCollaboration === 'nuino' && styles.collaborationTabTextActive]}>
-                      Nuino
-                    </Text>
+                    <View style={styles.collaborationTabLogoWrap}>
+                      <Image source={NUINO_LOGO} style={styles.collaborationTabLogo} resizeMode="contain" />
+                    </View>
                     <Text style={[styles.collaborationTabSub, activeCollaboration === 'nuino' && styles.collaborationTabSubActive]}>
                       Botas
                     </Text>
@@ -642,6 +663,9 @@ export default function ProfileScreen({ navigation }) {
                 <ScrollView style={styles.collaborationContentScroll} showsVerticalScrollIndicator={false}>
                   {activeCollaboration === 'herminia' ? (
                     <View style={styles.collaborationItemLarge}>
+                      <View style={styles.collaborationBrandHero}>
+                        <Image source={HERMINIA_LOGO} style={styles.collaborationBrandLogo} resizeMode="contain" />
+                      </View>
                       <View style={styles.collaborationTopRow}>
                         <Text style={styles.collaborationNameLarge}>La Herminia</Text>
                         <Text style={styles.collaborationTag}>Aftergame</Text>
@@ -667,6 +691,9 @@ export default function ProfileScreen({ navigation }) {
                     </View>
                   ) : (
                     <View style={styles.collaborationItemLarge}>
+                      <View style={styles.collaborationBrandHero}>
+                        <Image source={NUINO_LOGO} style={styles.collaborationBrandLogo} resizeMode="contain" />
+                      </View>
                       <View style={styles.collaborationTopRow}>
                         <Text style={styles.collaborationNameLarge}>Nuino</Text>
                         <Text style={styles.collaborationTag}>Botas</Text>
@@ -693,10 +720,10 @@ export default function ProfileScreen({ navigation }) {
             </View>
           </Modal>
 
-          <TouchableOpacity style={styles.logoutBtn} onPress={logout}>
+          <TouchableOpacity style={styles.logoutBtn} onPress={logout} accessibilityRole="button">
             <Text style={styles.logoutText}>Cerrar sesión</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={styles.deleteBtn} onPress={deleteAccount}>
+          <TouchableOpacity style={styles.deleteBtn} onPress={deleteAccount} accessibilityRole="button">
             <Text style={styles.deleteText}>Eliminar cuenta</Text>
           </TouchableOpacity>
         </ScrollView>
@@ -706,30 +733,36 @@ export default function ProfileScreen({ navigation }) {
 }
 
 const styles = StyleSheet.create({
-  loader:{ flex:1, backgroundColor:'#000', alignItems:'center', justifyContent:'center' },
+  loader:{ flex:1, backgroundColor:colors.background, alignItems:'center', justifyContent:'center' },
+  screen:{ flex:1, backgroundColor:colors.background },
   bg:{ flex:1 },
-  title:{ color:'#fff', fontSize:22, fontWeight:'800', textAlign:'center', marginBottom: spacing(1) },
-  tapHint:{ color:'#bbb', fontSize:12, marginTop:8 },
+  content:{ width:'100%', maxWidth:layout.maxContentWidth, alignSelf:'center', paddingHorizontal:spacing(2), paddingTop:spacing(1), paddingBottom:spacing(6) },
+  tapHint:{ color:colors.textSubtle, ...typography.caption, marginTop:spacing(1) },
 
   avatarWrapper: {
     alignItems: 'center',
     marginBottom: spacing(2),
+    padding: spacing(2.5),
+    borderRadius: radii.xlarge,
+    backgroundColor: 'rgba(17,21,27,0.92)',
+    borderWidth: 1,
+    borderColor: colors.border,
   },
   avatarImage: {
-    width: 140,
-    height: 140,
-    borderRadius: 70,
+    width: 128,
+    height: 128,
+    borderRadius: 64,
     borderWidth: 3,
     borderColor: ORANGE,
-    backgroundColor: '#111',
+    backgroundColor: colors.surface,
   },
   avatarPlaceholder: {
-    width: 140,
-    height: 140,
-    borderRadius: 70,
+    width: 128,
+    height: 128,
+    borderRadius: 64,
     borderWidth: 3,
     borderColor: ORANGE,
-    backgroundColor: '#222',
+    backgroundColor: colors.surfaceElevated,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -738,24 +771,26 @@ const styles = StyleSheet.create({
     fontSize: 42,
     fontWeight: '900',
   },
+  profileHeroName:{ color:colors.white, ...typography.heading, marginTop:spacing(1.5), textAlign:'center' },
+  profileHeroMeta:{ color:colors.orange, ...typography.overline, marginTop:spacing(0.5) },
 
-  panel:{ backgroundColor:'rgba(17,17,17,0.9)', borderRadius:16, padding: spacing(2), borderWidth:1, borderColor:'rgba(255,255,255,0.06)', marginBottom: spacing(2) },
+  panel:{ backgroundColor:'rgba(17,21,27,0.94)', borderRadius:radii.large, padding:spacing(2), borderWidth:1, borderColor:colors.border, marginBottom:spacing(2) },
 
   name:{ color:'#fff', fontSize:18, fontWeight:'800', marginBottom:2 },
   email:{ color:'#bbb', fontSize:13, marginBottom:4 },
   meta:{ color:'#999', fontSize:12, marginBottom:2 },
   label:{ color:'#ddd', fontWeight:'700', marginTop: spacing(0.5), marginBottom:4 },
-  input:{ backgroundColor:'#1f1f1f', color:'#fff', padding: spacing(1.2), borderRadius:12, borderWidth:1, borderColor:'rgba(255,255,255,0.06)', marginBottom: spacing(1) },
-  editBtn:{ backgroundColor:'#2a2a2a', padding: spacing(1.4), borderRadius:12, marginTop: spacing(1.5) },
+  input:{ minHeight:52, backgroundColor:colors.surfaceElevated, color:colors.white, padding:spacing(1.2), borderRadius:radii.medium, borderWidth:1, borderColor:colors.border, marginBottom:spacing(1) },
+  editBtn:{ minHeight:layout.minTouchTarget, backgroundColor:colors.surfaceElevated, padding:spacing(1.4), borderRadius:radii.medium, marginTop:spacing(1.5), justifyContent:'center' },
   editText:{ color:'#fff', fontWeight:'800', textAlign:'center' },
-  saveBtn:{ flex:1, backgroundColor: ORANGE, padding: spacing(1.4), borderRadius:12 },
+  saveBtn:{ flex:1, minHeight:layout.minTouchTarget, backgroundColor:ORANGE, padding:spacing(1.4), borderRadius:radii.medium, justifyContent:'center' },
   saveText:{ color:'#000', fontWeight:'900', textAlign:'center' },
-  cancelBtn:{ flex:1, backgroundColor:'#333', padding: spacing(1.4), borderRadius:12 },
+  cancelBtn:{ flex:1, minHeight:layout.minTouchTarget, backgroundColor:colors.surfaceElevated, padding:spacing(1.4), borderRadius:radii.medium, justifyContent:'center' },
   cancelText:{ color:'#fff', fontWeight:'800', textAlign:'center' },
 
-  statsCard:{ backgroundColor:'rgba(17,17,17,0.92)', borderRadius:16, padding: spacing(2), borderWidth:1, borderColor:'rgba(255,255,255,0.06)' },
-  section:{ color: ORANGE, fontWeight:'800', marginBottom:10, fontSize:14 },
-  passCard:{ backgroundColor:'rgba(17,17,17,0.92)', borderRadius:16, padding: spacing(2), borderWidth:1, borderColor:'rgba(255,255,255,0.06)', marginBottom: spacing(2) },
+  statsCard:{ backgroundColor:'rgba(17,21,27,0.94)', borderRadius:radii.large, padding:spacing(2), borderWidth:1, borderColor:colors.border },
+  section:{ color:ORANGE, ...typography.overline, marginBottom:spacing(1.25) },
+  passCard:{ backgroundColor:'rgba(17,21,27,0.94)', borderRadius:radii.large, padding:spacing(2), borderWidth:1, borderColor:'rgba(255,90,0,0.30)', marginBottom:spacing(2) },
   passHeader:{ flexDirection:'row', alignItems:'center', marginBottom:14 },
   passLogoWrap:{ width:72, height:72, borderRadius:36, marginRight:14, backgroundColor:'transparent', overflow:'hidden', alignItems:'center', justifyContent:'center' },
   passLogo:{ width:'100%', height:'100%' },
@@ -797,11 +832,16 @@ const styles = StyleSheet.create({
   passLocationAmount:{ color:'#000', fontSize:18, fontWeight:'900', lineHeight:20 },
   passLocationSmall:{ color:'#000', fontSize:10, fontWeight:'900', marginTop:1 },
   passLocationEmpty:{ color:'#bdbdbd', fontSize:12, fontWeight:'700', textAlign:'center', marginTop:8 },
-  passBtn:{ backgroundColor: ORANGE, paddingVertical:12, paddingHorizontal:14, borderRadius:12, alignItems:'center' },
+  passBtn:{ minHeight:layout.minTouchTarget, backgroundColor:ORANGE, paddingVertical:12, paddingHorizontal:14, borderRadius:radii.medium, alignItems:'center', justifyContent:'center' },
   passBtnText:{ color:'#000', fontWeight:'900' },
-  collabCard:{ backgroundColor:'rgba(17,17,17,0.92)', borderRadius:16, padding: spacing(2), borderWidth:1, borderColor:'rgba(255,90,0,0.18)', marginBottom: spacing(2) },
+  collabCard:{ backgroundColor:'rgba(17,21,27,0.94)', borderRadius:radii.large, padding:spacing(2), borderWidth:1, borderColor:'rgba(255,90,0,0.24)', marginBottom:spacing(2) },
+  collabTitle:{ color:colors.white, ...typography.heading, marginBottom:spacing(0.75) },
   collabIntro:{ color:'#bdbdbd', fontSize:13, lineHeight:20, marginBottom:14, fontWeight:'700' },
-  collabBtn:{ backgroundColor: ORANGE, paddingVertical:14, paddingHorizontal:16, borderRadius:12 },
+  partnerPreviewRow:{ flexDirection:'row', gap:spacing(1), marginBottom:spacing(1.5) },
+  partnerPreviewCard:{ flex:1, minHeight:112, padding:spacing(1.25), borderRadius:radii.medium, backgroundColor:'#090B0F', justifyContent:'space-between', borderWidth:1, borderColor:colors.border },
+  partnerPreviewLogo:{ width:'100%', height:44 },
+  partnerPreviewOffer:{ color:colors.white, fontSize:11, fontWeight:'900', textAlign:'center', marginTop:spacing(0.75) },
+  collabBtn:{ minHeight:layout.minTouchTarget, backgroundColor:ORANGE, paddingVertical:14, paddingHorizontal:16, borderRadius:radii.medium, justifyContent:'center' },
   collabBtnText:{ color:'#000', fontWeight:'900', textAlign:'center' },
 
   modalOverlay:{ flex:1, backgroundColor:'rgba(0,0,0,0.78)', alignItems:'center', justifyContent:'center', padding:20 },
@@ -816,14 +856,18 @@ const styles = StyleSheet.create({
   playerIdValue:{ color:'#fff', fontSize:30, fontWeight:'900', marginTop:2 },
   playerIdHint:{ color:'#d8d8d8', fontSize:12, fontWeight:'700', lineHeight:17, marginTop:4 },
   collaborationTabs:{ flexDirection:'row', gap:10, marginBottom:12 },
-  collaborationTab:{ flex:1, backgroundColor:'#171717', borderWidth:1, borderColor:'rgba(255,255,255,0.08)', borderRadius:14, paddingVertical:12, paddingHorizontal:10, alignItems:'center' },
-  collaborationTabActive:{ backgroundColor:ORANGE, borderColor:ORANGE },
+  collaborationTab:{ flex:1, minHeight:88, backgroundColor:colors.surfaceElevated, borderWidth:1, borderColor:colors.border, borderRadius:radii.medium, paddingVertical:10, paddingHorizontal:8, alignItems:'center', justifyContent:'center' },
+  collaborationTabActive:{ backgroundColor:'rgba(255,90,0,0.12)', borderColor:ORANGE },
+  collaborationTabLogoWrap:{ width:'100%', height:40, borderRadius:radii.small, backgroundColor:'#090B0F', paddingHorizontal:6, justifyContent:'center', marginBottom:5 },
+  collaborationTabLogo:{ width:'100%', height:30 },
   collaborationTabText:{ color:'#fff', fontSize:14, fontWeight:'900' },
   collaborationTabTextActive:{ color:'#000' },
   collaborationTabSub:{ color:'#999', fontSize:10, fontWeight:'800', marginTop:3 },
-  collaborationTabSubActive:{ color:'#2a1000' },
+  collaborationTabSubActive:{ color:ORANGE },
   collaborationContentScroll:{ maxHeight:320, marginBottom:8 },
   collaborationItemLarge:{ backgroundColor:'#171717', borderRadius:16, borderWidth:1, borderColor:'rgba(255,255,255,0.07)', padding:15, marginBottom:10 },
+  collaborationBrandHero:{ width:'100%', height:72, borderRadius:radii.medium, backgroundColor:'#090B0F', paddingHorizontal:spacing(2), justifyContent:'center', marginBottom:spacing(1.5), borderWidth:1, borderColor:colors.border },
+  collaborationBrandLogo:{ width:'100%', height:48 },
   collaborationNameLarge:{ color:'#fff', fontSize:19, fontWeight:'900', flex:1 },
   collaborationTextLarge:{ color:'#eaeaea', fontSize:14, fontWeight:'800', lineHeight:21, marginBottom:12 },
   offerCard:{ backgroundColor:'rgba(255,90,0,0.09)', borderWidth:1, borderColor:'rgba(255,90,0,0.24)', borderRadius:14, padding:13, marginTop:8 },
@@ -838,20 +882,20 @@ const styles = StyleSheet.create({
   collaborationBullet:{ color:'#bdbdbd', fontSize:13, fontWeight:'700', lineHeight:20 },
   modalPrimaryBtn:{ backgroundColor:ORANGE, borderRadius:12, paddingVertical:13, marginTop:4 },
   modalPrimaryBtnText:{ color:'#000', fontWeight:'900', textAlign:'center' },
-  communityCard:{ backgroundColor:'rgba(17,17,17,0.92)', borderRadius:16, padding: spacing(2), borderWidth:1, borderColor:'rgba(255,255,255,0.06)', marginBottom: spacing(2) },
+  communityCard:{ backgroundColor:'rgba(17,21,27,0.94)', borderRadius:radii.large, padding:spacing(2), borderWidth:1, borderColor:colors.border, marginBottom:spacing(2) },
   communityText:{ color:'#bdbdbd', fontSize:13, lineHeight:20, marginBottom:14 },
-  communityBtn:{ backgroundColor:'#25D366', paddingVertical:14, paddingHorizontal:16, borderRadius:12 },
+  communityBtn:{ minHeight:layout.minTouchTarget, backgroundColor:'#25D366', paddingVertical:14, paddingHorizontal:16, borderRadius:radii.medium, justifyContent:'center' },
   communityBtnText:{ color:'#000', fontWeight:'900', textAlign:'center' },
-  achievementsCard:{ backgroundColor:'rgba(17,17,17,0.92)', borderRadius:16, padding: spacing(2), borderWidth:1, borderColor:'rgba(255,255,255,0.06)', marginBottom: spacing(2) },
-  achievementsBtn:{ backgroundColor: ORANGE, paddingVertical:14, paddingHorizontal:16, borderRadius:12 },
+  achievementsCard:{ backgroundColor:'rgba(17,21,27,0.94)', borderRadius:radii.large, padding:spacing(2), borderWidth:1, borderColor:colors.border, marginBottom:spacing(2) },
+  achievementsBtn:{ minHeight:layout.minTouchTarget, backgroundColor:ORANGE, paddingVertical:14, paddingHorizontal:16, borderRadius:radii.medium, justifyContent:'center' },
   achievementsBtnText:{ color:'#000', fontWeight:'900', textAlign:'center' },
   grid:{ flexDirection:'row', flexWrap:'wrap', columnGap:10, rowGap:10, justifyContent:'space-between' },
-  gridItem:{ width:'48%', backgroundColor:'#121212', borderRadius:14, paddingVertical:14, paddingHorizontal:12, borderWidth:1, borderColor:'rgba(255,255,255,0.05)' },
-  gridValue:{ color:'#fff', fontSize:20, fontWeight:'900', marginBottom:4 },
+  gridItem:{ width:'48%', minHeight:92, backgroundColor:colors.surfaceElevated, borderRadius:radii.medium, paddingVertical:14, paddingHorizontal:12, borderWidth:1, borderColor:colors.border, justifyContent:'center' },
+  gridValue:{ color:colors.orange, fontSize:24, fontWeight:'900', marginBottom:4 },
   gridLabel:{ color:'#bdbdbd', fontSize:12, fontWeight:'700' },
 
-  logoutBtn:{ backgroundColor: ORANGE, padding: spacing(1.5), borderRadius:12, marginTop: spacing(2) },
+  logoutBtn:{ minHeight:layout.minTouchTarget, backgroundColor:ORANGE, padding:spacing(1.5), borderRadius:radii.medium, marginTop:spacing(2), justifyContent:'center' },
   logoutText:{ color:'#000', fontWeight:'900', textAlign:'center' },
-  deleteBtn:{ backgroundColor: '#2b0b0b', padding: spacing(1.5), borderRadius:12, marginTop: spacing(1.2), borderWidth:1, borderColor:'rgba(255,90,0,0.35)' },
+  deleteBtn:{ minHeight:layout.minTouchTarget, backgroundColor:'#2b0b0b', padding:spacing(1.5), borderRadius:radii.medium, marginTop:spacing(1.2), borderWidth:1, borderColor:'rgba(255,92,92,0.35)', justifyContent:'center' },
   deleteText:{ color:'#ffb3a8', fontWeight:'900', textAlign:'center' },
 });

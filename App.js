@@ -24,6 +24,7 @@ import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Application from 'expo-application';
+import Constants from 'expo-constants';
 import { api, setUnauthorizedHandler } from './src/api/client';
 
 // Screens
@@ -104,13 +105,48 @@ function isVersionLower(currentVersion, minVersion) {
 
 async function checkMinimumAppVersion() {
   try {
-    const currentVersion = Application?.nativeApplicationVersion || '0.0.0';
-    const res = await api.get('/app-config/min-version');
-    const config = res?.data || {};
+    const currentVersion =
+      Constants?.expoConfig?.version ||
+      Constants?.manifest?.version ||
+      Application?.nativeApplicationVersion ||
+      '0.0.0';
+    const versionUrl = 'https://api.easyfutbol.es/api/app-config/version';
+
+    console.log('APP VERSION REQUEST:', versionUrl);
+
+    const response = await fetch(`${versionUrl}?t=${Date.now()}`, {
+      method: 'GET',
+      headers: {
+        Accept: 'application/json',
+      },
+    });
+
+    const rawText = await response.text();
+    let config = {};
+
+    try {
+      config = JSON.parse(rawText);
+    } catch (parseError) {
+      console.log('APP VERSION INVALID JSON:', rawText?.slice?.(0, 300));
+      throw parseError;
+    }
+
     const minVersion = config?.minVersion || '0.0.0';
+    const needsUpdate = isVersionLower(currentVersion, minVersion);
+
+    console.log('APP VERSION CHECK:', {
+      status: response.status,
+      currentVersion,
+      nativeApplicationVersion: Application?.nativeApplicationVersion,
+      expoConfigVersion: Constants?.expoConfig?.version,
+      minVersion,
+      needsUpdate,
+      androidUrl: config?.androidUrl,
+      iosUrl: config?.iosUrl,
+    });
 
     return {
-      needsUpdate: isVersionLower(currentVersion, minVersion),
+      needsUpdate,
       currentVersion,
       minVersion,
       message:

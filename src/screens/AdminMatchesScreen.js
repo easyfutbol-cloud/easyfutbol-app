@@ -115,6 +115,13 @@ export default function AdminMatchesScreen({ navigation }) {
     }
   };
 
+  const handleStatsPress = (match) => {
+    navigation.navigate('AdminMatchStats', {
+      matchId: match.id,
+      matchTitle: match.title,
+    });
+  };
+
   const renderMatchCard = ({ item }) => {
     const statusLabel = STATUS_LABELS[item.status] || item.status || 'Sin estado';
 
@@ -159,6 +166,9 @@ export default function AdminMatchesScreen({ navigation }) {
         <View style={styles.buttonRow}>
           <TouchableOpacity style={styles.editButton} onPress={() => handleEditPress(item)}>
             <Text style={styles.editButtonText}>Editar partido</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.statsButton} onPress={() => handleStatsPress(item)}>
+            <Text style={styles.statsButtonText}>Cargar estadísticas</Text>
           </TouchableOpacity>
         </View>
       </TouchableOpacity>
@@ -388,6 +398,7 @@ const styles = StyleSheet.create({
   },
   buttonRow: {
     flexDirection: 'row',
+    gap: 10,
   },
   editButton: {
     flex: 1,
@@ -400,5 +411,21 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 14,
     fontWeight: '700',
+  },
+  statsButton: {
+    flex: 1,
+    minHeight: 46,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#ff5a00',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 8,
+  },
+  statsButtonText: {
+    color: '#ff8c4d',
+    fontSize: 14,
+    fontWeight: '700',
+    textAlign: 'center',
   },
 });
