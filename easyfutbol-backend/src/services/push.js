@@ -13,7 +13,20 @@ function chunk(arr, size = 99) {
 
 // Valida formato ExponentPushToken[xxxxx]
 function isExpoPushToken(token) {
-  return typeof token === 'string' && /^ExponentPushToken\[[A-Za-z0-9\-_=:.]+\]$/.test(token);
+  return typeof token === 'string' && /^(ExponentPushToken|ExpoPushToken)\[[A-Za-z0-9\-_=:.]+\]$/.test(token);
+}
+
+const uniqueTokens = (rows = []) => [...new Set(rows.map((row) => row.push_token).filter(Boolean))];
+
+async function hasAssignedUserIdColumn() {
+  const [[row]] = await pool.query(
+    `SELECT COUNT(*) AS count
+     FROM INFORMATION_SCHEMA.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE()
+       AND TABLE_NAME = 'inscriptions'
+       AND COLUMN_NAME = 'assigned_user_id'`
+  );
+  return Number(row?.count || 0) > 0;
 }
 
 /** Envía un lote de notificaciones a tokens Expo */
@@ -48,14 +61,43 @@ export async function sendExpoPush(tokens, title, body, data = {}) {
 
 /** Tokens de los inscritos confirmados en un partido */
 export async function getMatchPushTokens(matchId) {
+  const hasAssignedUser = await hasAssignedUserIdColumn();
   const [rows] = await pool.query(
-    `SELECT u.push_token
+    `SELECT DISTINCT token_data.push_token
      FROM inscriptions i
-     JOIN users u ON u.id = i.user_id
-     WHERE i.match_id=? AND i.status='confirmed' AND u.push_token IS NOT NULL`,
+     JOIN (
+       SELECT id AS user_id, push_token
+       FROM users
+       WHERE push_token IS NOT NULL AND push_token <> ''
+       UNION
+       SELECT user_id, expo_push_token AS push_token
+       FROM push_tokens
+       WHERE is_active = 1 AND expo_push_token IS NOT NULL AND expo_push_token <> ''
+     ) token_data ON token_data.user_id = ${hasAssignedUser ? 'COALESCE(i.assigned_user_id, i.user_id)' : 'i.user_id'}
+     WHERE i.match_id=? AND i.status IN ('confirmed', 'paid', 'active')`,
     [matchId]
   );
-  return rows.map(r => r.push_token).filter(Boolean);
+  return uniqueTokens(rows);
+}
+
+/** Tokens de jugadores cuya sede preferida coincide con la ciudad/sede indicada. */
+export async function getCityPushTokens(locationSlug) {
+  const [rows] = await pool.query(
+    `SELECT DISTINCT token_data.push_token
+     FROM users u
+     JOIN (
+       SELECT id AS user_id, push_token
+       FROM users
+       WHERE push_token IS NOT NULL AND push_token <> ''
+       UNION
+       SELECT user_id, expo_push_token AS push_token
+       FROM push_tokens
+       WHERE is_active = 1 AND expo_push_token IS NOT NULL AND expo_push_token <> ''
+     ) token_data ON token_data.user_id = u.id
+     WHERE LOWER(TRIM(u.preferred_location)) = LOWER(TRIM(?))`,
+    [locationSlug]
+  );
+  return uniqueTokens(rows);
 }
 
 /** Token de un usuario */

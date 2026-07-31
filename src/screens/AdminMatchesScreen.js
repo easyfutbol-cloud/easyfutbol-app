@@ -116,7 +116,7 @@ export default function AdminMatchesScreen({ navigation }) {
   };
 
   const handleStatsPress = (match) => {
-    navigation.navigate('AdminMatchStats', {
+    navigation.navigate('AdminMatchStatsImport', {
       matchId: match.id,
       matchTitle: match.title,
     });

@@ -38,6 +38,7 @@ import StatsScreen from './src/screens/StatsScreen';
 import ProfileScreen from './src/screens/ProfileScreen';
 import AdminCreateMatchScreen from './src/screens/AdminCreateMatchScreen';
 import AdminMatchStatsScreen from './src/screens/AdminMatchStatsScreen';
+import AdminMatchStatsImportScreen from './src/screens/AdminMatchStatsImportScreen';
 import AdminMatchesScreen from './src/screens/AdminMatchesScreen';
 import AdminMatchEditScreen from './src/screens/AdminMatchEditScreen';
 import AdminNotifyScreen from './src/screens/AdminNotifyScreen';
@@ -700,6 +701,7 @@ function AppShell({ currentRouteName }) {
         <Stack.Screen name="AdminMatchEdit" component={AdminMatchEditScreen} />
         <Stack.Screen name="AdminCreateMatch" component={AdminCreateMatchScreen} />
         <Stack.Screen name="AdminMatchStats" component={AdminMatchStatsScreen} />
+        <Stack.Screen name="AdminMatchStatsImport" component={AdminMatchStatsImportScreen} />
         <Stack.Screen name="AdminUsers" component={AdminUsersScreen} />
         <Stack.Screen name="AdminNotify" component={AdminNotifyScreen} />
         <Stack.Screen name="AdminEasyPass" component={AdminEasyPassScreen} />

@@ -102,7 +102,7 @@ router.get(
 
 /**
  * Importar de forma atómica las estadísticas completas de un partido.
- * Cada jugador debe estar asignado a una inscripción activa del partido.
+ * Los jugadores se identifican por su ID de usuario, aunque no tengan inscripción propia.
  */
 router.post(
   '/admin/matches/:id/stats/bulk',
@@ -180,28 +180,20 @@ router.post(
         if (!inscriptionByUser.has(statsUserId)) inscriptionByUser.set(statsUserId, inscription);
       });
 
-      const missingIds = normalized
-        .filter((entry) => !inscriptionByUser.has(entry.userId))
-        .map((entry) => entry.userId);
+      const requestedUserIds = normalized.map((entry) => entry.userId);
+      const placeholders = requestedUserIds.map(() => '?').join(', ');
+      const [existingUsers] = await conn.query(
+        `SELECT id FROM users WHERE id IN (${placeholders})`,
+        requestedUserIds
+      );
+      const existingUserIds = new Set(existingUsers.map((user) => Number(user.id)));
+      const missingIds = requestedUserIds.filter((userId) => !existingUserIds.has(userId));
 
       if (missingIds.length) {
         await conn.rollback();
         return res.status(400).json({
           ok: false,
-          msg: `Jugadores no inscritos o sin asignar: ${missingIds.join(', ')}`,
-        });
-      }
-
-      const wrongTeam = normalized.find((entry) => {
-        const ticketType = inscriptionByUser.get(entry.userId)?.ticket_type;
-        return ticketType && ticketType !== entry.team;
-      });
-
-      if (wrongTeam) {
-        await conn.rollback();
-        return res.status(400).json({
-          ok: false,
-          msg: `El jugador ${wrongTeam.userId} no pertenece al equipo indicado`,
+          msg: `No existen usuarios con estos ID: ${missingIds.join(', ')}`,
         });
       }
 
@@ -222,10 +214,12 @@ router.post(
           [matchId, entry.userId, entry.goals, entry.assists, entry.isMvp ? 1 : 0, entry.result]
         );
 
-        await conn.query(
-          'UPDATE inscriptions SET goals = ?, assists = ?, is_mvp = ? WHERE id = ?',
-          [entry.goals, entry.assists, entry.isMvp ? 1 : 0, inscription.id]
-        );
+        if (inscription) {
+          await conn.query(
+            'UPDATE inscriptions SET goals = ?, assists = ?, is_mvp = ? WHERE id = ?',
+            [entry.goals, entry.assists, entry.isMvp ? 1 : 0, inscription.id]
+          );
+        }
       }
 
       await conn.commit();
