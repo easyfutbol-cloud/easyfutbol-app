@@ -23,6 +23,7 @@ import appConfigRoutes from './routes/appConfigRoutes.js';
 import kpis from './routes/kpis.js';
 import { requireAuth } from './middlewares/auth.js';
 import { sendPushNotification } from './services/pushService.js';
+import { startMatchReminderScheduler } from './services/reminderService.js';
 
 const app = express();
 const PORT = Number(process.env.PORT || 4000);
@@ -150,7 +151,10 @@ app.get('/', (_req, res) => res.send('EasyFutbol Backend up'));
 (async () => {
   try {
     await assertDB();
-    app.listen(PORT, () => console.log(`✅ API http://localhost:${PORT}`));
+    app.listen(PORT, () => {
+      console.log(`✅ API http://localhost:${PORT}`);
+      startMatchReminderScheduler();
+    });
   } catch (e) {
     console.error('❌ DB no responde:', e.message);
     process.exit(1);

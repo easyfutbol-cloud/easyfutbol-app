@@ -13,6 +13,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { api } from '../api/client';
 import { colors, layout, radii, spacing, typography } from '../theme';
+import { goBackOrFallback } from '../utils/navigation';
 
 const getTeamName = (ticketType) => ticketType === 'black' ? 'Negro' : ticketType === 'white' ? 'Blanco' : 'Sin equipo';
 
@@ -60,7 +61,7 @@ export default function AdminMatchStatsScreen({ route, navigation }) {
     <View style={styles.screen}>
       <StatusBar barStyle="light-content" />
       <LinearGradient colors={['#241208', '#11151B']} style={styles.hero}>
-        <TouchableOpacity style={styles.backButton} onPress={() => navigation?.goBack()}>
+        <TouchableOpacity style={styles.backButton} onPress={() => goBackOrFallback(navigation)}>
           <Ionicons name="arrow-back" size={20} color={colors.white} />
           <Text style={styles.backText}>Volver</Text>
         </TouchableOpacity>

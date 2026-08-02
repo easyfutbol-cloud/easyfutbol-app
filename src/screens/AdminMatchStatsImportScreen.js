@@ -17,6 +17,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { api } from '../api/client';
 import { colors, layout, radii, shadows, spacing, typography } from '../theme';
+import { goBackOrFallback } from '../utils/navigation';
 
 const EXAMPLE = `Ganadores negro
 408,3,0
@@ -201,7 +202,7 @@ export default function AdminMatchStatsImportScreen({ route, navigation }) {
       <StatusBar barStyle="light-content" />
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
         <LinearGradient colors={['#2B1508', '#11151B']} style={styles.hero}>
-          <TouchableOpacity style={styles.backButton} onPress={() => navigation?.goBack()} accessibilityRole="button">
+          <TouchableOpacity style={styles.backButton} onPress={() => goBackOrFallback(navigation)} accessibilityRole="button">
             <Ionicons name="arrow-back" size={20} color={colors.white} />
             <Text style={styles.backText}>Volver</Text>
           </TouchableOpacity>

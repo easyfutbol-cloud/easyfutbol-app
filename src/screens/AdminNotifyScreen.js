@@ -18,6 +18,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import SegmentedControl from '../components/SegmentedControl';
 import { api } from '../api/client';
 import { colors, layout, radii, shadows, spacing, typography } from '../theme';
+import { goBackOrFallback } from '../utils/navigation';
 
 const TARGET_OPTIONS = [
   { value: 'city', label: 'Por ciudad' },
@@ -116,7 +117,7 @@ export default function AdminNotifyScreen({ route, navigation }) {
       <StatusBar barStyle="light-content" />
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
         <LinearGradient colors={['#261307', '#11151B']} style={styles.hero}>
-          <TouchableOpacity style={styles.backButton} onPress={() => navigation?.goBack()}>
+          <TouchableOpacity style={styles.backButton} onPress={() => goBackOrFallback(navigation)}>
             <Ionicons name="arrow-back" size={20} color={colors.white} />
             <Text style={styles.backText}>Volver</Text>
           </TouchableOpacity>

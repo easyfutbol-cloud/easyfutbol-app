@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { View, Text, StyleSheet, StatusBar, TouchableOpacity, ActivityIndicator, Alert, ImageBackground, Image, ScrollView } from 'react-native';
 import { colors, layout, radii, spacing, typography } from '../theme';
+import { goBackOrFallback } from '../utils/navigation';
 import { api } from '../api/client';
 import { useFocusEffect } from '@react-navigation/native';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -516,7 +517,7 @@ export default function MatchScreen({ route, navigation }) {
 
       <TouchableOpacity
         style={styles.backButton}
-        onPress={() => navigation?.goBack?.()}
+        onPress={() => goBackOrFallback(navigation, 'Matchs')}
         accessibilityRole="button"
         accessibilityLabel="Volver a próximos partidos"
       >

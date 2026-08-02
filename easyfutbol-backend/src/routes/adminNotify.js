@@ -80,14 +80,14 @@ router.post('/admin/notify/match/:id', requireAuth, requireAdmin, async (req, re
   }
 });
 
-/** Lanzar manualmente los recordatorios de partidos (6h antes por defecto) */
+/** Lanzar manualmente los recordatorios de partidos (4h antes por defecto) */
 router.post('/admin/notify/send-reminders', requireAuth, requireAdmin, async (req, res) => {
   try {
     const { hoursAhead, windowMinutes } = req.body || {};
 
     const result = await sendMatchReminders({
-      hoursAhead: Number.isFinite(Number(hoursAhead)) ? Number(hoursAhead) : 6,
-      windowMinutes: Number.isFinite(Number(windowMinutes)) ? Number(windowMinutes) : 15,
+      hoursAhead: Number.isFinite(Number(hoursAhead)) ? Number(hoursAhead) : 4,
+      windowMinutes: Number.isFinite(Number(windowMinutes)) ? Number(windowMinutes) : 10,
     });
 
     res.json(result);
