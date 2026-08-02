@@ -17,7 +17,8 @@ const HERMINIA_LOGO = require('../../assets/La herminia.png');
 const NUINO_LOGO = require('../../assets/Nuino_Wordmark-White.png');
 
 const ORANGE = '#ff5a00';
-const WHATSAPP_GROUP_URL = 'https://chat.whatsapp.com/HWUQF9eynLvD2XhiPgR01c?mode=gi_t';
+const WHATSAPP_VALLADOLID_URL = 'https://chat.whatsapp.com/IdRGx2RDihu1ghbLWv44J5?s=cl&p=i&ilr=0&amv=2';
+const WHATSAPP_ASTURIAS_URL = 'https://chat.whatsapp.com/ElR7I1uBofT5jKUO4Jhbs6?s=cl&p=i&ilr=0&amv=2';
 const FIELD_BG = require('../../assets/matches/match-1.jpg');
 
 export default function ProfileScreen({ navigation }) {
@@ -176,11 +177,11 @@ export default function ProfileScreen({ navigation }) {
     }
   };
 
-  const openWhatsAppGroup = async () => {
+  const openWhatsAppGroup = async (url) => {
     try {
-      const supported = await Linking.canOpenURL(WHATSAPP_GROUP_URL);
+      const supported = await Linking.canOpenURL(url);
       if (!supported) throw new Error('No se pudo abrir el enlace');
-      await Linking.openURL(WHATSAPP_GROUP_URL);
+      await Linking.openURL(url);
     } catch (e) {
       Alert.alert('Error', e?.message || 'No se pudo abrir el grupo de WhatsApp');
     }
@@ -563,11 +564,16 @@ export default function ProfileScreen({ navigation }) {
           <View style={styles.communityCard}>
             <Text style={styles.section}>📣 Novedades EasyFutbol</Text>
             <Text style={styles.communityText}>
-              Únete al grupo de WhatsApp para enterarte de todas las novedades, partidos y avisos.
+              Únete al grupo de tu ciudad para enterarte de todas las novedades, partidos y avisos.
             </Text>
-            <TouchableOpacity style={styles.communityBtn} onPress={openWhatsAppGroup} activeOpacity={0.85} accessibilityRole="link">
-              <Text style={styles.communityBtnText}>Entrar al grupo de WhatsApp</Text>
-            </TouchableOpacity>
+            <View style={styles.communityActions}>
+              <TouchableOpacity style={styles.communityBtn} onPress={() => openWhatsAppGroup(WHATSAPP_VALLADOLID_URL)} activeOpacity={0.85} accessibilityRole="link">
+                <Text style={styles.communityBtnText}>Grupo de Valladolid</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.communityBtnSecondary} onPress={() => openWhatsAppGroup(WHATSAPP_ASTURIAS_URL)} activeOpacity={0.85} accessibilityRole="link">
+                <Text style={styles.communityBtnSecondaryText}>Grupo de Asturias</Text>
+              </TouchableOpacity>
+            </View>
           </View>
 
           <View style={styles.achievementsCard}>
@@ -884,8 +890,11 @@ const styles = StyleSheet.create({
   modalPrimaryBtnText:{ color:'#000', fontWeight:'900', textAlign:'center' },
   communityCard:{ backgroundColor:'rgba(17,21,27,0.94)', borderRadius:radii.large, padding:spacing(2), borderWidth:1, borderColor:colors.border, marginBottom:spacing(2) },
   communityText:{ color:'#bdbdbd', fontSize:13, lineHeight:20, marginBottom:14 },
+  communityActions:{ gap:spacing(1) },
   communityBtn:{ minHeight:layout.minTouchTarget, backgroundColor:'#25D366', paddingVertical:14, paddingHorizontal:16, borderRadius:radii.medium, justifyContent:'center' },
   communityBtnText:{ color:'#000', fontWeight:'900', textAlign:'center' },
+  communityBtnSecondary:{ minHeight:layout.minTouchTarget, backgroundColor:'rgba(37,211,102,0.10)', borderWidth:1, borderColor:'rgba(37,211,102,0.45)', paddingVertical:14, paddingHorizontal:16, borderRadius:radii.medium, justifyContent:'center' },
+  communityBtnSecondaryText:{ color:'#69E99A', fontWeight:'900', textAlign:'center' },
   achievementsCard:{ backgroundColor:'rgba(17,21,27,0.94)', borderRadius:radii.large, padding:spacing(2), borderWidth:1, borderColor:colors.border, marginBottom:spacing(2) },
   achievementsBtn:{ minHeight:layout.minTouchTarget, backgroundColor:ORANGE, paddingVertical:14, paddingHorizontal:16, borderRadius:radii.medium, justifyContent:'center' },
   achievementsBtnText:{ color:'#000', fontWeight:'900', textAlign:'center' },

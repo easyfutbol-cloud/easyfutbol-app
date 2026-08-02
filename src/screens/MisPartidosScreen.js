@@ -487,13 +487,25 @@ export default function MisPartidosScreen({ navigation }) {
       return;
     }
 
+    const startsAt =
+      entry?.starts_at ||
+      entry?.start_date ||
+      selectedMatch?.starts_at ||
+      selectedMatch?.start_date ||
+      selectedMatch?.date;
+    const hoursUntilMatch = (new Date(startsAt).getTime() - Date.now()) / 36e5;
+    const refundEligible = Number.isFinite(hoursUntilMatch) && hoursUntilMatch > 8;
+    const policyMessage = refundEligible
+      ? 'Como quedan más de 8 horas, se devolverá el EasyPass utilizado.'
+      : 'Quedan 8 horas o menos. La entrada se cancelará, pero el EasyPass utilizado no se devolverá.';
+
     Alert.alert(
       'Cancelar entrada',
-      '¿Quieres cancelar solo esta entrada? Las demás entradas del partido seguirán activas.',
+      `¿Quieres cancelar solo esta entrada? Las demás entradas del partido seguirán activas.\n\n${policyMessage}`,
       [
         { text: 'No', style: 'cancel' },
         {
-          text: 'Sí, cancelar',
+          text: refundEligible ? 'Sí, cancelar' : 'Cancelar sin devolución',
           style: 'destructive',
           onPress: async () => {
             try {
@@ -504,7 +516,7 @@ export default function MisPartidosScreen({ navigation }) {
                 return;
               }
 
-              await cancelInscriptionRequest(inscriptionId, token);
+              const response = await cancelInscriptionRequest(inscriptionId, token);
 
               setMatches((currentMatches) =>
                 currentMatches
@@ -554,12 +566,13 @@ export default function MisPartidosScreen({ navigation }) {
                 };
               });
 
-              Alert.alert('Entrada cancelada', 'Se ha cancelado solo esta entrada.');
+              Alert.alert('Entrada cancelada', response?.data?.msg || 'Se ha cancelado solo esta entrada.');
               loadMatches();
             } catch (error) {
               const message =
                 error?.response?.data?.message ||
                 error?.response?.data?.error ||
+                error?.response?.data?.msg ||
                 'No se ha podido cancelar la entrada. Inténtalo de nuevo.';
 
               Alert.alert('No se pudo cancelar', message);

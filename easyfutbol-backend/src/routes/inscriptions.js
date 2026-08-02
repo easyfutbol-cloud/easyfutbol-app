@@ -15,6 +15,10 @@ function refundPercent(startsAtISO) {
   return diffH > 8 ? 100 : 0;
 }
 
+function hasMatchStarted(startsAtISO) {
+  return new Date(startsAtISO).getTime() <= Date.now();
+}
+
 function formatMatchDateTime(startsAtISO) {
   const date = new Date(startsAtISO);
   const day = date.toLocaleDateString('es-ES', { weekday: 'long' });
@@ -327,10 +331,11 @@ router.patch('/inscriptions/:id/cancel', requireAuth, async (req, res) => {
       return res.status(400).json({ ok: false, msg: 'Esta entrada no se puede cancelar' });
     }
 
-    const pct = refundPercent(row.starts_at);
-    if (pct === 0) {
-      return res.status(400).json({ ok: false, msg: 'Solo se devuelve si cancelas con más de 8 horas de antelación' });
+    if (hasMatchStarted(row.starts_at)) {
+      return res.status(400).json({ ok: false, msg: 'No se puede cancelar una entrada después de comenzar el partido' });
     }
+
+    const pct = refundPercent(row.starts_at);
 
     const isEasyPassInscription = !row.stripe_session_id && (
       row.payment_type === 'easypass' ||
@@ -348,23 +353,25 @@ router.patch('/inscriptions/:id/cancel', requireAuth, async (req, res) => {
       const locationName = await getLocationName(conn, locationId, fallbackLocation.name);
       const refundAmount = Math.max(1, Number(row.easypass_cost || 1));
 
-      await conn.query(
-        `INSERT INTO user_easypass_balances (user_id, location_id, balance)
-         VALUES (?, ?, ?)
-         ON DUPLICATE KEY UPDATE balance = balance + VALUES(balance)`,
-        [userId, locationId, refundAmount]
-      );
+      if (pct > 0) {
+        await conn.query(
+          `INSERT INTO user_easypass_balances (user_id, location_id, balance)
+           VALUES (?, ?, ?)
+           ON DUPLICATE KEY UPDATE balance = balance + VALUES(balance)`,
+          [userId, locationId, refundAmount]
+        );
 
-      await conn.query(
-        'UPDATE users SET easypass_balance = COALESCE(easypass_balance, 0) + ? WHERE id=?',
-        [refundAmount, userId]
-      );
+        await conn.query(
+          'UPDATE users SET easypass_balance = COALESCE(easypass_balance, 0) + ? WHERE id=?',
+          [refundAmount, userId]
+        );
 
-      await conn.query(
-        `INSERT INTO easypass_transactions (user_id, type, amount, description, event_id, created_at)
-         VALUES (?, 'refund', ?, ?, ?, NOW())`,
-        [userId, refundAmount, `Cancelación de 1 entrada con devolución de ${refundAmount} EasyPass de ${locationName}`, row.match_id]
-      );
+        await conn.query(
+          `INSERT INTO easypass_transactions (user_id, type, amount, description, event_id, created_at)
+           VALUES (?, 'refund', ?, ?, ?, NOW())`,
+          [userId, refundAmount, `Cancelación de 1 entrada con devolución de ${refundAmount} EasyPass de ${locationName}`, row.match_id]
+        );
+      }
 
       await conn.query(
         'UPDATE inscriptions SET status="cancelled" WHERE id=? AND user_id=? AND status="confirmed"',
@@ -385,9 +392,11 @@ router.patch('/inscriptions/:id/cancel', requireAuth, async (req, res) => {
 
       return res.json({
         ok: true,
-        msg: `Entrada cancelada y ${refundAmount} EasyPass de ${locationName} devuelto`,
+        msg: pct > 0
+          ? `Entrada cancelada y ${refundAmount} EasyPass de ${locationName} devuelto`
+          : 'Entrada cancelada. Al quedar 8 horas o menos, el EasyPass no se devuelve.',
         pct,
-        refundedEasyPass: refundAmount,
+        refundedEasyPass: pct > 0 ? refundAmount : 0,
         location_id: locationId,
         locationId,
         locationName,
@@ -397,6 +406,17 @@ router.patch('/inscriptions/:id/cancel', requireAuth, async (req, res) => {
 
     if (!row.stripe_session_id) {
       return res.status(400).json({ ok: false, msg: 'No se encontró el pago en Stripe ni se pudo detectar como EasyPass' });
+    }
+
+    if (pct === 0) {
+      await conn.beginTransaction();
+      await conn.query(
+        'UPDATE inscriptions SET status="cancelled" WHERE id=? AND user_id=? AND status="confirmed"',
+        [inscriptionId, userId]
+      );
+      await conn.query('UPDATE matches SET spots_taken = GREATEST(spots_taken - 1, 0) WHERE id=?', [row.match_id]);
+      await conn.commit();
+      return res.json({ ok: true, msg: 'Entrada cancelada sin reembolso al quedar 8 horas o menos.', pct: 0, refundedAmount: 0 });
     }
 
     const session = await stripe.checkout.sessions.retrieve(row.stripe_session_id, {
@@ -474,6 +494,10 @@ router.post('/matches/:id/cancel', requireAuth, async (req, res) => {
     const inscriptionCount = Number(row.inscription_count || 0);
     if (inscriptionCount <= 0) return res.status(404).json({ ok:false, msg:'No estabas inscrito' });
 
+    if (hasMatchStarted(row.starts_at)) {
+      return res.status(400).json({ ok:false, msg:'No se puede cancelar después de comenzar el partido' });
+    }
+
     // Si está pending (no pagado), borrar y liberar plaza si se había sumado (no debería)
     if (row.status === 'pending') {
       await conn.beginTransaction();
@@ -496,10 +520,6 @@ router.post('/matches/:id/cancel', requireAuth, async (req, res) => {
 
       if (isEasyPassInscription) {
         const pct = refundPercent(row.starts_at);
-        if (pct === 0) {
-          return res.status(400).json({ ok:false, msg:'Solo se devuelve el EasyPass si cancelas con más de 8 horas de antelación' });
-        }
-
         await conn.beginTransaction();
 
         const fallbackLocation = getFallbackLocationFromCity(row.city);
@@ -509,25 +529,26 @@ router.post('/matches/:id/cancel', requireAuth, async (req, res) => {
         const refundAmount = easyPassCost * inscriptionCount;
 
         // devolver EasyPass a la localización correcta del partido
-        await conn.query(
-          `INSERT INTO user_easypass_balances (user_id, location_id, balance)
-           VALUES (?, ?, ?)
-           ON DUPLICATE KEY UPDATE balance = balance + VALUES(balance)`,
-          [userId, locationId, refundAmount]
-        );
+        if (pct > 0) {
+          await conn.query(
+            `INSERT INTO user_easypass_balances (user_id, location_id, balance)
+             VALUES (?, ?, ?)
+             ON DUPLICATE KEY UPDATE balance = balance + VALUES(balance)`,
+            [userId, locationId, refundAmount]
+          );
 
-        // mantener saldo global antiguo sincronizado como total visible/compatibilidad
-        await conn.query(
-          'UPDATE users SET easypass_balance = COALESCE(easypass_balance, 0) + ? WHERE id=?',
-          [refundAmount, userId]
-        );
+          // mantener saldo global antiguo sincronizado como total visible/compatibilidad
+          await conn.query(
+            'UPDATE users SET easypass_balance = COALESCE(easypass_balance, 0) + ? WHERE id=?',
+            [refundAmount, userId]
+          );
 
-        // registrar devolución
-        await conn.query(
-          `INSERT INTO easypass_transactions (user_id, type, amount, description, event_id, created_at)
-           VALUES (?, 'refund', ?, ?, ?, NOW())`,
-          [userId, refundAmount, `Cancelación con devolución de ${refundAmount} EasyPass de ${locationName}`, matchId]
-        );
+          await conn.query(
+            `INSERT INTO easypass_transactions (user_id, type, amount, description, event_id, created_at)
+             VALUES (?, 'refund', ?, ?, ?, NOW())`,
+            [userId, refundAmount, `Cancelación con devolución de ${refundAmount} EasyPass de ${locationName}`, matchId]
+          );
+        }
 
         // cancelar inscripción
         await conn.query(
@@ -550,9 +571,11 @@ router.post('/matches/:id/cancel', requireAuth, async (req, res) => {
 
         return res.json({
           ok:true,
-          msg:`Cancelada y ${refundAmount} EasyPass de ${locationName} devuelto(s)`,
+          msg: pct > 0
+            ? `Cancelada y ${refundAmount} EasyPass de ${locationName} devuelto(s)`
+            : 'Entradas canceladas. Al quedar 8 horas o menos, los EasyPass no se devuelven.',
           pct,
-          refundedEasyPass: refundAmount,
+          refundedEasyPass: pct > 0 ? refundAmount : 0,
           location_id: locationId,
           locationId,
           locationName,
@@ -573,7 +596,11 @@ router.post('/matches/:id/cancel', requireAuth, async (req, res) => {
         return res.status(400).json({ ok:false, msg:'No se encontró el pago en Stripe ni se pudo detectar como EasyPass' });
       }
       if (pct === 0) {
-        return res.status(400).json({ ok:false, msg:'Solo se devuelve el pago si cancelas con más de 8 horas de antelación' });
+        await conn.beginTransaction();
+        await conn.query('UPDATE inscriptions SET status="cancelled" WHERE user_id=? AND match_id=? AND status NOT IN ("cancelled","canceled")', [userId, matchId]);
+        await conn.query('UPDATE matches SET spots_taken = GREATEST(spots_taken - ?, 0) WHERE id=?', [inscriptionCount, matchId]);
+        await conn.commit();
+        return res.json({ ok:true, msg:`Canceladas ${inscriptionCount} plaza(s) sin reembolso al quedar 8 horas o menos.`, pct: 0, refundedAmount: 0 });
       }
 
       // Obtener charge desde la sesión

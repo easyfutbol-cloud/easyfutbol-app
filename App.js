@@ -60,6 +60,7 @@ import WorldCupSelectTeamScreen from './src/screens/worldcup/WorldCupSelectTeamS
 import HomeTournamentScreen from './src/screens/tournament/hometournamentscreen';
 import TournamentDetailScreen from './src/screens/tournament/tournamentdetailscreen';
 import TournamentRulesScreen from './src/screens/tournament/TournamentRulesScreen';
+import FaqScreen from './src/screens/FaqScreen';
 
 // Notificaciones (opcional)
 let Notifications = null;
@@ -562,6 +563,7 @@ function AppMenu({ currentRouteName }) {
     { label: 'Mundial EasyFutbol', screen: 'WorldCup' },
     { label: 'Estadísticas', screen: 'Stats' },
     { label: 'Perfil', screen: 'Profile' },
+    { label: 'Preguntas frecuentes', screen: 'Faq' },
   ];
 
   const adminItems = [
@@ -616,6 +618,7 @@ function AppMenu({ currentRouteName }) {
             ]}
           >
             <Text style={styles.panelTitle}>Navegación</Text>
+            <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.menuScrollContent}>
 
             {baseItems.map((it) => (
               <Pressable key={it.screen} onPress={() => goTo(it.screen)} style={styles.item}>
@@ -648,6 +651,7 @@ function AppMenu({ currentRouteName }) {
                 <Text style={styles.privacyLink}>Política de privacidad</Text>
               </Pressable>
             </View>
+            </ScrollView>
           </Pressable>
         </Pressable>
       </Modal>
@@ -675,6 +679,7 @@ function AppShell({ currentRouteName }) {
         <Stack.Screen name="Access" component={AccessScreen} />
         <Stack.Screen name="VerifyEmail" component={VerifyEmailScreen} />
         <Stack.Screen name="PrivacyPolicy" component={PrivacyPolicyScreen} />
+        <Stack.Screen name="Faq" component={FaqScreen} />
         <Stack.Screen name="Match" component={MatchScreen} />
         <Stack.Screen name="Matchs" component={MatchsScreen} />
         <Stack.Screen name="MyMatches" component={MyMatchesScreen} />
@@ -845,6 +850,10 @@ const styles = StyleSheet.create({
     padding: 12,
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.06)',
+    maxHeight: '90%',
+  },
+  menuScrollContent: {
+    paddingBottom: 4,
   },
   panelTitle: {
     color: '#fff',

@@ -181,17 +181,21 @@ export default function MyMatchesScreen() {
       Alert.alert('Hecho', data.msg || 'Inscripción cancelada');
       load();
     } catch (e) {
-      Alert.alert('No se pudo cancelar', e.message || 'Inténtalo de nuevo');
+      Alert.alert('No se pudo cancelar', e?.response?.data?.msg || e.message || 'Inténtalo de nuevo');
     }
   };
 
-  const handleCancelPress = (matchId, total) => {
+  const handleCancelPress = (matchId, total, startsAt) => {
     const title = 'Cancelar entrada';
+    const hoursUntilMatch = (new Date(startsAt).getTime() - Date.now()) / 36e5;
+    const refundMessage = hoursUntilMatch > 8
+      ? 'Como quedan más de 8 horas, se devolverá el EasyPass utilizado.'
+      : 'Quedan 8 horas o menos. Puedes cancelar, pero el EasyPass utilizado no se devolverá.';
     const body = total && total > 1
-      ? 'Vas a cancelar 1 de tus entradas para este partido.\n\nSi cancelas con menos de 6 horas de antelación no se devolverá el dinero.'
-      : 'Vas a cancelar tu entrada para este partido.\n\nSi cancelas con menos de 6 horas de antelación no se devolverá el dinero.';
+      ? `Vas a cancelar tus entradas para este partido.\n\n${refundMessage}`
+      : `Vas a cancelar tu entrada para este partido.\n\n${refundMessage}`;
 
-    const confirmLabel = total && total > 1 ? 'Sí, cancelar 1 entrada' : 'Sí, cancelar';
+    const confirmLabel = hoursUntilMatch > 8 ? 'Sí, cancelar' : 'Cancelar sin devolución';
 
     Alert.alert(
       title,
@@ -244,11 +248,11 @@ export default function MyMatchesScreen() {
         {canCancel && (
           <TouchableOpacity
             style={styles.btnOutline}
-            onPress={() => handleCancelPress(item.match_id, total)}
+            onPress={() => handleCancelPress(item.match_id, total, item.starts_at)}
             accessibilityRole="button"
           >
             <Text style={styles.btnOutlineText}>
-              {total > 1 ? 'Cancelar 1 entrada' : 'Cancelar entrada'}
+              {total > 1 ? 'Cancelar entradas' : 'Cancelar entrada'}
             </Text>
           </TouchableOpacity>
         )}
