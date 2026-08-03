@@ -10,7 +10,6 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as ImagePicker from 'expo-image-picker';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useFocusEffect, CommonActions } from '@react-navigation/native';
-import easypassLogo from '../../assets/easypass-logo.png';
 import ScreenHeader from '../components/ScreenHeader';
 import { Ionicons } from '@expo/vector-icons';
 
@@ -421,6 +420,13 @@ export default function ProfileScreen({ navigation }) {
 
   // ------- derivados
   const user = data?.user || null;
+  const subscriptionCode = String(user?.subscription_plan || '').toLowerCase();
+  const subscriptionLabel = subscriptionCode === 'pro'
+    ? 'EasyFutbol Pro'
+    : subscriptionCode === 'plus'
+      ? 'EasyFutbol Plus'
+      : 'Plan gratuito';
+  const hasSubscription = subscriptionCode === 'plus' || subscriptionCode === 'pro';
   const hasGoldenName = Boolean(user?.has_golden_name || user?.is_plus || ['plus','pro'].includes(user?.subscription_plan));
   const competitivePlayer = competitiveProfile?.player;
   const competitiveStanding = competitiveProfile?.performance?.standing;
@@ -530,6 +536,55 @@ export default function ProfileScreen({ navigation }) {
             <Text style={styles.profileHeroMeta}>Jugador #{user?.id || '—'}</Text>
           </View>
 
+          <LinearGradient
+            colors={hasSubscription ? ['rgba(67,49,11,0.98)', 'rgba(17,21,27,0.98)'] : ['rgba(32,20,13,0.98)', 'rgba(17,21,27,0.98)']}
+            style={styles.membershipCard}
+          >
+            <View style={styles.membershipTop}>
+              <View style={styles.membershipIcon}>
+                <Ionicons name={subscriptionCode === 'pro' ? 'diamond' : hasSubscription ? 'star' : 'sparkles-outline'} size={24} color="#F4C95D" />
+              </View>
+              <View style={styles.membershipCopy}>
+                <Text style={styles.membershipEyebrow}>EASYPASS Y SUSCRIPCIÓN</Text>
+                <Text style={styles.membershipTitle}>{subscriptionLabel}</Text>
+                <Text style={styles.membershipDescription}>
+                  {hasSubscription
+                    ? 'Tu plan está activo. Consulta sus ventajas o gestiona la renovación.'
+                    : 'Activa Plus o Pro para conseguir EasyPass mensuales y ventajas exclusivas.'}
+                </Text>
+              </View>
+              <View style={[styles.membershipStatus, hasSubscription && styles.membershipStatusActive]}>
+                <Text style={[styles.membershipStatusText, hasSubscription && styles.membershipStatusTextActive]}>
+                  {hasSubscription ? 'ACTIVO' : 'FREE'}
+                </Text>
+              </View>
+            </View>
+
+            <View style={styles.membershipBalance}>
+              <View>
+                <Text style={styles.membershipBalanceLabel}>EASYPASS DISPONIBLES</Text>
+                <Text style={styles.membershipBalanceValue}>{easyPassLoading ? '…' : easyPass}</Text>
+              </View>
+              <View style={styles.membershipBenefit}>
+                <Ionicons name="location-outline" size={17} color={colors.orange} />
+                <Text style={styles.membershipBenefitText}>
+                  {easyPassBalances.length ? `${easyPassBalances.length} ${easyPassBalances.length === 1 ? 'ciudad' : 'ciudades'}` : 'Sin saldo por ciudad'}
+                </Text>
+              </View>
+            </View>
+
+            <View style={styles.membershipActions}>
+              <TouchableOpacity style={styles.membershipPrimary} onPress={() => navigation.navigate('Plus')} activeOpacity={0.84} accessibilityRole="button">
+                <Ionicons name="card-outline" size={18} color="#171109" />
+                <Text style={styles.membershipPrimaryText}>{hasSubscription ? 'Gestionar plan' : 'Ver Plus y Pro'}</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.membershipSecondary} onPress={() => navigation.navigate('EasyPass')} activeOpacity={0.84} accessibilityRole="button">
+                <Ionicons name="ticket-outline" size={18} color={colors.white} />
+                <Text style={styles.membershipSecondaryText}>EasyPass</Text>
+              </TouchableOpacity>
+            </View>
+          </LinearGradient>
+
           <LinearGradient colors={competitivePlayer ? ['rgba(31,27,16,.97)','rgba(15,18,23,.97)'] : ['rgba(20,23,28,.96)','rgba(13,15,19,.96)']} style={styles.competitiveCard}>
             <View style={styles.competitiveTop}>
               <View style={[styles.competitiveShield,{ borderColor:competitivePlayer?.color_hex || colors.border,backgroundColor:competitivePlayer?.color_hex ? `${competitivePlayer.color_hex}18` : colors.surfaceElevated }]}><Ionicons name={competitivePlayer ? 'shield-checkmark' : 'lock-closed'} size={27} color={competitivePlayer?.color_hex || colors.textSubtle} /></View>
@@ -590,51 +645,6 @@ export default function ProfileScreen({ navigation }) {
                 <TouchableOpacity style={styles.editBtn} onPress={() => setEditing(true)}><Text style={styles.editText}>Editar perfil</Text></TouchableOpacity>
               </>
             )}
-          </View>
-
-          {/* EasyPass */}
-          <View style={styles.passCard}>
-            <Text style={styles.section}>🎟️ EasyPass</Text>
-
-            <View style={styles.passHeader}>
-              <View style={styles.passLogoWrap}>
-                <Image source={easypassLogo} style={styles.passLogo} resizeMode="cover" />
-              </View>
-              <View style={styles.passHeaderText}>
-                <Text style={styles.passValue}>{easyPassLoading ? '...' : easyPass}</Text>
-                <Text style={styles.passHint}>Saldo total antiguo. Abajo puedes verlos separados por ciudad.</Text>
-              </View>
-            </View>
-
-            <View style={styles.passLocationBox}>
-              <Text style={styles.passLocationTitle}>Tus EasyPass por localización</Text>
-              <Text style={styles.passLocationNote}>
-                Cada EasyPass solo puede usarse en partidos de su propia ciudad.
-              </Text>
-
-              {easyPassLoading ? (
-                <ActivityIndicator color={ORANGE} style={{ marginTop: 12 }} />
-              ) : easyPassBalances.length > 0 ? (
-                easyPassBalances.map((item) => (
-                  <View key={item.locationId || item.locationName} style={styles.passLocationRow}>
-                    <View>
-                      <Text style={styles.passLocationName}>{item.locationName}</Text>
-                      <Text style={styles.passLocationMeta}>Válidos solo para {item.locationName}</Text>
-                    </View>
-                    <View style={styles.passLocationBadge}>
-                      <Text style={styles.passLocationAmount}>{Number(item.balance || 0)}</Text>
-                      <Text style={styles.passLocationSmall}>EP</Text>
-                    </View>
-                  </View>
-                ))
-              ) : (
-                <Text style={styles.passLocationEmpty}>Todavía no tienes EasyPass por ciudad.</Text>
-              )}
-            </View>
-
-            <TouchableOpacity style={styles.passBtn} onPress={buyEasyPass} activeOpacity={0.85} accessibilityRole="button">
-              <Text style={styles.passBtnText}>Adquirir más</Text>
-            </TouchableOpacity>
           </View>
 
           <View style={styles.communityCard}>
@@ -903,6 +913,27 @@ const styles = StyleSheet.create({
   plusBadge:{ backgroundColor:'#F4C95D', borderRadius:radii.pill, paddingHorizontal:7, paddingVertical:3, marginTop:spacing(1.5) },
   plusBadgeText:{ color:'#161109', fontSize:8, fontWeight:'900', letterSpacing:0.8 },
   profileHeroMeta:{ color:colors.orange, ...typography.overline, marginTop:spacing(0.5) },
+  membershipCard:{ borderRadius:radii.xlarge,padding:spacing(2),borderWidth:1,borderColor:'rgba(244,201,93,0.34)',marginBottom:spacing(2) },
+  membershipTop:{ flexDirection:'row',alignItems:'flex-start',gap:spacing(1.25) },
+  membershipIcon:{ width:48,height:48,borderRadius:16,backgroundColor:'rgba(244,201,93,0.12)',borderWidth:1,borderColor:'rgba(244,201,93,0.28)',alignItems:'center',justifyContent:'center' },
+  membershipCopy:{ flex:1 },
+  membershipEyebrow:{ color:'#F4C95D',...typography.overline },
+  membershipTitle:{ color:colors.white,...typography.heading,marginTop:3 },
+  membershipDescription:{ color:colors.textMuted,...typography.caption,marginTop:4 },
+  membershipStatus:{ borderRadius:radii.pill,backgroundColor:colors.surfaceElevated,paddingHorizontal:8,paddingVertical:5 },
+  membershipStatusActive:{ backgroundColor:'rgba(57,217,138,0.14)',borderWidth:1,borderColor:'rgba(57,217,138,0.35)' },
+  membershipStatusText:{ color:colors.textSubtle,fontSize:8,fontWeight:'900',letterSpacing:0.7 },
+  membershipStatusTextActive:{ color:colors.success },
+  membershipBalance:{ minHeight:76,flexDirection:'row',alignItems:'center',justifyContent:'space-between',gap:spacing(1),backgroundColor:'rgba(0,0,0,0.22)',borderRadius:radii.medium,borderWidth:1,borderColor:colors.border,padding:spacing(1.25),marginTop:spacing(1.5) },
+  membershipBalanceLabel:{ color:colors.textSubtle,...typography.overline,fontSize:9 },
+  membershipBalanceValue:{ color:colors.white,fontSize:30,fontWeight:'900',lineHeight:34,marginTop:2 },
+  membershipBenefit:{ flexDirection:'row',alignItems:'center',gap:5,backgroundColor:'rgba(255,90,0,0.09)',borderRadius:radii.pill,paddingHorizontal:10,paddingVertical:7 },
+  membershipBenefitText:{ color:colors.textMuted,fontSize:11,fontWeight:'800' },
+  membershipActions:{ flexDirection:'row',gap:spacing(1),marginTop:spacing(1.25) },
+  membershipPrimary:{ flex:1,minHeight:48,flexDirection:'row',alignItems:'center',justifyContent:'center',gap:7,backgroundColor:'#F4C95D',borderRadius:radii.medium },
+  membershipPrimaryText:{ color:'#171109',fontWeight:'900',fontSize:13 },
+  membershipSecondary:{ minWidth:112,minHeight:48,flexDirection:'row',alignItems:'center',justifyContent:'center',gap:6,borderWidth:1,borderColor:colors.border,backgroundColor:'rgba(255,255,255,0.04)',borderRadius:radii.medium },
+  membershipSecondaryText:{ color:colors.white,fontWeight:'900',fontSize:13 },
   competitiveCard:{ borderRadius:radii.xlarge,padding:spacing(2),borderWidth:1,borderColor:'rgba(255,212,90,.24)',marginBottom:spacing(2) },competitiveTop:{ flexDirection:'row',alignItems:'center',gap:spacing(1.25) },competitiveShield:{ width:54,height:54,borderRadius:18,borderWidth:1,alignItems:'center',justifyContent:'center' },competitiveEyebrow:{ color:'#FFD45A',...typography.overline },competitiveDivision:{ ...typography.heading,marginTop:3 },competitiveMeta:{ color:colors.textMuted,...typography.caption,marginTop:3 },competitiveMetrics:{ flexDirection:'row',justifyContent:'space-around',paddingVertical:spacing(1.25),marginTop:spacing(1.25),borderTopWidth:1,borderTopColor:colors.border },competitiveValue:{ color:colors.white,fontSize:20,fontWeight:'900',textAlign:'center' },competitiveLabel:{ color:colors.textSubtle,fontSize:10,textAlign:'center',marginTop:2 },competitiveTrack:{ height:7,borderRadius:99,backgroundColor:colors.surfaceElevated,overflow:'hidden' },competitiveFill:{ height:'100%',borderRadius:99 },profileBadges:{ flexDirection:'row',flexWrap:'wrap',gap:6,marginTop:spacing(1.25) },profileBadge:{ flexDirection:'row',alignItems:'center',gap:5,backgroundColor:'rgba(255,255,255,.05)',borderRadius:99,paddingHorizontal:8,paddingVertical:6 },profileBadgeText:{ color:colors.textMuted,fontSize:10,fontWeight:'700' },competitiveActions:{ flexDirection:'row',gap:9,marginTop:spacing(1.5) },competitivePrimary:{ flex:1,minHeight:46,borderRadius:radii.medium,backgroundColor:'#FFD45A',alignItems:'center',justifyContent:'center' },competitivePrimaryText:{ color:'#171109',fontWeight:'900' },competitiveSecondary:{ minWidth:100,minHeight:46,borderRadius:radii.medium,borderWidth:1,borderColor:colors.border,alignItems:'center',justifyContent:'center' },competitiveSecondaryText:{ color:colors.white,fontWeight:'800' },
 
   panel:{ backgroundColor:'rgba(17,21,27,0.94)', borderRadius:radii.large, padding:spacing(2), borderWidth:1, borderColor:colors.border, marginBottom:spacing(2) },

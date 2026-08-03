@@ -116,6 +116,23 @@ export default function PlusScreen({ navigation }) {
           )}
         </LinearGradient>
 
+        <View style={styles.billingNotice} accessibilityRole="summary">
+          <View style={styles.billingNoticeIcon}>
+            <Ionicons name="calendar" size={24} color="#F4C95D" />
+          </View>
+          <View style={styles.billingNoticeCopy}>
+            <Text style={styles.billingNoticeEyebrow}>IMPORTANTE · FACTURACIÓN</Text>
+            <Text style={styles.billingNoticeTitle}>Se cobra el mes completo</Text>
+            <Text style={styles.billingNoticeText}>
+              Al suscribirte se cobra inmediatamente el precio mensual completo, independientemente del día del mes. No se prorratea.
+            </Text>
+            <View style={styles.billingRenewalRow}>
+              <Ionicons name="repeat" size={17} color={colors.orange} />
+              <Text style={styles.billingRenewalText}>El siguiente cobro y todos los posteriores se realizarán el día 1 de cada mes.</Text>
+            </View>
+          </View>
+        </View>
+
         <Text style={styles.sectionEyebrow}>ELIGE TU NIVEL</Text>
         <Text style={styles.sectionTitle}>Plus o Pro</Text>
         <View style={styles.planGrid}>
@@ -135,6 +152,12 @@ export default function PlusScreen({ navigation }) {
                 <Text style={styles.planBenefit}>✓ Cancelación hasta 4 horas antes</Text>
                 <Text style={styles.planBenefit}>✓ {isPro ? 'Acceso permanente al competitivo' : 'Primera temporada competitiva gratis'}</Text>
                 {isPro ? <Text style={styles.planBenefit}>✓ Reserva anticipada de partidos</Text> : null}
+                {!isCurrent ? (
+                  <View style={styles.planBillingNote}>
+                    <Ionicons name="information-circle" size={17} color="#F4C95D" />
+                    <Text style={styles.planBillingNoteText}>Cobro completo al contratar · renovaciones el día 1</Text>
+                  </View>
+                ) : null}
                 {!isCurrent ? (
                   <TouchableOpacity
                     style={[styles.planButton, isPro && styles.proPlanButton, !plan.checkout_available && styles.planButtonDisabled]}
@@ -165,7 +188,7 @@ export default function PlusScreen({ navigation }) {
         </View>
 
         <Text style={styles.terms}>Suscripción mensual con renovación automática. Puedes gestionarla o cancelarla en cualquier momento desde Stripe; las ventajas permanecen activas hasta el final del periodo pagado.</Text>
-        <Text style={styles.terms}>El acceso comienza al contratar. Si te suscribes del día 2 al último día del mes, el primer cobro completo se realizará el próximo día 1, sin prorrata. Si te suscribes el día 1, el cobro será inmediato.</Text>
+        <Text style={styles.terms}>El acceso comienza al contratar y el primer cobro completo se realiza en ese momento, sin prorrateo. El siguiente cobro y los sucesivos se realizan el día 1 de cada mes.</Text>
         <Text style={styles.terms}>Política de juego limpio: cancelar con 4 horas o menos o no asistir genera un aviso. Con 3 avisos, las ventajas Plus quedan suspendidas hasta el mes siguiente y las reservas deberán realizarse con EasyPass normales.</Text>
       </ScrollView>
     </View>
@@ -197,6 +220,14 @@ const styles = StyleSheet.create({
   warningCounter: { color:'#F4C95D', ...typography.caption, marginTop:spacing(0.75), fontWeight:'900' },
   manageButton: { minHeight: layout.minTouchTarget, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: 'rgba(244,201,93,0.38)', borderRadius: radii.medium, marginTop: spacing(1.25) },
   manageButtonText: { color: '#F4C95D', ...typography.bodyStrong },
+  billingNotice: { flexDirection:'row',alignItems:'flex-start',gap:spacing(1.25),backgroundColor:'rgba(244,201,93,0.09)',borderWidth:1.5,borderColor:'rgba(244,201,93,0.50)',borderRadius:radii.large,padding:spacing(1.75),marginBottom:spacing(3) },
+  billingNoticeIcon: { width:46,height:46,borderRadius:15,backgroundColor:'rgba(244,201,93,0.13)',alignItems:'center',justifyContent:'center' },
+  billingNoticeCopy: { flex:1 },
+  billingNoticeEyebrow: { color:'#F4C95D',...typography.overline,fontSize:9 },
+  billingNoticeTitle: { color:colors.white,...typography.heading,marginTop:3 },
+  billingNoticeText: { color:colors.textMuted,...typography.body,marginTop:spacing(0.75) },
+  billingRenewalRow: { flexDirection:'row',alignItems:'flex-start',gap:7,backgroundColor:'rgba(0,0,0,0.20)',borderRadius:radii.medium,padding:spacing(1),marginTop:spacing(1) },
+  billingRenewalText: { flex:1,color:colors.white,...typography.caption },
   sectionEyebrow: { color: '#F4C95D', ...typography.overline },
   sectionTitle: { color: colors.white, ...typography.heading, marginTop: 3, marginBottom: spacing(1.5) },
   benefitsList: { gap: spacing(1) },
@@ -211,6 +242,8 @@ const styles = StyleSheet.create({
   planPrice: { color:'#F4C95D', fontSize:26, fontWeight:'900', marginVertical:spacing(1) },
   planPeriod: { color:'#D7C995', fontSize:13, fontWeight:'700' },
   planBenefit: { color:colors.textMuted, ...typography.caption, marginTop:5 },
+  planBillingNote: { flexDirection:'row',alignItems:'center',gap:6,backgroundColor:'rgba(244,201,93,0.08)',borderRadius:radii.small,padding:spacing(1),marginTop:spacing(1.25) },
+  planBillingNoteText: { flex:1,color:'#E7D9A6',fontSize:11,lineHeight:15,fontWeight:'800' },
   planButton: { minHeight:48, borderRadius:radii.medium, backgroundColor:'#F4C95D', alignItems:'center', justifyContent:'center', marginTop:spacing(1.5) },
   proPlanButton: { backgroundColor:'#FFB91F' },
   planButtonDisabled: { backgroundColor:colors.surfaceElevated, opacity:0.75 },

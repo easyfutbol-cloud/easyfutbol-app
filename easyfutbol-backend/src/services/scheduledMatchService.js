@@ -1,4 +1,5 @@
 import { pool } from '../config/db.js';
+import { markSchedulerFailure, markSchedulerSuccess, registerScheduler } from './operationalHealthService.js';
 
 async function publishNextScheduledMatch() {
   const conn = await pool.getConnection();
@@ -12,7 +13,7 @@ async function publishNextScheduledMatch() {
     );
     if (!job) {
       await conn.rollback();
-      return false;
+      return null;
     }
 
     await conn.query("UPDATE scheduled_match_publications SET status='publishing' WHERE id=?", [job.id]);
@@ -52,7 +53,7 @@ async function publishNextScheduledMatch() {
   } catch (error) {
     await conn.rollback();
     console.error('[SCHEDULED MATCHES] Error publicando:', error);
-    return false;
+    throw error;
   } finally {
     conn.release();
   }
@@ -64,12 +65,17 @@ let running = false;
 export function startScheduledMatchPublisher() {
   if (started) return;
   started = true;
+  registerScheduler('scheduled-match-publisher', { maxAgeSeconds: 3 * 60 });
   const run = async () => {
     if (running) return;
     running = true;
     try {
       let published = true;
       while (published) published = await publishNextScheduledMatch();
+      markSchedulerSuccess('scheduled-match-publisher');
+    } catch (error) {
+      markSchedulerFailure('scheduled-match-publisher', error);
+      console.error('[SCHEDULED MATCHES] Error del programador:', error?.message || error);
     } finally {
       running = false;
     }

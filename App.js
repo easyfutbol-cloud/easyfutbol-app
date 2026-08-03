@@ -23,12 +23,14 @@ import {
   createNavigationContainerRef,
 } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
+import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Application from 'expo-application';
 import Constants from 'expo-constants';
 import { api, setUnauthorizedHandler } from './src/api/client';
 import { menuController } from './src/navigation/menuController';
+import AppBottomNavigation from './src/components/AppBottomNavigation';
 
 // Screens
 import HomeScreen from './src/screens/HomeScreen';
@@ -48,6 +50,7 @@ import AdminMatchEditScreen from './src/screens/AdminMatchEditScreen';
 import AdminNotifyScreen from './src/screens/AdminNotifyScreen';
 import AdminEasyPassScreen from './src/screens/admineasypassscreen';
 import AdminDashboardScreen from './src/screens/AdminDashboardScreen';
+import AdminPanelScreen from './src/screens/AdminPanelScreen';
 import AdminUsersScreen from './src/screens/AdminUsersScreen';
 import EasyPassScreen from './src/screens/EasyPassScreen';
 import PlusScreen from './src/screens/PlusScreen';
@@ -553,27 +556,14 @@ function AppMenu({ currentRouteName }) {
   if (currentRouteName === 'Access' || currentRouteName === 'VerifyEmail') return null;
 
   const baseItems = [
-    { label: 'Inicio', screen: 'Home' },
-    { label: 'Partidos', screen: 'Matchs' },
-    { label: 'Mis partidos', screen: 'MisPartidos' },
     { label: 'Torneos', screen: 'HomeTournament' },
     { label: 'Estadísticas', screen: 'Stats' },
-    { label: 'Modo competitivo', screen: 'Competitive' },
-    { label: 'Perfil', screen: 'Profile' },
+    { label: 'Logros', screen: 'Achievements' },
     { label: 'Preguntas frecuentes', screen: 'Faq' },
   ];
 
   const adminItems = [
-    { label: 'Dashboard KPIs (Admin)', screen: 'AdminDashboard' },
-    { label: 'Administrar Partidos (Admin)', screen: 'AdminMatches' },
-    { label: 'Crear Partido (Admin)', screen: 'AdminCreateMatch' },
-    { label: 'Partidos programados (Admin)', screen: 'AdminScheduledMatches' },
-    { label: 'Stats Partido (Admin)', screen: 'AdminMatchStats' },
-    { label: 'Competitivo: valoraciones (Admin)', screen: 'AdminCompetitiveMatches' },
-    { label: 'Competitivo: temporadas (Admin)', screen: 'AdminCompetitiveSeasons' },
-    { label: 'Usuarios (Admin)', screen: 'AdminUsers' },
-    { label: 'Avisos (Admin)', screen: 'AdminNotify' },
-    { label: 'Control de EasyPass (Admin)', screen: 'AdminEasyPass' },
+    { label: 'Abrir panel de administración', screen: 'AdminPanel' },
   ];
 
   const goTo = (screen) => {
@@ -622,6 +612,7 @@ function AppMenu({ currentRouteName }) {
 
             {baseItems.map((it) => (
               <Pressable key={it.screen} onPress={() => goTo(it.screen)} style={styles.item}>
+                <Ionicons name={it.icon || 'chevron-forward-circle-outline'} size={19} color={ORANGE} />
                 <Text style={styles.itemText}>{it.label}</Text>
               </Pressable>
             ))}
@@ -633,6 +624,7 @@ function AppMenu({ currentRouteName }) {
                 </View>
                 {adminItems.map((it) => (
                   <Pressable key={it.screen} onPress={() => goTo(it.screen)} style={styles.item}>
+                    <Ionicons name="shield-checkmark-outline" size={19} color={ORANGE} />
                     <Text style={styles.itemText}>{it.label}</Text>
                   </Pressable>
                 ))}
@@ -697,6 +689,7 @@ function AppShell({ currentRouteName }) {
         <Stack.Screen name="AdminCompetitiveMatches" component={AdminCompetitiveMatchesScreen} />
         <Stack.Screen name="AdminCompetitiveEvaluation" component={AdminCompetitiveEvaluationScreen} />
         <Stack.Screen name="AdminCompetitiveSeasons" component={AdminCompetitiveSeasonsScreen} />
+        <Stack.Screen name="AdminPanel" component={AdminPanelScreen} />
         <Stack.Screen name="AdminDashboard" component={AdminDashboardScreen} />
         <Stack.Screen name="AdminMatches" component={AdminMatchesScreen} />
         <Stack.Screen name="AdminMatchEdit" component={AdminMatchEditScreen} />
@@ -709,6 +702,12 @@ function AppShell({ currentRouteName }) {
         <Stack.Screen name="AdminEasyPass" component={AdminEasyPassScreen} />
       </Stack.Navigator>
 
+      <AppBottomNavigation
+        currentRouteName={currentRouteName}
+        onNavigate={(routeName) => {
+          if (navigationRef.isReady() && routeName !== currentRouteName) navigationRef.navigate(routeName);
+        }}
+      />
       <AppMenu currentRouteName={currentRouteName} />
     </View>
   );
@@ -926,6 +925,9 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     borderRadius: 10,
     paddingHorizontal: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
   },
   itemText: {
     color: '#fff',

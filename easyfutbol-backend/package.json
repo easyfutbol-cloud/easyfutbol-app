@@ -8,6 +8,8 @@
     "start": "node src/index.js",
     "test": "node --test",
     "test:integration": "RUN_DB_INTEGRATION=1 node --test test/integration",
+    "ops:backup": "node scripts/backup-database.mjs",
+    "ops:monitor": "node scripts/check-production.mjs",
     "migrate": "node src/scripts/runMigrations.js",
     "migrate:status": "node src/scripts/runMigrations.js --status",
     "migrate:dry-run": "node src/scripts/runMigrations.js --dry-run",

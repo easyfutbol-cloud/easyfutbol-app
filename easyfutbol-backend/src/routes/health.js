@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { pool } from '../config/db.js';
+import { getSchedulerHealth } from '../services/operationalHealthService.js';
 
 const router = Router();
 
@@ -7,8 +8,10 @@ router.get('/health', async (_req, res) => {
   const startedAt = Date.now();
   try {
     await pool.query('SELECT 1 AS ok');
-    res.json({
-      ok: true,
+    const schedulers = getSchedulerHealth();
+    const schedulersHealthy = schedulers.every((scheduler) => scheduler.status !== 'down');
+    res.status(schedulersHealthy ? 200 : 503).json({
+      ok: schedulersHealthy,
       msg: 'ok',
       service: 'easyfutbol-api',
       db: 'up',
@@ -16,6 +19,7 @@ router.get('/health', async (_req, res) => {
       uptimeSeconds: Math.floor(process.uptime()),
       version: process.env.APP_VERSION || process.env.npm_package_version || 'unknown',
       timestamp: new Date().toISOString(),
+      schedulers,
     });
   } catch (error) {
     console.error('[HEALTH] Base de datos no disponible:', error?.message || error);

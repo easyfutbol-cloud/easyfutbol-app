@@ -4,6 +4,7 @@ import { pool } from '../config/db.js';
 import { qualifyReferralFromPurchase } from '../services/referralService.js';
 import { grantPlusTrialForCurrentSeason } from '../services/competitiveService.js';
 import { grantSubscriptionEasyPass } from '../services/subscriptionGrantService.js';
+import { getRenewalAlignmentUpdate } from '../services/subscriptionBillingService.js';
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 const endpointSecret = process.env.STRIPE_WEBHOOK_SECRET;
@@ -21,6 +22,12 @@ const getSubscriptionPeriod = (subscription) => {
     end: subscription?.current_period_end || item?.current_period_end || null,
   };
 };
+
+async function alignPaidSubscriptionToFirst(subscription) {
+  const update = getRenewalAlignmentUpdate(subscription);
+  if (!update) return subscription;
+  return stripe.subscriptions.update(subscription.id, update);
+}
 
 async function upsertPlusSubscription(conn, { userId, customerId, subscription }) {
   const period = getSubscriptionPeriod(subscription);
@@ -69,7 +76,9 @@ async function handleGenericSubscriptionEvent(event) {
     const userId = Number(object.metadata.userId || object.client_reference_id);
     const planCode = String(object.metadata.subscriptionPlan || '').toLowerCase();
     if (!userId || !object.subscription || !['plus','pro'].includes(planCode)) return true;
-    const subscription = await stripe.subscriptions.retrieve(object.subscription);
+    if (object.payment_status && object.payment_status !== 'paid') return true;
+    let subscription = await stripe.subscriptions.retrieve(object.subscription);
+    subscription = await alignPaidSubscriptionToFirst(subscription);
     const amount = planCode === 'pro' ? 4 : 1;
     const conn = await pool.getConnection();
     try {
@@ -135,7 +144,9 @@ async function handlePlusEvent(event) {
   if (event.type === 'checkout.session.completed' && object?.metadata?.kind === 'easyfutbol_plus') {
     const userId = Number(object.metadata.userId || object.client_reference_id);
     if (!userId || !object.subscription) return true;
-    const subscription = await stripe.subscriptions.retrieve(object.subscription);
+    if (object.payment_status && object.payment_status !== 'paid') return true;
+    let subscription = await stripe.subscriptions.retrieve(object.subscription);
+    subscription = await alignPaidSubscriptionToFirst(subscription);
     const conn = await pool.getConnection();
     try {
       await conn.beginTransaction();

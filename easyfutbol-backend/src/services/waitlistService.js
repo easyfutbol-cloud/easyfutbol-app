@@ -1,6 +1,7 @@
 import { pool } from '../config/db.js';
 import { sendPushNotification } from './pushService.js';
 import { getWaitlistOffersToCreate, WAITLIST_OFFER_MINUTES } from './waitlistPolicyService.js';
+import { markSchedulerFailure, markSchedulerSuccess, registerScheduler } from './operationalHealthService.js';
 
 const OFFER_MINUTES = WAITLIST_OFFER_MINUTES;
 
@@ -103,6 +104,7 @@ let processing = false;
 export function startWaitlistScheduler() {
   if (schedulerRunning) return;
   schedulerRunning = true;
+  registerScheduler('waitlist', { maxAgeSeconds: 3 * 60 });
 
   const run = async () => {
     if (processing) return;
@@ -117,7 +119,9 @@ export function startWaitlistScheduler() {
            AND (mw.status = 'waiting' OR (mw.status = 'offered' AND mw.offer_expires_at <= NOW()))`
       );
       for (const row of rows) await processWaitlistForMatch(Number(row.match_id));
+      markSchedulerSuccess('waitlist');
     } catch (error) {
+      markSchedulerFailure('waitlist', error);
       console.error('[WAITLIST] Error del programador:', error);
     } finally {
       processing = false;

@@ -81,7 +81,12 @@ router.post('/checkout', requireAuth, async (req, res) => {
           quantity: 1,
         };
 
-    const metadata = { kind: 'easyfutbol_plus', userId: String(userId) };
+    const billingConfig = getFirstDayBillingConfig();
+    const metadata = {
+      kind: 'easyfutbol_plus',
+      userId: String(userId),
+      renewalAnchor: billingConfig.renewalAnchor ? String(billingConfig.renewalAnchor) : '',
+    };
     const session = await stripe.checkout.sessions.create({
       mode: 'subscription',
       customer: existing?.stripe_customer_id || undefined,
@@ -89,7 +94,7 @@ router.post('/checkout', requireAuth, async (req, res) => {
       client_reference_id: String(userId),
       line_items: [lineItem],
       metadata,
-      subscription_data: { metadata, ...getFirstDayBillingConfig() },
+      subscription_data: { metadata },
       success_url: `${APP_BASE_URL}/pago-ok/?plus=1&session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${APP_BASE_URL}/pago-cancelado/?plus=1`,
     });

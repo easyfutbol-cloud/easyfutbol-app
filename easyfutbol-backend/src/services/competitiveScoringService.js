@@ -1,5 +1,6 @@
 import { pool } from '../config/db.js';
 import { syncCompetitiveMatch } from './competitiveEvaluationService.js';
+import { markSchedulerFailure, markSchedulerSuccess, registerScheduler } from './operationalHealthService.js';
 
 export async function scoreCompetitiveWeek(db, weekId, { force = false } = {}) {
   const [[week]] = await db.query(
@@ -109,15 +110,19 @@ export async function scoreDueCompetitiveWeeks(db=pool) {
 let schedulerStarted=false; let schedulerRunning=false; let lastMadridDate='';
 export function startCompetitiveScoringScheduler() {
   if (schedulerStarted) return; schedulerStarted=true;
+  registerScheduler('competitive-scoring', { maxAgeSeconds: 35 * 60 });
   const run=async()=>{
     if (schedulerRunning) return;
     const parts=new Intl.DateTimeFormat('en-CA',{ timeZone:'Europe/Madrid',weekday:'short',year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',hourCycle:'h23' }).formatToParts(new Date());
     const value=(type)=>parts.find((part)=>part.type===type)?.value;
     const madridDate=`${value('year')}-${value('month')}-${value('day')}`;
-    if (value('weekday')!=='Tue' || Number(value('hour'))<6 || lastMadridDate===madridDate) return;
+    if (value('weekday')!=='Tue' || Number(value('hour'))<6 || lastMadridDate===madridDate) {
+      markSchedulerSuccess('competitive-scoring');
+      return;
+    }
     schedulerRunning=true;
-    try { const results=await scoreDueCompetitiveWeeks(); if (results.every((result)=>!result.error)) lastMadridDate=madridDate; console.log('[COMPETITIVE SCORING]',results); }
-    catch(error) { console.error('[COMPETITIVE SCORING]',error); }
+    try { const results=await scoreDueCompetitiveWeeks(); if (results.every((result)=>!result.error)) { lastMadridDate=madridDate; markSchedulerSuccess('competitive-scoring'); } else { markSchedulerFailure('competitive-scoring', results.find((result)=>result.error)?.error); } console.log('[COMPETITIVE SCORING]',results); }
+    catch(error) { markSchedulerFailure('competitive-scoring', error); console.error('[COMPETITIVE SCORING]',error); }
     finally { schedulerRunning=false; }
   };
   run(); const timer=setInterval(run,15*60*1000); timer.unref?.();

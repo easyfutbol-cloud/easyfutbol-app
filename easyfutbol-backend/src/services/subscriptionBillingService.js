@@ -20,6 +20,17 @@ const nextMadridFirstTimestamp = (now = new Date()) => {
 };
 
 export const getFirstDayBillingConfig = (now = new Date()) => {
-  if (Number(madridParts(now).day)===1) return {};
-  return { billing_cycle_anchor:nextMadridFirstTimestamp(now),proration_behavior:'none' };
+  if (Number(madridParts(now).day)===1) return { renewalAnchor: null };
+  return { renewalAnchor: nextMadridFirstTimestamp(now) };
+};
+
+export const getRenewalAlignmentUpdate = (subscription, now = new Date()) => {
+  const renewalAnchor = Number(subscription?.metadata?.renewalAnchor || 0);
+  if (!renewalAnchor || renewalAnchor <= Math.floor(now.getTime() / 1000)) return null;
+  if (subscription?.metadata?.renewalAligned === 'true') return null;
+  return {
+    trial_end: renewalAnchor,
+    proration_behavior: 'none',
+    metadata: { renewalAligned: 'true' },
+  };
 };

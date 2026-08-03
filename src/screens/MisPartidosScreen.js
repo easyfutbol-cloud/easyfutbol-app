@@ -14,6 +14,7 @@ import {
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons } from '@expo/vector-icons';
+import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
 import { api } from '../api/client';
 import ScreenHeader from '../components/ScreenHeader';
@@ -632,6 +633,13 @@ export default function MisPartidosScreen({ navigation }) {
           style={styles.heroCard}
           imageStyle={styles.heroCardImage}
         >
+          <BlurView
+            intensity={14}
+            tint="dark"
+            experimentalBlurMethod="dimezisBlurView"
+            pointerEvents="none"
+            style={StyleSheet.absoluteFill}
+          />
           <LinearGradient
             colors={['rgba(8,10,14,0.24)', 'rgba(8,10,14,0.96)']}
             style={styles.heroCardContent}
@@ -877,6 +885,13 @@ export default function MisPartidosScreen({ navigation }) {
                 style={styles.matchCardBackground}
                 imageStyle={styles.matchCardImage}
               >
+              <BlurView
+                intensity={14}
+                tint="dark"
+                experimentalBlurMethod="dimezisBlurView"
+                pointerEvents="none"
+                style={StyleSheet.absoluteFill}
+              />
               <LinearGradient
                 colors={['rgba(8,10,14,0.24)', 'rgba(8,10,14,0.97)']}
                 style={styles.matchCardContent}

@@ -2,6 +2,7 @@
 
 import { pool } from '../config/db.js';
 import { sendPushNotification } from './pushService.js';
+import { markSchedulerFailure, markSchedulerSuccess, registerScheduler } from './operationalHealthService.js';
 
 function formatMatchHour(startsAtISO) {
   return new Date(startsAtISO).toLocaleTimeString('es-ES', {
@@ -160,14 +161,17 @@ let schedulerRunning = false;
 export function startMatchReminderScheduler({ intervalMinutes = 5 } = {}) {
   if (schedulerStarted) return;
   schedulerStarted = true;
+  registerScheduler('match-reminders', { maxAgeSeconds: 10 * 60 });
 
   const run = async () => {
     if (schedulerRunning) return;
     schedulerRunning = true;
     try {
       const result = await sendMatchReminders({ hoursAhead: 4, windowMinutes: 10 });
+      markSchedulerSuccess('match-reminders');
       if (result.scanned || result.failed) console.log('[REMINDERS 4H]', result);
     } catch (error) {
+      markSchedulerFailure('match-reminders', error);
       console.error('[REMINDERS 4H] Error ejecutando recordatorios:', error?.message || error);
     } finally {
       schedulerRunning = false;
