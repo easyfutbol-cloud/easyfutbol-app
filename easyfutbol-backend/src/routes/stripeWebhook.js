@@ -2,6 +2,7 @@ import express from 'express';
 import Stripe from 'stripe';
 import { pool } from '../config/db.js';
 import { qualifyReferralFromPurchase } from '../services/referralService.js';
+import { grantPlusTrialForCurrentSeason } from '../services/competitiveService.js';
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 const endpointSecret = process.env.STRIPE_WEBHOOK_SECRET;
@@ -45,6 +46,83 @@ async function upsertPlusSubscription(conn, { userId, customerId, subscription }
   );
 }
 
+async function upsertGenericSubscription(conn, { userId, customerId, subscription, planCode }) {
+  const [[plan]] = await conn.query('SELECT id FROM subscription_plans WHERE code=? LIMIT 1', [planCode]);
+  if (!plan) throw new Error(`Plan de suscripción no encontrado: ${planCode}`);
+  const period = getSubscriptionPeriod(subscription);
+  await conn.query(
+    `INSERT INTO user_subscriptions
+       (user_id, plan_id, stripe_customer_id, stripe_subscription_id, status, current_period_start, current_period_end, cancel_at_period_end, started_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, COALESCE(?, NOW()))
+     ON DUPLICATE KEY UPDATE plan_id=VALUES(plan_id), stripe_customer_id=VALUES(stripe_customer_id),
+       status=VALUES(status), current_period_start=VALUES(current_period_start), current_period_end=VALUES(current_period_end),
+       cancel_at_period_end=VALUES(cancel_at_period_end), ended_at=IF(VALUES(status) IN ('canceled','incomplete_expired'), NOW(), NULL)`,
+    [userId, plan.id, customerId || null, subscription?.id || null, subscription?.status || 'inactive',
+      unixToMysqlDate(period.start), unixToMysqlDate(period.end), subscription?.cancel_at_period_end ? 1 : 0, unixToMysqlDate(period.start)]
+  );
+}
+
+async function grantPlanEasyPass(conn, { userId, planCode, amount, reference }) {
+  const [grant] = await conn.query(
+    `INSERT IGNORE INTO subscription_monthly_grants (user_id, plan_code, stripe_reference, easypass_amount)
+     VALUES (?, ?, ?, ?)`,
+    [userId, planCode, reference, amount]
+  );
+  if (!grant.affectedRows) return false;
+  await conn.query('UPDATE users SET easypass_balance=COALESCE(easypass_balance,0)+? WHERE id=?', [amount, userId]);
+  await conn.query(
+    `INSERT INTO easypass_transactions (user_id, type, amount, description, payment_reference, created_at)
+     VALUES (?, 'plus_grant', ?, ?, ?, NOW())`,
+    [userId, amount, `${amount} EasyPass mensuales de EasyFutbol ${planCode === 'pro' ? 'Pro' : 'Plus'}`, reference]
+  );
+  return true;
+}
+
+async function handleGenericSubscriptionEvent(event) {
+  const object = event.data.object;
+  if (event.type === 'checkout.session.completed' && object?.metadata?.kind === 'easyfutbol_subscription') {
+    const userId = Number(object.metadata.userId || object.client_reference_id);
+    const planCode = String(object.metadata.subscriptionPlan || '').toLowerCase();
+    if (!userId || !object.subscription || !['plus','pro'].includes(planCode)) return true;
+    const subscription = await stripe.subscriptions.retrieve(object.subscription);
+    const amount = planCode === 'pro' ? 4 : 1;
+    const conn = await pool.getConnection();
+    try {
+      await conn.beginTransaction();
+      await upsertGenericSubscription(conn, { userId, customerId:object.customer, subscription, planCode });
+      await grantPlanEasyPass(conn, { userId, planCode, amount, reference:`subscription_checkout:${object.id}` });
+      if (planCode === 'plus') await grantPlusTrialForCurrentSeason(conn, userId, `subscription_checkout:${object.id}`);
+      await conn.commit();
+    } catch (error) { await conn.rollback(); throw error; } finally { conn.release(); }
+    return true;
+  }
+  if (event.type === 'invoice.paid' && object.billing_reason !== 'subscription_create' && object.subscription) {
+    const subscription = await stripe.subscriptions.retrieve(object.subscription);
+    if (subscription?.metadata?.kind !== 'easyfutbol_subscription') return false;
+    const userId = Number(subscription.metadata.userId);
+    const planCode = String(subscription.metadata.subscriptionPlan || '').toLowerCase();
+    const conn = await pool.getConnection();
+    try {
+      await conn.beginTransaction();
+      await upsertGenericSubscription(conn, { userId, customerId:object.customer, subscription, planCode });
+      await grantPlanEasyPass(conn, { userId, planCode, amount:planCode === 'pro' ? 4 : 1, reference:`subscription_invoice:${object.id}` });
+      await conn.commit();
+    } catch (error) { await conn.rollback(); throw error; } finally { conn.release(); }
+    return true;
+  }
+  if (event.type === 'invoice.payment_failed' && object.subscription) {
+    const subscription=await stripe.subscriptions.retrieve(object.subscription);
+    if (subscription?.metadata?.kind!=='easyfutbol_subscription') return false;
+    await upsertGenericSubscription(pool,{ userId:Number(subscription.metadata.userId),customerId:object.customer,subscription,planCode:subscription.metadata.subscriptionPlan });
+    return true;
+  }
+  if (['customer.subscription.updated','customer.subscription.deleted'].includes(event.type) && object?.metadata?.kind === 'easyfutbol_subscription') {
+    await upsertGenericSubscription(pool, { userId:Number(object.metadata.userId), customerId:object.customer, subscription:object, planCode:object.metadata.subscriptionPlan });
+    return true;
+  }
+  return false;
+}
+
 async function grantMonthlyPlusEasyPass(conn, { userId, reference }) {
   const [grant] = await conn.query(
     `INSERT IGNORE INTO plus_monthly_grants (user_id, stripe_reference, amount)
@@ -77,7 +155,9 @@ async function handlePlusEvent(event) {
     try {
       await conn.beginTransaction();
       await upsertPlusSubscription(conn, { userId, customerId: object.customer, subscription });
+      await upsertGenericSubscription(conn, { userId, customerId: object.customer, subscription, planCode:'plus' });
       await grantMonthlyPlusEasyPass(conn, { userId, reference: `plus_checkout:${object.id}` });
+      await grantPlusTrialForCurrentSeason(conn, userId, `plus_checkout:${object.id}`);
       await conn.commit();
     } catch (error) {
       await conn.rollback();
@@ -96,6 +176,7 @@ async function handlePlusEvent(event) {
     try {
       await conn.beginTransaction();
       await upsertPlusSubscription(conn, { userId, customerId: object.customer, subscription });
+      await upsertGenericSubscription(conn, { userId, customerId: object.customer, subscription, planCode:'plus' });
       await grantMonthlyPlusEasyPass(conn, { userId, reference: `plus_invoice:${object.id}` });
       await conn.commit();
     } catch (error) {
@@ -111,6 +192,7 @@ async function handlePlusEvent(event) {
     if (object?.metadata?.kind !== 'easyfutbol_plus') return false;
     const userId = Number(object.metadata.userId);
     await upsertPlusSubscription(pool, { userId, customerId: object.customer, subscription: object });
+    await upsertGenericSubscription(pool, { userId, customerId: object.customer, subscription: object, planCode:'plus' });
     return true;
   }
 
@@ -130,6 +212,9 @@ webhookRouter.post('/webhook', express.raw({ type: 'application/json' }), async 
   }
 
   try {
+    if (await handleGenericSubscriptionEvent(event)) {
+      return res.json({ received: true });
+    }
     if (await handlePlusEvent(event)) {
       return res.json({ received: true });
     }

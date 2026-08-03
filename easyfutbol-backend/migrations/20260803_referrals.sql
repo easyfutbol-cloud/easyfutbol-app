@@ -1,10 +1,32 @@
-ALTER TABLE users ADD COLUMN referral_code VARCHAR(20) NULL;
+SET @has_referral_code = (
+  SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+  WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='users' AND COLUMN_NAME='referral_code'
+);
+SET @add_referral_code = IF(
+  @has_referral_code=0,
+  'ALTER TABLE users ADD COLUMN referral_code VARCHAR(20) NULL',
+  'SELECT 1'
+);
+PREPARE add_referral_code_stmt FROM @add_referral_code;
+EXECUTE add_referral_code_stmt;
+DEALLOCATE PREPARE add_referral_code_stmt;
 
 UPDATE users
 SET referral_code = CONCAT('EF', UPPER(LPAD(CONV(id, 10, 36), 6, '0')))
 WHERE referral_code IS NULL OR referral_code = '';
 
-ALTER TABLE users ADD UNIQUE KEY uq_users_referral_code (referral_code);
+SET @has_referral_index = (
+  SELECT COUNT(*) FROM INFORMATION_SCHEMA.STATISTICS
+  WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='users' AND INDEX_NAME='uq_users_referral_code'
+);
+SET @add_referral_index = IF(
+  @has_referral_index=0,
+  'ALTER TABLE users ADD UNIQUE KEY uq_users_referral_code (referral_code)',
+  'SELECT 1'
+);
+PREPARE add_referral_index_stmt FROM @add_referral_index;
+EXECUTE add_referral_index_stmt;
+DEALLOCATE PREPARE add_referral_index_stmt;
 
 CREATE TABLE IF NOT EXISTS user_referrals (
   id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,

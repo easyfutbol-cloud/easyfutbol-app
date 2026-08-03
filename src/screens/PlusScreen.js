@@ -12,7 +12,7 @@ const BENEFITS = [
   { icon: 'pricetag-outline', title: '10% de descuento', text: 'Aplicado automáticamente al comprar packs de EasyPass.' },
   { icon: 'flash-outline', title: 'Prioridad en listas de espera', text: 'Tu solicitud Plus tendrá prioridad cuando se libere una plaza.' },
   { icon: 'trophy-outline', title: 'Torneos antes que nadie', text: 'Acceso anticipado a las inscripciones de próximos torneos.' },
-  { icon: 'time-outline', title: 'Cancelación más flexible', text: 'Recupera tu EasyPass cancelando con más de 3 horas de antelación.' },
+  { icon: 'time-outline', title: 'Cancelación más flexible', text: 'Recupera tu EasyPass cancelando con más de 4 horas de antelación.' },
   { icon: 'star-outline', title: 'Identidad Plus', text: 'Tu nombre aparecerá en dorado dentro de EasyFutbol.' },
 ];
 
@@ -25,13 +25,28 @@ const formatRenewalDate = (value) => {
 
 export default function PlusScreen({ navigation }) {
   const [status, setStatus] = useState(null);
+  const [plans, setPlans] = useState([]);
+  const [currentPlan, setCurrentPlan] = useState(null);
+  const [currentSubscription, setCurrentSubscription] = useState(null);
   const [loading, setLoading] = useState(true);
   const [processing, setProcessing] = useState(false);
 
   const loadStatus = useCallback(async () => {
     try {
-      const { data } = await api.get('/plus/status');
-      setStatus(data?.data || null);
+      const [legacyResult, plansResult, subscriptionResult] = await Promise.allSettled([
+        api.get('/plus/status'),
+        api.get('/subscriptions/plans'),
+        api.get('/subscriptions/me'),
+      ]);
+      if (legacyResult.status === 'fulfilled') setStatus(legacyResult.value.data?.data || null);
+      if (plansResult.status === 'fulfilled') setPlans(plansResult.value.data?.data || []);
+      if (subscriptionResult.status === 'fulfilled') {
+        setCurrentPlan(subscriptionResult.value.data?.data?.entitlements?.plan || null);
+        setCurrentSubscription(subscriptionResult.value.data?.data?.subscription || null);
+      }
+      if (legacyResult.status === 'rejected' && plansResult.status === 'rejected') {
+        throw legacyResult.reason;
+      }
     } catch (error) {
       Alert.alert('EasyFutbol Plus', error?.response?.data?.msg || 'No se pudo consultar tu suscripción.');
     } finally {
@@ -55,7 +70,11 @@ export default function PlusScreen({ navigation }) {
     }
   };
 
-  const renewalDate = formatRenewalDate(status?.current_period_end);
+  const renewalDate = formatRenewalDate(currentSubscription?.current_period_end || status?.current_period_end);
+  const displayedPlans = plans.length ? plans : [
+    { code:'plus', name:'EasyFutbol Plus', price_cents:999, checkout_available:true, benefits:{ monthly_easypass:1, easypass_discount_percent:10, competitive_access:'first_season_trial' } },
+    { code:'pro', name:'EasyFutbol Pro', price_cents:2999, checkout_available:false, benefits:{ monthly_easypass:4, easypass_discount_percent:15, competitive_access:'active_subscription', early_match_booking:true } },
+  ];
 
   return (
     <View style={styles.screen}>
@@ -74,30 +93,63 @@ export default function PlusScreen({ navigation }) {
 
           {loading ? (
             <ActivityIndicator color="#F4C95D" style={styles.loader} />
-          ) : status?.is_plus ? (
+          ) : currentPlan || status?.is_plus ? (
             <View style={styles.activeCard}>
-              <View style={styles.activePill}><View style={[styles.activeDot, status.plus_benefits_suspended && styles.suspendedDot]} /><Text style={styles.activePillText}>{status.plus_benefits_suspended ? 'VENTAJAS SUSPENDIDAS' : 'PLUS ACTIVO'}</Text></View>
+              <View style={styles.activePill}><View style={[styles.activeDot, status?.plus_benefits_suspended && styles.suspendedDot]} /><Text style={styles.activePillText}>{status?.plus_benefits_suspended ? 'VENTAJAS SUSPENDIDAS' : `${String(currentPlan || 'plus').toUpperCase()} ACTIVO`}</Text></View>
               <Text style={styles.activeText}>
-                {status.plus_benefits_suspended
+                {status?.plus_benefits_suspended
                   ? 'Has alcanzado 3 avisos este mes. Hasta el próximo mes podrás jugar comprando EasyPass normales, sin ventajas Plus.'
-                  : status.cancel_at_period_end
+                  : currentSubscription?.cancel_at_period_end || status?.cancel_at_period_end
                   ? `Tus ventajas estarán activas hasta ${renewalDate || 'el final del periodo'}.`
                   : `Próxima renovación: ${renewalDate || 'según tu periodo de Stripe'}.`}
               </Text>
-              <Text style={styles.warningCounter}>Avisos este mes: {Number(status.fair_play_warnings || 0)}/3</Text>
-              <TouchableOpacity style={styles.manageButton} onPress={() => openStripeFlow('/plus/portal', 'portal_url')} disabled={processing}>
+              <Text style={styles.warningCounter}>Avisos este mes: {Number(status?.fair_play_warnings || 0)}/3</Text>
+              <TouchableOpacity style={styles.manageButton} onPress={() => openStripeFlow(currentPlan ? '/subscriptions/portal' : '/plus/portal', 'portal_url')} disabled={processing}>
                 <Text style={styles.manageButtonText}>{processing ? 'Abriendo Stripe…' : 'Gestionar suscripción'}</Text>
               </TouchableOpacity>
             </View>
           ) : (
-            <TouchableOpacity style={styles.subscribeButton} onPress={() => openStripeFlow('/plus/checkout', 'checkout_url')} disabled={processing} accessibilityRole="button">
+            <TouchableOpacity style={styles.subscribeButton} onPress={() => openStripeFlow('/subscriptions/plus/checkout', 'checkout_url')} disabled={processing} accessibilityRole="button">
               <Text style={styles.subscribeButtonText}>{processing ? 'Abriendo Stripe…' : 'Hazte Plus'}</Text>
               {!processing ? <Ionicons name="arrow-forward" size={20} color="#161109" /> : null}
             </TouchableOpacity>
           )}
         </LinearGradient>
 
-        <Text style={styles.sectionEyebrow}>TODO LO QUE INCLUYE</Text>
+        <Text style={styles.sectionEyebrow}>ELIGE TU NIVEL</Text>
+        <Text style={styles.sectionTitle}>Plus o Pro</Text>
+        <View style={styles.planGrid}>
+          {displayedPlans.map((plan) => {
+            const isPro = plan.code === 'pro';
+            const isCurrent = currentPlan === plan.code || (!currentPlan && plan.code === 'plus' && status?.is_plus);
+            return (
+              <LinearGradient key={plan.code} colors={isPro ? ['#4A3305','#17130A'] : ['#352B0C','#12110D']} style={[styles.planCard, isPro && styles.proPlanCard]}>
+                <View style={styles.planTopRow}>
+                  <Text style={styles.planMedal}>{isPro ? '🥇' : '🥉'}</Text>
+                  {isCurrent ? <View style={styles.currentPill}><Text style={styles.currentPillText}>TU PLAN</Text></View> : null}
+                </View>
+                <Text style={styles.planName}>{plan.name}</Text>
+                <Text style={styles.planPrice}>{(Number(plan.price_cents || 0) / 100).toFixed(2).replace('.', ',')} €<Text style={styles.planPeriod}> / mes</Text></Text>
+                <Text style={styles.planBenefit}>✓ {Number(plan.benefits?.monthly_easypass || 0)} EasyPass al mes</Text>
+                <Text style={styles.planBenefit}>✓ {Number(plan.benefits?.easypass_discount_percent || 0)}% de descuento</Text>
+                <Text style={styles.planBenefit}>✓ Cancelación hasta 4 horas antes</Text>
+                <Text style={styles.planBenefit}>✓ {isPro ? 'Acceso permanente al competitivo' : 'Primera temporada competitiva gratis'}</Text>
+                {isPro ? <Text style={styles.planBenefit}>✓ Reserva anticipada de partidos</Text> : null}
+                {!isCurrent ? (
+                  <TouchableOpacity
+                    style={[styles.planButton, isPro && styles.proPlanButton, !plan.checkout_available && styles.planButtonDisabled]}
+                    disabled={processing || !plan.checkout_available}
+                    onPress={() => openStripeFlow(`/subscriptions/${plan.code}/checkout`, 'checkout_url')}
+                  >
+                    <Text style={styles.planButtonText}>{plan.checkout_available ? `Elegir ${isPro ? 'Pro' : 'Plus'}` : 'Próximamente'}</Text>
+                  </TouchableOpacity>
+                ) : null}
+              </LinearGradient>
+            );
+          })}
+        </View>
+
+        <Text style={styles.sectionEyebrow}>VENTAJAS PLUS</Text>
         <Text style={styles.sectionTitle}>Juega con ventaja</Text>
         <View style={styles.benefitsList}>
           {BENEFITS.map((benefit) => (
@@ -113,7 +165,7 @@ export default function PlusScreen({ navigation }) {
         </View>
 
         <Text style={styles.terms}>Suscripción mensual con renovación automática. Puedes gestionarla o cancelarla en cualquier momento desde Stripe; las ventajas permanecen activas hasta el final del periodo pagado.</Text>
-        <Text style={styles.terms}>Política de juego limpio: cancelar con 3 horas o menos o no asistir genera un aviso. Con 3 avisos, las ventajas Plus quedan suspendidas hasta el mes siguiente y las reservas deberán realizarse con EasyPass normales.</Text>
+        <Text style={styles.terms}>Política de juego limpio: cancelar con 4 horas o menos o no asistir genera un aviso. Con 3 avisos, las ventajas Plus quedan suspendidas hasta el mes siguiente y las reservas deberán realizarse con EasyPass normales.</Text>
       </ScrollView>
     </View>
   );
@@ -147,6 +199,21 @@ const styles = StyleSheet.create({
   sectionEyebrow: { color: '#F4C95D', ...typography.overline },
   sectionTitle: { color: colors.white, ...typography.heading, marginTop: 3, marginBottom: spacing(1.5) },
   benefitsList: { gap: spacing(1) },
+  planGrid: { gap:spacing(1.25), marginBottom:spacing(3) },
+  planCard: { borderRadius:radii.large, borderWidth:1, borderColor:'rgba(244,201,93,0.30)', padding:spacing(2) },
+  proPlanCard: { borderColor:'rgba(255,188,45,0.65)' },
+  planTopRow: { flexDirection:'row', alignItems:'center', justifyContent:'space-between' },
+  planMedal: { fontSize:30 },
+  currentPill: { backgroundColor:'#F4C95D', borderRadius:radii.pill, paddingHorizontal:10, paddingVertical:5 },
+  currentPillText: { color:'#161109', fontSize:9, fontWeight:'900', letterSpacing:0.8 },
+  planName: { color:colors.white, ...typography.heading, marginTop:spacing(1) },
+  planPrice: { color:'#F4C95D', fontSize:26, fontWeight:'900', marginVertical:spacing(1) },
+  planPeriod: { color:'#D7C995', fontSize:13, fontWeight:'700' },
+  planBenefit: { color:colors.textMuted, ...typography.caption, marginTop:5 },
+  planButton: { minHeight:48, borderRadius:radii.medium, backgroundColor:'#F4C95D', alignItems:'center', justifyContent:'center', marginTop:spacing(1.5) },
+  proPlanButton: { backgroundColor:'#FFB91F' },
+  planButtonDisabled: { backgroundColor:colors.surfaceElevated, opacity:0.75 },
+  planButtonText: { color:'#161109', ...typography.bodyStrong, fontWeight:'900' },
   benefitCard: { minHeight: 88, flexDirection: 'row', alignItems: 'center', gap: spacing(1.25), backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, borderRadius: radii.medium, padding: spacing(1.5) },
   benefitIcon: { width: 44, height: 44, borderRadius: 14, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(244,201,93,0.10)' },
   benefitCopy: { flex: 1 },

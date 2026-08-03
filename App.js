@@ -50,6 +50,11 @@ import AdminDashboardScreen from './src/screens/AdminDashboardScreen';
 import AdminUsersScreen from './src/screens/AdminUsersScreen';
 import EasyPassScreen from './src/screens/EasyPassScreen';
 import PlusScreen from './src/screens/PlusScreen';
+import CompetitiveScreen from './src/screens/CompetitiveScreen';
+import CompetitiveHistoryScreen from './src/screens/CompetitiveHistoryScreen';
+import AdminCompetitiveMatchesScreen from './src/screens/AdminCompetitiveMatchesScreen';
+import AdminCompetitiveEvaluationScreen from './src/screens/AdminCompetitiveEvaluationScreen';
+import AdminCompetitiveSeasonsScreen from './src/screens/AdminCompetitiveSeasonsScreen';
 import AchievementsScreen from './src/screens/AchievementsScreen';
 import LeaguesHomeScreen from './src/screens/leagues/LeaguesHomeScreen';
 import JoinLeagueScreen from './src/screens/leagues/JoinLeagueScreen';
@@ -567,6 +572,7 @@ function AppMenu({ currentRouteName }) {
     { label: 'Ligas', screen: 'LeaguesHome' },
     { label: 'Mundial EasyFutbol', screen: 'WorldCup' },
     { label: 'Estadísticas', screen: 'Stats' },
+    { label: 'Modo competitivo', screen: 'Competitive' },
     { label: 'Perfil', screen: 'Profile' },
     { label: 'Preguntas frecuentes', screen: 'Faq' },
   ];
@@ -577,6 +583,8 @@ function AppMenu({ currentRouteName }) {
     { label: 'Crear Partido (Admin)', screen: 'AdminCreateMatch' },
     { label: 'Partidos programados (Admin)', screen: 'AdminScheduledMatches' },
     { label: 'Stats Partido (Admin)', screen: 'AdminMatchStats' },
+    { label: 'Competitivo: valoraciones (Admin)', screen: 'AdminCompetitiveMatches' },
+    { label: 'Competitivo: temporadas (Admin)', screen: 'AdminCompetitiveSeasons' },
     { label: 'Usuarios (Admin)', screen: 'AdminUsers' },
     { label: 'Avisos (Admin)', screen: 'AdminNotify' },
     { label: 'Control de EasyPass (Admin)', screen: 'AdminEasyPass' },
@@ -708,6 +716,11 @@ function AppShell({ currentRouteName }) {
         <Stack.Screen name="Achievements" component={AchievementsScreen} />
         <Stack.Screen name="EasyPass" component={EasyPassScreen} />
         <Stack.Screen name="Plus" component={PlusScreen} />
+        <Stack.Screen name="Competitive" component={CompetitiveScreen} />
+        <Stack.Screen name="CompetitiveHistory" component={CompetitiveHistoryScreen} />
+        <Stack.Screen name="AdminCompetitiveMatches" component={AdminCompetitiveMatchesScreen} />
+        <Stack.Screen name="AdminCompetitiveEvaluation" component={AdminCompetitiveEvaluationScreen} />
+        <Stack.Screen name="AdminCompetitiveSeasons" component={AdminCompetitiveSeasonsScreen} />
         <Stack.Screen name="AdminDashboard" component={AdminDashboardScreen} />
         <Stack.Screen name="AdminMatches" component={AdminMatchesScreen} />
         <Stack.Screen name="AdminMatchEdit" component={AdminMatchEditScreen} />

@@ -26,7 +26,7 @@ const serializeSubscription = (row, fairPlay = {}) => {
       easypass_discount_percent: 10,
       waitlist_priority: benefitsActive,
       tournament_early_access: benefitsActive,
-      cancellation_deadline_hours: benefitsActive ? 3 : 8,
+      cancellation_deadline_hours: benefitsActive ? 4 : 8,
       golden_name: benefitsActive,
     },
   };

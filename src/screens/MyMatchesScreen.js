@@ -194,7 +194,7 @@ export default function MyMatchesScreen() {
   const handleCancelPress = (matchId, total, startsAt, isPlus = false) => {
     const title = 'Cancelar entrada';
     const hoursUntilMatch = (new Date(startsAt).getTime() - Date.now()) / 36e5;
-    const deadlineHours = isPlus ? 3 : 8;
+    const deadlineHours = isPlus ? 4 : 8;
     const refundMessage = hoursUntilMatch > deadlineHours
       ? `Como quedan más de ${deadlineHours} horas, se devolverá el EasyPass utilizado.`
       : `Quedan ${deadlineHours} horas o menos. Puedes cancelar, pero el EasyPass utilizado no se devolverá.${isPlus ? ' Además, recibirás un aviso Plus.' : ''}`;

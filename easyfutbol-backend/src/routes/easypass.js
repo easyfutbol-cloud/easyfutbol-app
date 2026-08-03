@@ -3,6 +3,7 @@ import Stripe from 'stripe';
 import { pool } from '../config/db.js';
 import * as authMiddleware from '../middlewares/auth.js';
 import { getPlusFairPlayStatus } from '../services/plusFairPlayService.js';
+import { getUserEntitlements } from '../services/subscriptionService.js';
 
 const requireAuth =
   authMiddleware.default ||
@@ -23,9 +24,15 @@ const APP_BASE_URL =
   process.env.FRONTEND_URL ||
   'https://easyfutbol.es';
 
-async function hasActivePlus(userId) {
-  const status = await getPlusFairPlayStatus(pool, userId);
-  return status.eligible;
+async function getSubscriptionDiscount(userId) {
+  try {
+    const entitlements=await getUserEntitlements(pool,userId);
+    const percent=entitlements.benefits_active ? Number(entitlements.benefits?.easypass_discount_percent || 0) : 0;
+    return { percent,plan:entitlements.plan,isActive:percent>0 };
+  } catch {
+    const status=await getPlusFairPlayStatus(pool,userId);
+    return { percent:status.eligible ? 10 : 0,plan:status.eligible ? 'plus' : null,isActive:status.eligible };
+  }
 }
 
 /**
@@ -59,7 +66,7 @@ router.get('/locations', requireAuth, async (req, res) => {
  */
 router.get('/packs', requireAuth, async (req, res) => {
   try {
-    const isPlus = await hasActivePlus(req.user.id);
+    const discount = await getSubscriptionDiscount(req.user.id);
     const requestedLocationId = Number(req.query.location_id || req.query.locationId || 1);
     const locationId = Number.isInteger(requestedLocationId) && requestedLocationId > 0
       ? requestedLocationId
@@ -94,8 +101,9 @@ router.get('/packs', requireAuth, async (req, res) => {
         name: location.name,
         slug: location.slug,
       },
-      is_plus: isPlus,
-      discount_percent: isPlus ? 10 : 0,
+      is_plus: discount.isActive,
+      subscription_plan:discount.plan,
+      discount_percent:discount.percent,
       data: rows.map((row) => ({
         ...row,
         id: Number(row.id),
@@ -104,8 +112,9 @@ router.get('/packs', requireAuth, async (req, res) => {
         easyPassAmount: Number(row.easyPassAmount || 0),
         credits: Number(row.easyPassAmount || 0),
         original_price_cents: Number(row.price_cents || 0),
-        price_cents: isPlus ? Math.round(Number(row.price_cents || 0) * 0.9) : Number(row.price_cents || 0),
-        plus_discount_applied: isPlus,
+        price_cents:discount.percent ? Math.round(Number(row.price_cents || 0)*(1-discount.percent/100)) : Number(row.price_cents || 0),
+        plus_discount_applied:discount.isActive,
+        subscription_discount_percent:discount.percent,
       })),
     });
   } catch (e) {
@@ -176,10 +185,9 @@ router.post('/packs/:id/checkout', requireAuth, async (req, res) => {
       return res.status(404).json({ ok:false, msg:'Pack no encontrado' });
     }
 
-    const isPlus = await hasActivePlus(userId);
-    const finalPriceCents = isPlus
-      ? Math.round(Number(pack.price_cents || 0) * 0.9)
-      : Number(pack.price_cents || 0);
+    const discount = await getSubscriptionDiscount(userId);
+    const finalPriceCents = discount.percent
+      ? Math.round(Number(pack.price_cents || 0)*(1-discount.percent/100)) : Number(pack.price_cents || 0);
 
     const baseUrl = String(APP_BASE_URL || 'https://easyfutbol.es').replace(/\/$/, '');
     const successUrl = `${baseUrl}/pago-ok/?session_id={CHECKOUT_SESSION_ID}`;
@@ -209,7 +217,9 @@ router.post('/packs/:id/checkout', requireAuth, async (req, res) => {
         locationId: String(pack.location_id || 1),
         locationSlug: String(pack.locationSlug || 'valladolid'),
         kind: 'easypass_pack',
-        plusDiscountPercent: isPlus ? '10' : '0',
+        subscriptionPlan:discount.plan || '',
+        subscriptionDiscountPercent:String(discount.percent),
+        plusDiscountPercent:String(discount.percent),
       },
       success_url: successUrl,
       cancel_url: cancelUrl,
@@ -230,7 +240,9 @@ router.post('/packs/:id/checkout', requireAuth, async (req, res) => {
         credits: Number(pack.easyPassAmount || 0),
         original_price_cents: Number(pack.price_cents || 0),
         price_cents: finalPriceCents,
-        plus_discount_applied: isPlus,
+        plus_discount_applied:discount.isActive,
+        subscription_plan:discount.plan,
+        subscription_discount_percent:discount.percent,
       },
     });
   } catch (e) {

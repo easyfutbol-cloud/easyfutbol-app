@@ -6,6 +6,7 @@ import multer from 'multer';
 import fs from 'fs';
 import path from 'path';
 import { Expo } from 'expo-server-sdk';
+import { getUserEntitlements } from '../services/subscriptionService.js';
 
 const router = Router();
 const expo = new Expo();
@@ -44,6 +45,9 @@ router.get('/me/profile', requireAuth, async (req, res) => {
       [userId]
     );
     if (!user) return res.status(404).json({ ok:false, msg:'Usuario no encontrado' });
+    let subscription = null;
+    try { subscription = await getUserEntitlements(pool, userId); }
+    catch (subscriptionError) { console.warn('[GET /me/profile] Suscripción no disponible:', subscriptionError?.message || subscriptionError); }
 
     const [[stats]] = await pool.query(
       `SELECT
@@ -111,8 +115,10 @@ router.get('/me/profile', requireAuth, async (req, res) => {
       data: {
         user: {
           ...user,
-          is_plus: Boolean(user.is_plus),
-          isPlus: Boolean(user.is_plus),
+          is_plus: Boolean(user.is_plus || subscription?.subscription_active),
+          isPlus: Boolean(user.is_plus || subscription?.subscription_active),
+          subscription_plan: subscription?.plan || (user.is_plus ? 'plus' : null),
+          has_golden_name: Boolean(user.is_plus || subscription?.subscription_active),
           easyPassBalance: Number(user.easypass_balance || 0),
           credits: Number(user.easypass_balance || 0),
           easyPassBalances,

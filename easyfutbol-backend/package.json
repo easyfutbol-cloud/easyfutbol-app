@@ -5,7 +5,10 @@
   "main": "src/index.js",
   "scripts": {
     "dev": "nodemon src/index.js",
-    "start": "node src/index.js"
+    "start": "node src/index.js",
+    "migrate": "node src/scripts/runMigrations.js",
+    "migrate:status": "node src/scripts/runMigrations.js --status",
+    "migrate:dry-run": "node src/scripts/runMigrations.js --dry-run"
   },
   "dependencies": {
     "bcrypt": "^5.1.1",

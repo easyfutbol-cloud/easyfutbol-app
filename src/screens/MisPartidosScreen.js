@@ -495,7 +495,7 @@ export default function MisPartidosScreen({ navigation }) {
       selectedMatch?.date;
     const hoursUntilMatch = (new Date(startsAt).getTime() - Date.now()) / 36e5;
     const isPlus = Boolean(entry?.is_plus);
-    const deadlineHours = isPlus ? 3 : 8;
+    const deadlineHours = isPlus ? 4 : 8;
     const refundEligible = Number.isFinite(hoursUntilMatch) && hoursUntilMatch > deadlineHours;
     const policyMessage = refundEligible
       ? `Como quedan más de ${deadlineHours} horas, se devolverá el EasyPass utilizado.`

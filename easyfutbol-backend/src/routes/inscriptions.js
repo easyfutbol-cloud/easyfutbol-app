@@ -14,7 +14,7 @@ function refundPercent(startsAtISO, isPlus = false) {
   const starts = new Date(startsAtISO).getTime();
   const now = Date.now();
   const diffH = (starts - now) / 36e5;
-  return diffH > (isPlus ? 3 : 8) ? 100 : 0;
+  return diffH > (isPlus ? 4 : 8) ? 100 : 0;
 }
 
 function hoursUntil(startsAtISO) {
@@ -366,7 +366,7 @@ router.patch('/inscriptions/:id/cancel', requireAuth, async (req, res) => {
 
     const fairPlay = await getPlusFairPlayStatus(conn, userId);
     row.is_plus = fairPlay.eligible;
-    const earnsLateWarning = fairPlay.eligible && hoursUntil(row.starts_at) <= 3;
+    const earnsLateWarning = fairPlay.eligible && hoursUntil(row.starts_at) <= 4;
     const pct = refundPercent(row.starts_at, fairPlay.eligible);
 
     const isEasyPassInscription = !row.stripe_session_id && (
@@ -577,7 +577,7 @@ router.post('/matches/:id/cancel', requireAuth, async (req, res) => {
 
       const fairPlay = await getPlusFairPlayStatus(conn, userId);
       row.is_plus = fairPlay.eligible;
-      const earnsLateWarning = fairPlay.eligible && hoursUntil(row.starts_at) <= 3;
+      const earnsLateWarning = fairPlay.eligible && hoursUntil(row.starts_at) <= 4;
 
       const isEasyPassInscription = !row.stripe_session_id && (
         row.payment_type === 'easypass' ||
