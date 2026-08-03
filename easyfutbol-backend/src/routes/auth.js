@@ -5,6 +5,7 @@ import jwt from 'jsonwebtoken';
 import { OAuth2Client } from 'google-auth-library';
 import crypto from 'crypto';
 import nodemailer from 'nodemailer';
+import { buildReferralCode } from '../services/referralService.js';
 
 const router = Router();
 
@@ -141,6 +142,7 @@ router.post('/auth/register', async (req, res) => {
     const preferredLocation = normalizePreferredLocation(
       body.preferred_location || body.preferredLocation || body.location || body.sede
     );
+    const referralCode = String(body.referral_code || body.referralCode || '').trim().toUpperCase();
 
     const email = normalizeEmail(emailRaw);
 
@@ -163,6 +165,17 @@ router.post('/auth/register', async (req, res) => {
     const [rows] = await pool.query('SELECT id FROM users WHERE email=?', [email]);
     if (rows.length) {
       return res.status(409).json({ ok: false, msg: 'Email ya registrado' });
+    }
+
+    let referrer = null;
+    if (referralCode) {
+      [[referrer]] = await pool.query(
+        'SELECT id, referral_code FROM users WHERE UPPER(referral_code)=? LIMIT 1',
+        [referralCode]
+      );
+      if (!referrer) {
+        return res.status(400).json({ ok: false, msg: 'El código de referido no es válido' });
+      }
     }
 
     const hash = await bcrypt.hash(password, 10);
@@ -191,6 +204,20 @@ router.post('/auth/register', async (req, res) => {
       } else {
         throw e;
       }
+    }
+
+    const newUserId = Number(result.insertId);
+    await pool.query(
+      'UPDATE users SET referral_code=? WHERE id=? AND referral_code IS NULL',
+      [buildReferralCode(newUserId), newUserId]
+    );
+    if (referrer) {
+      await pool.query(
+        `INSERT INTO user_referrals
+           (referrer_user_id, referred_user_id, referral_code, status)
+         VALUES (?, ?, ?, 'registered')`,
+        [referrer.id, newUserId, referrer.referral_code]
+      );
     }
 
     // enviamos OTP

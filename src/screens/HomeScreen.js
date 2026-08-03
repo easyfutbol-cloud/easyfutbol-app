@@ -35,7 +35,6 @@ const SCREEN_BACKGROUND = require('../../assets/matches/match-6.jpg');
 
 const CARD_IMAGES = {
   myMatches: require('../../assets/matches/match-8.jpg'),
-  tickets: require('../../assets/matches/match-2.jpg'),
   tournament: { uri: 'https://easyfutbol.es/wp-content/uploads/2025/02/grass-2616911_1280.jpg' },
   upcoming: { uri: 'https://easyfutbol.es/wp-content/uploads/2025/01/Imagen-eventos_1.avif' },
   stats: { uri: 'https://easyfutbol.es/wp-content/uploads/2025/02/Registro-8-scaled.jpeg' },
@@ -54,6 +53,7 @@ export default function HomeScreen({ navigation }) {
   const [displayName, setDisplayName] = useState('');
   const [easyPassBalance, setEasyPassBalance] = useState(0);
   const [easyPassLoading, setEasyPassLoading] = useState(false);
+  const [upcomingTournament, setUpcomingTournament] = useState(null);
 
   const requireAuth = useCallback((targetScreen) => {
     if (isLogged) {
@@ -118,19 +118,53 @@ export default function HomeScreen({ navigation }) {
   useFocusEffect(
     useCallback(() => {
       readSession();
+      let active = true;
+
+      api.get('/tournaments')
+        .then((response) => {
+          if (!active) return;
+          const payload = response?.data;
+          const tournaments = Array.isArray(payload?.data)
+            ? payload.data
+            : Array.isArray(payload)
+            ? payload
+            : [];
+          const nextTournament = tournaments
+            .filter((tournament) => {
+              if (tournament?.status === 'finished' || !tournament?.date) return false;
+              const date = new Date(tournament.date);
+              if (Number.isNaN(date.getTime())) return false;
+              date.setHours(23, 59, 59, 999);
+              return date.getTime() >= Date.now();
+            })
+            .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())[0] || null;
+          setUpcomingTournament(nextTournament);
+        })
+        .catch((error) => {
+          console.log('Error cargando torneo destacado en HomeScreen:', error?.message || error);
+          if (active) setUpcomingTournament(null);
+        });
+
+      return () => {
+        active = false;
+      };
     }, [readSession])
   );
 
+  const tournamentDescription = upcomingTournament
+    ? `${new Date(upcomingTournament.date).toLocaleDateString('es-ES', { day: 'numeric', month: 'long' })} · ${new Date(upcomingTournament.date).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })}${upcomingTournament.city ? ` · ${upcomingTournament.city}` : ''}`
+    : '';
+
   const cards = [
-    {
+    ...(upcomingTournament ? [{
       key: 'tournament',
-      title: 'Torneo EasyFutbol',
+      title: upcomingTournament.title || 'Torneo EasyFutbol',
       eyebrow: 'EVENTO DESTACADO',
-      description: '25 de julio · 19:00 a 23:00 · camiseta oficial, partidos grabados, premios y consumición en La Herminia.',
+      description: tournamentDescription,
       imageSource: CARD_IMAGES.tournament,
       onPress: () => requireAuth('HomeTournament'),
       accent: true,
-    },
+    }] : []),
     {
       key: 'upcoming',
       title: 'Próximos partidos',
@@ -148,14 +182,6 @@ export default function HomeScreen({ navigation }) {
       onPress: () => requireAuth('MisPartidos'),
     },
     {
-      key: 'tickets',
-      title: 'Mis entradas',
-      eyebrow: 'RESERVAS',
-      description: 'Revisa tus entradas compradas y el estado de tus reservas.',
-      imageSource: CARD_IMAGES.tickets,
-      onPress: () => requireAuth('MyMatches'),
-    },
-    {
       key: 'stats',
       title: 'Estadísticas',
       eyebrow: 'TU RENDIMIENTO',
@@ -170,6 +196,15 @@ export default function HomeScreen({ navigation }) {
       description: 'Compra packs de EasyPass y reserva tus partidos más rápido.',
       imageSource: CARD_IMAGES.easyPass,
       onPress: () => requireAuth('EasyPass'),
+      accent: true,
+    },
+    {
+      key: 'plus',
+      title: 'EasyFutbol Plus',
+      eyebrow: '9,99 € AL MES',
+      description: '1 EasyPass mensual, descuentos, prioridad y ventajas exclusivas.',
+      imageSource: CARD_IMAGES.easyPass,
+      onPress: () => requireAuth('Plus'),
       accent: true,
     },
   ];

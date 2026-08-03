@@ -21,9 +21,15 @@ import worldcup from './routes/worldcup.js';
 import tournaments from './routes/tournaments.js';
 import appConfigRoutes from './routes/appConfigRoutes.js';
 import kpis from './routes/kpis.js';
+import plus from './routes/plus.js';
+import waitlist from './routes/waitlist.js';
+import referrals from './routes/referrals.js';
+import scheduledMatches from './routes/scheduledMatches.js';
 import { requireAuth } from './middlewares/auth.js';
 import { sendPushNotification } from './services/pushService.js';
 import { startMatchReminderScheduler } from './services/reminderService.js';
+import { startWaitlistScheduler } from './services/waitlistService.js';
+import { startScheduledMatchPublisher } from './services/scheduledMatchService.js';
 
 const app = express();
 const PORT = Number(process.env.PORT || 4000);
@@ -141,6 +147,10 @@ app.use('/api/worldcup', worldcup);
 app.use('/api/tournaments', tournaments);
 app.use('/api/app-config', appConfigRoutes);
 app.use('/api/kpis', kpis);
+app.use('/api/plus', plus);
+app.use('/api', waitlist);
+app.use('/api/referrals', referrals);
+app.use('/api/admin/scheduled-matches', scheduledMatches);
 app.use('/api/admin/matches', adminMatches);
 
 // estáticos para avatares
@@ -154,6 +164,8 @@ app.get('/', (_req, res) => res.send('EasyFutbol Backend up'));
     app.listen(PORT, () => {
       console.log(`✅ API http://localhost:${PORT}`);
       startMatchReminderScheduler();
+      startWaitlistScheduler();
+      startScheduledMatchPublisher();
     });
   } catch (e) {
     console.error('❌ DB no responde:', e.message);

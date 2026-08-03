@@ -195,6 +195,9 @@ export default function AdminMatchesScreen({ navigation }) {
         <TouchableOpacity style={styles.createButton} onPress={handleCreatePress}>
           <Text style={styles.createButtonText}>Crear nuevo partido</Text>
         </TouchableOpacity>
+        <TouchableOpacity style={styles.scheduledButton} onPress={() => navigation.navigate('AdminScheduledMatches')}>
+          <Text style={styles.scheduledButtonText}>Ver partidos programados</Text>
+        </TouchableOpacity>
       </View>
 
       {error ? (
@@ -276,6 +279,19 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 15,
     fontWeight: '700',
+  },
+  scheduledButton: {
+    borderWidth: 1,
+    borderColor: '#ff5a00',
+    borderRadius: 14,
+    paddingVertical: 13,
+    alignItems: 'center',
+    marginTop: 10,
+  },
+  scheduledButtonText: {
+    color: '#ff8c4d',
+    fontSize: 15,
+    fontWeight: '800',
   },
   errorBox: {
     backgroundColor: '#1a1a1a',

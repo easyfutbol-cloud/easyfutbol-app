@@ -2,7 +2,7 @@
 import { useEffect, useState, useMemo, useCallback } from 'react';
 import {
   View, Text, StyleSheet, StatusBar, ActivityIndicator, TouchableOpacity,
-  Alert, TextInput, ScrollView, ImageBackground, Image, Linking, Modal
+  Alert, TextInput, ScrollView, ImageBackground, Image, Linking, Modal, Share
 } from 'react-native';
 import { colors, layout, radii, spacing, typography } from '../theme';
 import { api } from '../api/client';
@@ -19,6 +19,7 @@ const NUINO_LOGO = require('../../assets/Nuino_Wordmark-White.png');
 const ORANGE = '#ff5a00';
 const WHATSAPP_VALLADOLID_URL = 'https://chat.whatsapp.com/IdRGx2RDihu1ghbLWv44J5?s=cl&p=i&ilr=0&amv=2';
 const WHATSAPP_ASTURIAS_URL = 'https://chat.whatsapp.com/ElR7I1uBofT5jKUO4Jhbs6?s=cl&p=i&ilr=0&amv=2';
+const YOUTUBE_CHANNEL_URL = 'https://www.youtube.com/@EasyFutbol_Es';
 const FIELD_BG = require('../../assets/matches/match-1.jpg');
 
 export default function ProfileScreen({ navigation }) {
@@ -37,6 +38,7 @@ export default function ProfileScreen({ navigation }) {
   const [easyPassLoading, setEasyPassLoading] = useState(false);
   const [collaborationsVisible, setCollaborationsVisible] = useState(false);
   const [activeCollaboration, setActiveCollaboration] = useState('herminia');
+  const [referralData, setReferralData] = useState(null);
 
   const BASE = (api?.defaults?.baseURL || '').replace(/\/+$/, '');
   // BASE suele ser https://.../api. Para assets (/uploads/...) necesitamos el origen sin /api
@@ -187,6 +189,36 @@ export default function ProfileScreen({ navigation }) {
     }
   };
 
+  const openYouTubeChannel = async () => {
+    try {
+      const supported = await Linking.canOpenURL(YOUTUBE_CHANNEL_URL);
+      if (!supported) throw new Error('No se pudo abrir el enlace');
+      await Linking.openURL(YOUTUBE_CHANNEL_URL);
+    } catch (error) {
+      Alert.alert('No se pudo abrir YouTube', error?.message || 'Inténtalo de nuevo más tarde.');
+    }
+  };
+
+  const loadReferrals = async () => {
+    try {
+      const response = await api.get('/referrals/me');
+      setReferralData(response?.data?.data || null);
+    } catch (error) {
+      console.log('Error cargando referidos:', error?.message || error);
+    }
+  };
+
+  const shareReferralCode = async () => {
+    if (!referralData?.referral_code) return;
+    try {
+      await Share.share({
+        message: `Únete a EasyFutbol con mi código ${referralData.referral_code}. Cuando compres tu primer pack de EasyPass, me ayudarás a conseguir una recompensa.`,
+      });
+    } catch (error) {
+      Alert.alert('No se pudo compartir', error?.message || 'Inténtalo de nuevo.');
+    }
+  };
+
   const loadProfile = async () => {
     setLoading(true);
     setErrMsg('');
@@ -223,6 +255,7 @@ export default function ProfileScreen({ navigation }) {
       }
       // Cargar créditos (EasyPass)
       await loadEasyPass();
+      await loadReferrals();
     } catch (e) {
       setErrMsg(e?.message?.toString?.() || 'Network Error');
       setData(null);
@@ -235,6 +268,7 @@ export default function ProfileScreen({ navigation }) {
   useFocusEffect(useCallback(() => {
     loadProfile();
     loadEasyPass();
+    loadReferrals();
   }, []));
 
   const logout = async () => {
@@ -460,7 +494,10 @@ export default function ProfileScreen({ navigation }) {
             <Text style={styles.tapHint}>
               {uploading ? 'Subiendo foto...' : 'Toca la foto para cambiarla'}
             </Text>
-            <Text style={styles.profileHeroName}>{user?.name || 'Jugador EasyFutbol'}</Text>
+            <View style={styles.profileNameRow}>
+              <Text style={[styles.profileHeroName, user?.is_plus && styles.plusName]}>{user?.name || 'Jugador EasyFutbol'}</Text>
+              {user?.is_plus ? <View style={styles.plusBadge}><Text style={styles.plusBadgeText}>PLUS</Text></View> : null}
+            </View>
             <Text style={styles.profileHeroMeta}>Jugador #{user?.id || '—'}</Text>
           </View>
 
@@ -507,7 +544,7 @@ export default function ProfileScreen({ navigation }) {
               </>
             ) : (
               <>
-                <Text style={styles.name}>{user?.name}</Text>
+                <Text style={[styles.name, user?.is_plus && styles.plusName]}>{user?.name}</Text>
                 <Text style={styles.email}>{user?.email}</Text>
                 <Text style={styles.meta}>Rol: {user?.role || 'jugador'}</Text>
                 <Text style={styles.meta}>Registrado: {new Date(user?.created_at).toLocaleDateString()}</Text>
@@ -574,6 +611,50 @@ export default function ProfileScreen({ navigation }) {
                 <Text style={styles.communityBtnSecondaryText}>Grupo de Asturias</Text>
               </TouchableOpacity>
             </View>
+          </View>
+
+          <LinearGradient colors={['#2A180C', '#14171C']} style={styles.referralCard}>
+            <Text style={styles.referralEyebrow}>INVITA Y GANA</Text>
+            <Text style={styles.referralTitle}>Tus referidos</Text>
+            <Text style={styles.referralText}>Comparte tu código. Cuando un nuevo jugador se registre con él y compre su primer pack de EasyPass, sumarás 1 punto.</Text>
+
+            <View style={styles.referralCodeBox}>
+              <View>
+                <Text style={styles.referralCodeLabel}>TU CÓDIGO</Text>
+                <Text style={styles.referralCode}>{referralData?.referral_code || 'Cargando…'}</Text>
+              </View>
+              <TouchableOpacity style={styles.shareReferralBtn} onPress={shareReferralCode} disabled={!referralData?.referral_code} accessibilityRole="button">
+                <Text style={styles.shareReferralText}>Compartir</Text>
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.referralProgressHeader}>
+              <Text style={styles.referralProgressLabel}>Progreso para tu próximo EasyPass</Text>
+              <Text style={styles.referralProgressValue}>{Number(referralData?.points || 0)}/5</Text>
+            </View>
+            <View style={styles.referralProgressTrack}>
+              <View style={[styles.referralProgressFill, { width: `${Math.min((Number(referralData?.points || 0) / 5) * 100, 100)}%` }]} />
+            </View>
+            <View style={styles.referralStatsRow}>
+              <Text style={styles.referralStat}>{Number(referralData?.qualified_referrals || 0)} compras válidas</Text>
+              <Text style={styles.referralStat}>{Number(referralData?.rewards_earned || 0)} EasyPass ganados</Text>
+            </View>
+          </LinearGradient>
+
+          <View style={styles.youtubeCard}>
+            <View style={styles.youtubeHeader}>
+              <View style={styles.youtubeIcon}><Text style={styles.youtubeIconText}>▶</Text></View>
+              <View style={styles.youtubeCopy}>
+                <Text style={styles.youtubeEyebrow}>CANAL OFICIAL</Text>
+                <Text style={styles.youtubeTitle}>Partidos grabados</Text>
+              </View>
+            </View>
+            <Text style={styles.youtubeText}>
+              Revive tus partidos, jugadas y mejores momentos en el canal oficial de EasyFutbol.
+            </Text>
+            <TouchableOpacity style={styles.youtubeBtn} onPress={openYouTubeChannel} activeOpacity={0.85} accessibilityRole="link" accessibilityLabel="Abrir canal de YouTube de EasyFutbol">
+              <Text style={styles.youtubeBtnText}>Ver partidos en YouTube</Text>
+            </TouchableOpacity>
           </View>
 
           <View style={styles.achievementsCard}>
@@ -778,6 +859,10 @@ const styles = StyleSheet.create({
     fontWeight: '900',
   },
   profileHeroName:{ color:colors.white, ...typography.heading, marginTop:spacing(1.5), textAlign:'center' },
+  profileNameRow:{ flexDirection:'row', alignItems:'center', justifyContent:'center', gap:spacing(0.75) },
+  plusName:{ color:'#F4C95D' },
+  plusBadge:{ backgroundColor:'#F4C95D', borderRadius:radii.pill, paddingHorizontal:7, paddingVertical:3, marginTop:spacing(1.5) },
+  plusBadgeText:{ color:'#161109', fontSize:8, fontWeight:'900', letterSpacing:0.8 },
   profileHeroMeta:{ color:colors.orange, ...typography.overline, marginTop:spacing(0.5) },
 
   panel:{ backgroundColor:'rgba(17,21,27,0.94)', borderRadius:radii.large, padding:spacing(2), borderWidth:1, borderColor:colors.border, marginBottom:spacing(2) },
@@ -895,6 +980,32 @@ const styles = StyleSheet.create({
   communityBtnText:{ color:'#000', fontWeight:'900', textAlign:'center' },
   communityBtnSecondary:{ minHeight:layout.minTouchTarget, backgroundColor:'rgba(37,211,102,0.10)', borderWidth:1, borderColor:'rgba(37,211,102,0.45)', paddingVertical:14, paddingHorizontal:16, borderRadius:radii.medium, justifyContent:'center' },
   communityBtnSecondaryText:{ color:'#69E99A', fontWeight:'900', textAlign:'center' },
+  referralCard:{ borderRadius:radii.large, padding:spacing(2), borderWidth:1, borderColor:'rgba(255,90,0,0.28)', marginBottom:spacing(2) },
+  referralEyebrow:{ color:colors.orange, ...typography.overline },
+  referralTitle:{ color:colors.white, ...typography.heading, marginTop:3 },
+  referralText:{ color:colors.textMuted, ...typography.body, marginTop:spacing(0.75) },
+  referralCodeBox:{ minHeight:72, flexDirection:'row', alignItems:'center', justifyContent:'space-between', gap:spacing(1), backgroundColor:'rgba(0,0,0,0.24)', borderRadius:radii.medium, borderWidth:1, borderColor:colors.border, padding:spacing(1.25), marginTop:spacing(1.5) },
+  referralCodeLabel:{ color:colors.textSubtle, ...typography.overline, fontSize:9 },
+  referralCode:{ color:colors.orange, fontSize:22, fontWeight:'900', letterSpacing:1.4, marginTop:2 },
+  shareReferralBtn:{ minHeight:42, justifyContent:'center', backgroundColor:colors.orange, borderRadius:radii.small, paddingHorizontal:spacing(1.25) },
+  shareReferralText:{ color:colors.black, fontWeight:'900' },
+  referralProgressHeader:{ flexDirection:'row', justifyContent:'space-between', alignItems:'center', marginTop:spacing(1.5), marginBottom:spacing(0.75) },
+  referralProgressLabel:{ flex:1, color:colors.white, ...typography.caption },
+  referralProgressValue:{ color:colors.orange, fontWeight:'900' },
+  referralProgressTrack:{ height:8, borderRadius:radii.pill, backgroundColor:colors.surfaceElevated, overflow:'hidden' },
+  referralProgressFill:{ height:'100%', borderRadius:radii.pill, backgroundColor:colors.orange },
+  referralStatsRow:{ flexDirection:'row', justifyContent:'space-between', flexWrap:'wrap', gap:spacing(0.75), marginTop:spacing(1) },
+  referralStat:{ color:colors.textMuted, ...typography.caption },
+  youtubeCard:{ backgroundColor:'rgba(17,21,27,0.94)', borderRadius:radii.large, padding:spacing(2), borderWidth:1, borderColor:'rgba(255,0,0,0.25)', marginBottom:spacing(2) },
+  youtubeHeader:{ flexDirection:'row', alignItems:'center', gap:spacing(1.25) },
+  youtubeIcon:{ width:46, height:46, borderRadius:15, alignItems:'center', justifyContent:'center', backgroundColor:'#FF0000' },
+  youtubeIconText:{ color:'#fff', fontSize:19, fontWeight:'900', marginLeft:2 },
+  youtubeCopy:{ flex:1 },
+  youtubeEyebrow:{ color:'#FF6B6B', ...typography.overline, fontSize:9 },
+  youtubeTitle:{ color:colors.white, ...typography.heading, marginTop:2 },
+  youtubeText:{ color:colors.textMuted, ...typography.body, marginTop:spacing(1.25) },
+  youtubeBtn:{ minHeight:layout.minTouchTarget, backgroundColor:'#FF0000', borderRadius:radii.medium, alignItems:'center', justifyContent:'center', paddingHorizontal:spacing(1.5), marginTop:spacing(1.5) },
+  youtubeBtnText:{ color:'#fff', ...typography.bodyStrong, fontWeight:'900' },
   achievementsCard:{ backgroundColor:'rgba(17,21,27,0.94)', borderRadius:radii.large, padding:spacing(2), borderWidth:1, borderColor:colors.border, marginBottom:spacing(2) },
   achievementsBtn:{ minHeight:layout.minTouchTarget, backgroundColor:ORANGE, paddingVertical:14, paddingHorizontal:16, borderRadius:radii.medium, justifyContent:'center' },
   achievementsBtnText:{ color:'#000', fontWeight:'900', textAlign:'center' },

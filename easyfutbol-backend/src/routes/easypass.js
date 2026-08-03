@@ -22,6 +22,18 @@ const APP_BASE_URL =
   process.env.FRONTEND_URL ||
   'https://easyfutbol.es';
 
+async function hasActivePlus(userId) {
+  const [[row]] = await pool.query(
+    `SELECT 1 AS active
+     FROM user_plus_subscriptions
+     WHERE user_id = ? AND status IN ('active', 'trialing')
+       AND (current_period_end IS NULL OR current_period_end > NOW())
+     LIMIT 1`,
+    [userId]
+  );
+  return Boolean(row?.active);
+}
+
 /**
  * Sedes disponibles para EasyPass
  */
@@ -53,6 +65,7 @@ router.get('/locations', requireAuth, async (req, res) => {
  */
 router.get('/packs', requireAuth, async (req, res) => {
   try {
+    const isPlus = await hasActivePlus(req.user.id);
     const requestedLocationId = Number(req.query.location_id || req.query.locationId || 1);
     const locationId = Number.isInteger(requestedLocationId) && requestedLocationId > 0
       ? requestedLocationId
@@ -87,6 +100,8 @@ router.get('/packs', requireAuth, async (req, res) => {
         name: location.name,
         slug: location.slug,
       },
+      is_plus: isPlus,
+      discount_percent: isPlus ? 10 : 0,
       data: rows.map((row) => ({
         ...row,
         id: Number(row.id),
@@ -94,7 +109,9 @@ router.get('/packs', requireAuth, async (req, res) => {
         locationId: Number(row.location_id),
         easyPassAmount: Number(row.easyPassAmount || 0),
         credits: Number(row.easyPassAmount || 0),
-        price_cents: Number(row.price_cents || 0),
+        original_price_cents: Number(row.price_cents || 0),
+        price_cents: isPlus ? Math.round(Number(row.price_cents || 0) * 0.9) : Number(row.price_cents || 0),
+        plus_discount_applied: isPlus,
       })),
     });
   } catch (e) {
@@ -165,6 +182,11 @@ router.post('/packs/:id/checkout', requireAuth, async (req, res) => {
       return res.status(404).json({ ok:false, msg:'Pack no encontrado' });
     }
 
+    const isPlus = await hasActivePlus(userId);
+    const finalPriceCents = isPlus
+      ? Math.round(Number(pack.price_cents || 0) * 0.9)
+      : Number(pack.price_cents || 0);
+
     const baseUrl = String(APP_BASE_URL || 'https://easyfutbol.es').replace(/\/$/, '');
     const successUrl = `${baseUrl}/pago-ok/?session_id={CHECKOUT_SESSION_ID}`;
     const cancelUrl = `${baseUrl}/pago-cancelado/`;
@@ -181,7 +203,7 @@ router.post('/packs/:id/checkout', requireAuth, async (req, res) => {
               name: pack.name || `${Number(pack.easyPassAmount || 0)} EasyPass`,
               description: `Pack de ${Number(pack.easyPassAmount || 0)} EasyPass - ${pack.locationName || 'EasyFutbol'}`,
             },
-            unit_amount: Number(pack.price_cents || 0),
+            unit_amount: finalPriceCents,
           },
           quantity: 1,
         },
@@ -193,6 +215,7 @@ router.post('/packs/:id/checkout', requireAuth, async (req, res) => {
         locationId: String(pack.location_id || 1),
         locationSlug: String(pack.locationSlug || 'valladolid'),
         kind: 'easypass_pack',
+        plusDiscountPercent: isPlus ? '10' : '0',
       },
       success_url: successUrl,
       cancel_url: cancelUrl,
@@ -211,7 +234,9 @@ router.post('/packs/:id/checkout', requireAuth, async (req, res) => {
         name: pack.name,
         easyPassAmount: Number(pack.easyPassAmount || 0),
         credits: Number(pack.easyPassAmount || 0),
-        price_cents: Number(pack.price_cents || 0),
+        original_price_cents: Number(pack.price_cents || 0),
+        price_cents: finalPriceCents,
+        plus_discount_applied: isPlus,
       },
     });
   } catch (e) {

@@ -52,6 +52,30 @@ const getBackendDateTimeFromLocal = (dateValue, timeValue) => {
   };
 };
 
+const getLocalMatchDate = (dateValue, timeValue) => new Date(
+  dateValue.getFullYear(),
+  dateValue.getMonth(),
+  dateValue.getDate(),
+  timeValue.getHours(),
+  timeValue.getMinutes(),
+  0,
+  0
+);
+
+const getAutomaticPublishDate = (dateValue) => new Date(
+  dateValue.getFullYear(),
+  dateValue.getMonth(),
+  dateValue.getDate() - 6,
+  16,
+  0,
+  0,
+  0
+);
+
+const formatScheduleDate = (value) => value.toLocaleString('es-ES', {
+  weekday: 'long', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit',
+});
+
 const getAutoMatchTitle = (dateValue, fieldDisplayName) => {
   const cleanField = String(fieldDisplayName || '').trim();
   if (!dateValue || !cleanField) return '';
@@ -74,7 +98,7 @@ const getAutoMatchTitle = (dateValue, fieldDisplayName) => {
   return `${dateValue.getDate()} de ${months[dateValue.getMonth()]} - ${cleanField}`;
 };
 
-export default function AdminCreateMatchScreen() {
+export default function AdminCreateMatchScreen({ navigation }) {
   const [cities, setCities] = useState([]);
   const [locations, setLocations] = useState([]);
   const [city, setCity] = useState('');
@@ -100,6 +124,8 @@ export default function AdminCreateMatchScreen() {
 
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
+  const [automatic, setAutomatic] = useState(false);
+  const [batch, setBatch] = useState([]);
 
   // Cargar ciudades permitidas
   useEffect(() => {
@@ -187,6 +213,7 @@ export default function AdminCreateMatchScreen() {
   }, [time]);
 
   const backendDateTime = useMemo(() => getBackendDateTimeFromLocal(date, time), [date, time]);
+  const automaticPublishDate = useMemo(() => getAutomaticPublishDate(date), [date]);
 
   const selectedField = useMemo(
     () => fields.find((item) => String(item.id) === String(fieldId)),
@@ -204,28 +231,25 @@ export default function AdminCreateMatchScreen() {
     setTitle(autoMatchTitle);
   }, [autoMatchTitle]);
 
-  const create = async () => {
-    try {
+  const buildMatch = () => {
       const cleanFieldName = fieldName.trim();
       const cleanTitle = autoMatchTitle.trim();
 
-      if (!cleanTitle) return Alert.alert('Falta título', 'Selecciona la fecha y el campo para generar el título automáticamente.');
-      if (!city) return Alert.alert('Selecciona ciudad');
-      if (!fieldId && !cleanFieldName) return Alert.alert('Selecciona o escribe un campo');
+      if (!cleanTitle) { Alert.alert('Falta título', 'Selecciona la fecha y el campo para generar el título automáticamente.'); return null; }
+      if (!city) { Alert.alert('Selecciona ciudad'); return null; }
+      if (!fieldId && !cleanFieldName) { Alert.alert('Selecciona o escribe un campo'); return null; }
 
       const capacityNum = Number(capacity);
       const durationNum = Number(duration);
 
       if (!capacity || isNaN(capacityNum) || capacityNum <= 0) {
-        return Alert.alert('Capacidad inválida', 'Introduce un número de plazas mayor que 0');
+        Alert.alert('Capacidad inválida', 'Introduce un número de plazas mayor que 0'); return null;
       }
       if (!duration || isNaN(durationNum) || durationNum <= 0) {
-        return Alert.alert('Duración inválida', 'Introduce una duración en minutos mayor que 0');
+        Alert.alert('Duración inválida', 'Introduce una duración en minutos mayor que 0'); return null;
       }
 
-      setCreating(true);
       const { backendDate, backendTime } = backendDateTime;
-
       const body = {
         title: cleanTitle,
         city,
@@ -245,6 +269,30 @@ export default function AdminCreateMatchScreen() {
       } else {
         body.field_name = cleanFieldName;
       }
+
+      return body;
+  };
+
+  const create = async () => {
+    const body = buildMatch();
+    if (!body) return;
+
+    if (automatic) {
+      const startsAt = getLocalMatchDate(date, time);
+      const scheduledItem = {
+        ...body,
+        starts_at: startsAt.toISOString(),
+        publish_at: automaticPublishDate.toISOString(),
+        field_label: resolvedFieldName,
+        local_starts_label: `${dateStr} · ${timeStr}`,
+      };
+      setBatch((current) => [...current, scheduledItem]);
+      setDate((current) => new Date(current.getFullYear(), current.getMonth(), current.getDate() + 1));
+      return;
+    }
+
+    try {
+      setCreating(true);
 
       const { data } = await api.post(apiPath('/api/admin/matches'), body);
 
@@ -275,6 +323,23 @@ export default function AdminCreateMatchScreen() {
     }
   };
 
+  const scheduleBatch = async () => {
+    if (!batch.length) return;
+    try {
+      setCreating(true);
+      const matches = batch.map(({ field_label, local_starts_label, date: ignoredDate, time: ignoredTime, ...item }) => item);
+      const { data } = await api.post(apiPath('/api/admin/scheduled-matches/batch'), { matches });
+      Alert.alert('Automatización guardada', `${data?.created || batch.length} partidos se publicarán automáticamente.`);
+      setBatch([]);
+      navigation?.navigate('AdminScheduledMatches');
+    } catch (e) {
+      const info = debugHttpError(e, 'POST scheduled matches batch');
+      Alert.alert('No se pudo programar', info?.data?.msg || e?.message || 'Inténtalo de nuevo.');
+    } finally {
+      setCreating(false);
+    }
+  };
+
   if (loading) {
     return (
       <View style={styles.container}>
@@ -294,6 +359,10 @@ export default function AdminCreateMatchScreen() {
       >
         <StatusBar barStyle="light-content" />
         <Text style={styles.title}>Crear Partido</Text>
+
+        <TouchableOpacity style={styles.scheduledLink} onPress={() => navigation?.navigate('AdminScheduledMatches')}>
+          <Text style={styles.scheduledLinkText}>Ver partidos programados →</Text>
+        </TouchableOpacity>
 
         <Text style={styles.label}>Título automático</Text>
         <View style={styles.autoTitleBox}>
@@ -437,13 +506,55 @@ export default function AdminCreateMatchScreen() {
           />
         </View>
 
+        <View style={[styles.switchCard, automatic && styles.automaticCard]}>
+          <View style={styles.switchTextWrap}>
+            <Text style={styles.switchTitle}>Publicación automática</Text>
+            <Text style={styles.switchSubtitle}>
+              Añade varios partidos y se publicarán seis días antes a las 16:00.
+            </Text>
+          </View>
+          <Switch
+            value={automatic}
+            onValueChange={setAutomatic}
+            trackColor={{ false: '#333', true: colors.orange }}
+            thumbColor={automatic ? '#fff' : '#ccc'}
+          />
+        </View>
+
+        {automatic ? (
+          <View style={styles.scheduleNotice}>
+            <Text style={styles.scheduleNoticeLabel}>ESTE PARTIDO SE PUBLICARÁ</Text>
+            <Text style={styles.scheduleNoticeValue}>{formatScheduleDate(automaticPublishDate)}</Text>
+          </View>
+        ) : null}
+
         <TouchableOpacity
           style={styles.btn}
           onPress={create}
           disabled={creating || !city || !(fieldId || fieldName) || !autoMatchTitle}
         >
-          {creating ? <ActivityIndicator /> : <Text style={styles.btnText}>Crear partido</Text>}
+          {creating ? <ActivityIndicator /> : <Text style={styles.btnText}>{automatic ? 'Añadir partido al lote' : 'Crear partido'}</Text>}
         </TouchableOpacity>
+
+        {batch.length ? (
+          <View style={styles.batchSection}>
+            <Text style={styles.batchTitle}>Lote preparado · {batch.length}</Text>
+            {batch.map((item, index) => (
+              <View key={`${item.starts_at}-${index}`} style={styles.batchItem}>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.batchItemTitle}>{item.title}</Text>
+                  <Text style={styles.batchItemMeta}>{item.local_starts_label} · {item.city}</Text>
+                </View>
+                <TouchableOpacity onPress={() => setBatch((current) => current.filter((_, itemIndex) => itemIndex !== index))}>
+                  <Text style={styles.removeText}>Quitar</Text>
+                </TouchableOpacity>
+              </View>
+            ))}
+            <TouchableOpacity style={styles.confirmBatchButton} disabled={creating} onPress={scheduleBatch}>
+              {creating ? <ActivityIndicator color="#fff" /> : <Text style={styles.confirmBatchText}>Programar {batch.length} partidos</Text>}
+            </TouchableOpacity>
+          </View>
+        ) : null}
       </ScrollView>
     </TouchableWithoutFeedback>
   );
@@ -453,6 +564,8 @@ const styles = StyleSheet.create({
   container:{ flex:1, backgroundColor:colors.black },
   scrollContent:{ padding:spacing(2), paddingBottom:spacing(3) },
   title:{ color:colors.white, fontSize:22, fontWeight:'800', marginBottom:spacing(2), textAlign:'center' },
+  scheduledLink:{ alignSelf:'center', borderWidth:1, borderColor:'rgba(255,90,0,0.5)', borderRadius:999, paddingHorizontal:14, paddingVertical:8, marginTop:-8, marginBottom:12 },
+  scheduledLinkText:{ color:'#ff8c4d', fontWeight:'800', fontSize:13 },
   label:{ color:'#ddd', fontWeight:'700', marginTop:spacing(1), marginBottom:4 },
   input:{ backgroundColor:'#111', borderWidth:1, borderColor:'#222', color:'#fff', padding:spacing(1.2), borderRadius:10 },
   autoTitleBox:{ backgroundColor:'#141414', borderWidth:1, borderColor:'rgba(255,90,0,0.35)', padding:spacing(1.2), borderRadius:10 },
@@ -499,6 +612,18 @@ const styles = StyleSheet.create({
     fontSize:13,
     lineHeight:18,
   },
+  automaticCard:{ borderColor:'rgba(255,90,0,0.6)', backgroundColor:'rgba(255,90,0,0.08)' },
+  scheduleNotice:{ backgroundColor:'#17110e', borderRadius:12, padding:13, marginTop:10, borderLeftWidth:3, borderLeftColor:colors.orange },
+  scheduleNoticeLabel:{ color:'#a76a48', fontSize:10, fontWeight:'900', letterSpacing:0.8 },
+  scheduleNoticeValue:{ color:'#fff', fontSize:15, fontWeight:'900', marginTop:4, textTransform:'capitalize' },
+  batchSection:{ marginTop:18, backgroundColor:'#111', borderRadius:16, borderWidth:1, borderColor:'#292929', padding:14 },
+  batchTitle:{ color:'#fff', fontSize:17, fontWeight:'900', marginBottom:10 },
+  batchItem:{ flexDirection:'row', alignItems:'center', borderTopWidth:1, borderTopColor:'#242424', paddingVertical:11, gap:10 },
+  batchItemTitle:{ color:'#fff', fontWeight:'800', fontSize:14 },
+  batchItemMeta:{ color:'#999', fontSize:12, marginTop:3 },
+  removeText:{ color:'#ff8c73', fontWeight:'800', fontSize:12 },
+  confirmBatchButton:{ backgroundColor:'#168b4f', borderRadius:12, paddingVertical:14, alignItems:'center', marginTop:8 },
+  confirmBatchText:{ color:'#fff', fontWeight:'900', fontSize:15 },
   btn:{ backgroundColor:colors.orange, paddingVertical:spacing(1.6), borderRadius:12, alignItems:'center', marginTop:spacing(2) },
   btnText:{ color:colors.black, fontWeight:'800', fontSize:16 },
   btnSmall:{ backgroundColor:'#222', paddingVertical:8, paddingHorizontal:12, borderRadius:8, alignSelf:'flex-start' },

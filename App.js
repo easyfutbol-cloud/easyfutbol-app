@@ -1,5 +1,5 @@
 // App.js
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   Platform,
   View,
@@ -14,6 +14,8 @@ import {
   ScrollView,
   ActivityIndicator,
   Linking,
+  Animated,
+  Image,
 } from 'react-native';
 import {
   NavigationContainer,
@@ -40,12 +42,14 @@ import AdminCreateMatchScreen from './src/screens/AdminCreateMatchScreen';
 import AdminMatchStatsScreen from './src/screens/AdminMatchStatsScreen';
 import AdminMatchStatsImportScreen from './src/screens/AdminMatchStatsImportScreen';
 import AdminMatchesScreen from './src/screens/AdminMatchesScreen';
+import AdminScheduledMatchesScreen from './src/screens/AdminScheduledMatchesScreen';
 import AdminMatchEditScreen from './src/screens/AdminMatchEditScreen';
 import AdminNotifyScreen from './src/screens/AdminNotifyScreen';
 import AdminEasyPassScreen from './src/screens/admineasypassscreen';
 import AdminDashboardScreen from './src/screens/AdminDashboardScreen';
 import AdminUsersScreen from './src/screens/AdminUsersScreen';
 import EasyPassScreen from './src/screens/EasyPassScreen';
+import PlusScreen from './src/screens/PlusScreen';
 import AchievementsScreen from './src/screens/AchievementsScreen';
 import LeaguesHomeScreen from './src/screens/leagues/LeaguesHomeScreen';
 import JoinLeagueScreen from './src/screens/leagues/JoinLeagueScreen';
@@ -70,6 +74,7 @@ try {
 
 const Stack = createNativeStackNavigator();
 const ORANGE = '#ff5a00';
+const APP_LOGO = require('./assets/Logo.png');
 
 // Tema oscuro sin barra superior por defecto
 const navTheme = {
@@ -559,6 +564,7 @@ function AppMenu({ currentRouteName }) {
     { label: 'Partidos', screen: 'Matchs' },
     { label: 'Mis partidos', screen: 'MisPartidos' },
     { label: 'Torneos', screen: 'HomeTournament' },
+    { label: 'EasyFutbol Plus', screen: 'Plus' },
     { label: 'Ligas', screen: 'LeaguesHome' },
     { label: 'Mundial EasyFutbol', screen: 'WorldCup' },
     { label: 'Estadísticas', screen: 'Stats' },
@@ -570,6 +576,7 @@ function AppMenu({ currentRouteName }) {
     { label: 'Dashboard KPIs (Admin)', screen: 'AdminDashboard' },
     { label: 'Administrar Partidos (Admin)', screen: 'AdminMatches' },
     { label: 'Crear Partido (Admin)', screen: 'AdminCreateMatch' },
+    { label: 'Partidos programados (Admin)', screen: 'AdminScheduledMatches' },
     { label: 'Stats Partido (Admin)', screen: 'AdminMatchStats' },
     { label: 'Usuarios (Admin)', screen: 'AdminUsers' },
     { label: 'Avisos (Admin)', screen: 'AdminNotify' },
@@ -701,10 +708,12 @@ function AppShell({ currentRouteName }) {
         <Stack.Screen name="TournamentRules" component={TournamentRulesScreen} />
         <Stack.Screen name="Achievements" component={AchievementsScreen} />
         <Stack.Screen name="EasyPass" component={EasyPassScreen} />
+        <Stack.Screen name="Plus" component={PlusScreen} />
         <Stack.Screen name="AdminDashboard" component={AdminDashboardScreen} />
         <Stack.Screen name="AdminMatches" component={AdminMatchesScreen} />
         <Stack.Screen name="AdminMatchEdit" component={AdminMatchEditScreen} />
         <Stack.Screen name="AdminCreateMatch" component={AdminCreateMatchScreen} />
+        <Stack.Screen name="AdminScheduledMatches" component={AdminScheduledMatchesScreen} />
         <Stack.Screen name="AdminMatchStats" component={AdminMatchStatsScreen} />
         <Stack.Screen name="AdminMatchStatsImport" component={AdminMatchStatsImportScreen} />
         <Stack.Screen name="AdminUsers" component={AdminUsersScreen} />
@@ -721,6 +730,9 @@ export default function App() {
   const [currentRouteName, setCurrentRouteName] = useState(null);
   const [checkingVersion, setCheckingVersion] = useState(true);
   const [forceUpdateData, setForceUpdateData] = useState(null);
+  const [showSplash, setShowSplash] = useState(true);
+  const splashOpacity = useRef(new Animated.Value(1)).current;
+  const splashScale = useRef(new Animated.Value(0.72)).current;
 
   useEffect(() => {
     setUnauthorizedHandler(() => {
@@ -736,6 +748,29 @@ export default function App() {
       setUnauthorizedHandler(null);
     };
   }, []);
+
+  useEffect(() => {
+    if (checkingVersion || forceUpdateData) return undefined;
+    const animation = Animated.sequence([
+      Animated.spring(splashScale, {
+        toValue: 1,
+        damping: 11,
+        stiffness: 130,
+        mass: 0.8,
+        useNativeDriver: true,
+      }),
+      Animated.delay(650),
+      Animated.timing(splashOpacity, {
+        toValue: 0,
+        duration: 360,
+        useNativeDriver: true,
+      }),
+    ]);
+    animation.start(({ finished }) => {
+      if (finished) setShowSplash(false);
+    });
+    return () => animation.stop();
+  }, [checkingVersion, forceUpdateData, splashOpacity, splashScale]);
 
   useEffect(() => {
     let mounted = true;
@@ -764,7 +799,11 @@ export default function App() {
     const subReceived = Notifications.addNotificationReceivedListener(() => {});
     const subResponse = Notifications.addNotificationResponseReceivedListener((response) => {
       const data = response?.notification?.request?.content?.data || {};
-      // navegar según data
+      if (data.screen === 'Match' && data.matchId && navigationRef.isReady()) {
+        navigationRef.navigate('Match', { matchId: Number(data.matchId) });
+      } else if (data.screen && navigationRef.isReady()) {
+        navigationRef.navigate(data.screen, data.matchId ? { matchId: Number(data.matchId) } : undefined);
+      }
     });
     return () => {
       subReceived?.remove?.();
@@ -776,7 +815,7 @@ export default function App() {
     return (
       <SafeAreaProvider>
         <View style={forceUpdateStyles.loadingContainer}>
-          <ActivityIndicator size="large" color={ORANGE} />
+          <Image source={APP_LOGO} style={styles.loadingLogo} resizeMode="contain" />
           <Text style={forceUpdateStyles.loadingText}>Cargando EasyFutbol...</Text>
         </View>
       </SafeAreaProvider>
@@ -793,25 +832,43 @@ export default function App() {
 
   return (
     <SafeAreaProvider>
-      <NavigationContainer
-        theme={navTheme}
-        ref={navigationRef}
-        onReady={() => {
-          const route = navigationRef.getCurrentRoute();
-          setCurrentRouteName(route?.name ?? null);
-        }}
-        onStateChange={() => {
-          const route = navigationRef.getCurrentRoute();
-          setCurrentRouteName(route?.name ?? null);
-        }}
-      >
-        <AppShell currentRouteName={currentRouteName} />
-      </NavigationContainer>
+      <View style={{ flex: 1 }}>
+        <NavigationContainer
+          theme={navTheme}
+          ref={navigationRef}
+          onReady={() => {
+            const route = navigationRef.getCurrentRoute();
+            setCurrentRouteName(route?.name ?? null);
+          }}
+          onStateChange={() => {
+            const route = navigationRef.getCurrentRoute();
+            setCurrentRouteName(route?.name ?? null);
+          }}
+        >
+          <AppShell currentRouteName={currentRouteName} />
+        </NavigationContainer>
+        {showSplash ? (
+          <Animated.View style={[styles.splashOverlay, { opacity: splashOpacity }]}>
+            <View style={styles.splashGlow} />
+            <Animated.Image
+              source={APP_LOGO}
+              resizeMode="contain"
+              style={[styles.splashLogo, { transform: [{ scale: splashScale }] }]}
+            />
+            <Text style={styles.splashCaption}>JUGAR NUNCA FUE TAN FÁCIL</Text>
+          </Animated.View>
+        ) : null}
+      </View>
     </SafeAreaProvider>
   );
 }
 
 const styles = StyleSheet.create({
+  loadingLogo: { width: 190, height: 110, marginBottom: 16 },
+  splashOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: '#000000', alignItems: 'center', justifyContent: 'center', zIndex: 5000 },
+  splashGlow: { position: 'absolute', width: 230, height: 230, borderRadius: 115, backgroundColor: '#000000' },
+  splashLogo: { width: 240, height: 150 },
+  splashCaption: { color: '#8c8c8c', fontSize: 11, fontWeight: '900', letterSpacing: 2.2, marginTop: 12 },
   menuBtnWrapper: {
     position: 'absolute',
     right: 12,

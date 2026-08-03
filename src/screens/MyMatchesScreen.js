@@ -1,4 +1,5 @@
 import { View, Text, StyleSheet, StatusBar, FlatList, TouchableOpacity, Alert, ActivityIndicator } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { colors, layout, radii, spacing, typography } from '../theme';
 import { useEffect, useState, useCallback, useMemo } from 'react';
 import { api } from '../api/client';
@@ -70,6 +71,11 @@ function groupInscriptionsByMatch(list) {
         starts_at: ins.starts_at,
         duration_min: ins.duration_min,
         field_name: ins.field_name,
+        goals: Number(ins.goals || 0),
+        assists: Number(ins.assists || 0),
+        is_mvp: Boolean(Number(ins.is_mvp || 0)),
+        mvp_name: ins.mvp_name || null,
+        is_plus: Boolean(Number(ins.is_plus || 0)),
         inscriptions: [],
       };
     }
@@ -185,17 +191,18 @@ export default function MyMatchesScreen() {
     }
   };
 
-  const handleCancelPress = (matchId, total, startsAt) => {
+  const handleCancelPress = (matchId, total, startsAt, isPlus = false) => {
     const title = 'Cancelar entrada';
     const hoursUntilMatch = (new Date(startsAt).getTime() - Date.now()) / 36e5;
-    const refundMessage = hoursUntilMatch > 8
-      ? 'Como quedan más de 8 horas, se devolverá el EasyPass utilizado.'
-      : 'Quedan 8 horas o menos. Puedes cancelar, pero el EasyPass utilizado no se devolverá.';
+    const deadlineHours = isPlus ? 4 : 8;
+    const refundMessage = hoursUntilMatch > deadlineHours
+      ? `Como quedan más de ${deadlineHours} horas, se devolverá el EasyPass utilizado.`
+      : `Quedan ${deadlineHours} horas o menos. Puedes cancelar, pero el EasyPass utilizado no se devolverá.`;
     const body = total && total > 1
       ? `Vas a cancelar tus entradas para este partido.\n\n${refundMessage}`
       : `Vas a cancelar tu entrada para este partido.\n\n${refundMessage}`;
 
-    const confirmLabel = hoursUntilMatch > 8 ? 'Sí, cancelar' : 'Cancelar sin devolución';
+    const confirmLabel = hoursUntilMatch > deadlineHours ? 'Sí, cancelar' : 'Cancelar sin devolución';
 
     Alert.alert(
       title,
@@ -215,6 +222,9 @@ export default function MyMatchesScreen() {
     const activeCount = item.activeCount || 0;
     const whites = item.whiteCount || 0;
     const blacks = item.blackCount || 0;
+    const goals = Number(item.goals || 0);
+    const assists = Number(item.assists || 0);
+    const wasMvp = Boolean(item.is_mvp);
 
     return (
       <View style={styles.card} accessible accessibilityLabel={`${item.title}, ${item.status}`}>
@@ -245,10 +255,52 @@ export default function MyMatchesScreen() {
           </View>
         )}
 
+        {!isFuture && (
+          <View style={styles.pastStatsSection}>
+            <View style={styles.statsHeadingRow}>
+              <View style={styles.statsHeadingIcon}>
+                <Ionicons name="stats-chart" size={18} color={colors.orange} />
+              </View>
+              <View style={styles.statsHeadingCopy}>
+                <Text style={styles.statsEyebrow}>TU PARTIDO</Text>
+                <Text style={styles.statsTitle}>Estadísticas individuales</Text>
+              </View>
+            </View>
+
+            <View style={styles.statsGrid}>
+              <View style={styles.statBox}>
+                <Ionicons name="football-outline" size={19} color={colors.orange} />
+                <Text style={styles.statValue}>{goals}</Text>
+                <Text style={styles.statLabel}>Goles</Text>
+              </View>
+              <View style={styles.statBox}>
+                <Ionicons name="navigate-outline" size={19} color={colors.orange} />
+                <Text style={styles.statValue}>{assists}</Text>
+                <Text style={styles.statLabel}>Asistencias</Text>
+              </View>
+              <View style={[styles.statBox, wasMvp && styles.statBoxMvp]}>
+                <Ionicons name={wasMvp ? 'star' : 'star-outline'} size={19} color={wasMvp ? colors.black : colors.orange} />
+                <Text style={[styles.statValue, wasMvp && styles.statValueMvp]}>{wasMvp ? 'Sí' : '—'}</Text>
+                <Text style={[styles.statLabel, wasMvp && styles.statLabelMvp]}>MVP</Text>
+              </View>
+            </View>
+
+            <View style={styles.matchMvpCard}>
+              <View style={styles.mvpIconWrap}>
+                <Ionicons name="trophy" size={21} color={colors.orange} />
+              </View>
+              <View style={styles.mvpCopy}>
+                <Text style={styles.mvpLabel}>MVP DEL PARTIDO</Text>
+                <Text style={styles.mvpName}>{item.mvp_name || 'Pendiente de publicar'}</Text>
+              </View>
+            </View>
+          </View>
+        )}
+
         {canCancel && (
           <TouchableOpacity
             style={styles.btnOutline}
-            onPress={() => handleCancelPress(item.match_id, total, item.starts_at)}
+            onPress={() => handleCancelPress(item.match_id, total, item.starts_at, item.is_plus)}
             accessibilityRole="button"
           >
             <Text style={styles.btnOutlineText}>
@@ -266,7 +318,7 @@ export default function MyMatchesScreen() {
       <ScreenHeader
         eyebrow="TUS RESERVAS"
         title="Mis entradas"
-        description="Consulta y gestiona las plazas que has reservado."
+        description="Gestiona tus reservas y consulta tu rendimiento en partidos anteriores."
       />
       <SegmentedControl
         options={TAB_OPTIONS}
@@ -329,6 +381,24 @@ const styles = StyleSheet.create({
   shirtIconText:{ fontSize:13, lineHeight:16 },
   shirtIconTextWhite:{ color:'#111' },
   entryShirtText:{ color:colors.textMuted, fontSize:12, fontWeight:'700' },
+  pastStatsSection:{ borderTopWidth:1, borderTopColor:colors.border, marginTop:spacing(1.5), paddingTop:spacing(1.5) },
+  statsHeadingRow:{ flexDirection:'row', alignItems:'center', gap:spacing(1), marginBottom:spacing(1.25) },
+  statsHeadingIcon:{ width:38, height:38, borderRadius:12, alignItems:'center', justifyContent:'center', backgroundColor:'rgba(255,90,0,0.11)' },
+  statsHeadingCopy:{ flex:1 },
+  statsEyebrow:{ color:colors.orange, ...typography.overline, fontSize:9 },
+  statsTitle:{ color:colors.white, ...typography.bodyStrong, marginTop:2 },
+  statsGrid:{ flexDirection:'row', gap:spacing(0.75) },
+  statBox:{ flex:1, minHeight:92, alignItems:'center', justifyContent:'center', backgroundColor:colors.surfaceElevated, borderRadius:radii.medium, borderWidth:1, borderColor:colors.border, padding:spacing(0.75) },
+  statBoxMvp:{ backgroundColor:colors.orange, borderColor:colors.orange },
+  statValue:{ color:colors.white, fontSize:20, lineHeight:25, fontWeight:'900', marginTop:3 },
+  statValueMvp:{ color:colors.black },
+  statLabel:{ color:colors.textMuted, fontSize:10, fontWeight:'800', marginTop:1 },
+  statLabelMvp:{ color:'rgba(0,0,0,0.66)' },
+  matchMvpCard:{ minHeight:62, flexDirection:'row', alignItems:'center', gap:spacing(1), backgroundColor:'rgba(255,90,0,0.08)', borderWidth:1, borderColor:'rgba(255,90,0,0.22)', borderRadius:radii.medium, padding:spacing(1.25), marginTop:spacing(1) },
+  mvpIconWrap:{ width:38, height:38, borderRadius:12, alignItems:'center', justifyContent:'center', backgroundColor:'rgba(255,90,0,0.12)' },
+  mvpCopy:{ flex:1 },
+  mvpLabel:{ color:colors.orange, ...typography.overline, fontSize:9 },
+  mvpName:{ color:colors.white, ...typography.bodyStrong, marginTop:2 },
   btnOutline:{ minHeight:layout.minTouchTarget, borderWidth:1, borderColor:colors.border, paddingVertical:spacing(1.2), borderRadius:radii.medium, alignItems:'center', justifyContent:'center', marginTop:spacing(1) },
   btnOutlineText:{ color:colors.white, fontWeight:'800', fontSize:14 }
 });

@@ -1,30 +1,34 @@
-
-
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
   RefreshControl,
   SafeAreaView,
   ScrollView,
+  StatusBar,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
 } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
 import { useFocusEffect } from '@react-navigation/native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { colors, layout, radii, shadows, spacing, typography } from '../../theme';
+import { goBackOrFallback } from '../../utils/navigation';
 
 const API_URL = 'https://api.easyfutbol.es/api';
 
-const formatTournamentDate = (dateValue) => {
-  if (!dateValue) return 'Fecha pendiente';
-
+const parseTournamentDate = (dateValue) => {
+  if (!dateValue) return null;
   const date = new Date(dateValue);
+  return Number.isNaN(date.getTime()) ? null : date;
+};
 
-  if (Number.isNaN(date.getTime())) {
-    return 'Fecha pendiente';
-  }
+const formatTournamentDate = (dateValue) => {
+  const date = parseTournamentDate(dateValue);
+  if (!date) return 'Fecha pendiente';
 
   return date.toLocaleDateString('es-ES', {
     weekday: 'long',
@@ -34,13 +38,8 @@ const formatTournamentDate = (dateValue) => {
 };
 
 const formatTournamentTime = (dateValue) => {
-  if (!dateValue) return 'Horario pendiente';
-
-  const date = new Date(dateValue);
-
-  if (Number.isNaN(date.getTime())) {
-    return 'Horario pendiente';
-  }
+  const date = parseTournamentDate(dateValue);
+  if (!date) return 'Horario pendiente';
 
   return date.toLocaleTimeString('es-ES', {
     hour: '2-digit',
@@ -48,11 +47,21 @@ const formatTournamentTime = (dateValue) => {
   });
 };
 
+const isUpcomingTournament = (tournament) => {
+  if (tournament?.status === 'finished') return false;
+
+  const tournamentDate = parseTournamentDate(tournament?.date);
+  if (!tournamentDate) return true;
+
+  const endOfTournamentDay = new Date(tournamentDate);
+  endOfTournamentDay.setHours(23, 59, 59, 999);
+  return endOfTournamentDay.getTime() >= Date.now();
+};
+
 const getStatusLabel = (status) => {
   if (status === 'open') return 'Inscripciones abiertas';
   if (status === 'full') return 'Completo';
   if (status === 'closed') return 'Inscripciones cerradas';
-  if (status === 'finished') return 'Finalizado';
   return 'Próximamente';
 };
 
@@ -61,17 +70,20 @@ const HomeTournamentScreen = ({ navigation }) => {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
+  const upcomingTournaments = useMemo(
+    () => tournaments.filter(isUpcomingTournament),
+    [tournaments]
+  );
+
   const loadTournaments = async () => {
     try {
       const token = await AsyncStorage.getItem('token');
-
       const response = await fetch(`${API_URL}/tournaments`, {
         headers: {
           Accept: 'application/json',
           ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
       });
-
       const data = await response.json();
 
       if (!response.ok) {
@@ -100,46 +112,86 @@ const HomeTournamentScreen = ({ navigation }) => {
   };
 
   const handleOpenTournament = (tournament) => {
-    navigation.navigate('TournamentDetail', {
-      tournamentId: tournament.id,
-    });
+    navigation.navigate('TournamentDetail', { tournamentId: tournament.id });
   };
 
   return (
     <SafeAreaView style={styles.safeArea}>
+      <StatusBar barStyle="light-content" />
       <ScrollView
         contentContainerStyle={styles.container}
+        showsVerticalScrollIndicator={false}
         refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={handleRefresh}
+            tintColor={colors.orange}
+            colors={[colors.orange]}
+          />
         }
       >
-        <View style={styles.header}>
-          <Text style={styles.eyebrow}>Eventos EasyFutbol</Text>
-          <Text style={styles.title}>Torneos</Text>
+        <LinearGradient colors={['#2B1609', '#11151B']} style={styles.hero}>
+          <TouchableOpacity
+            style={styles.backButton}
+            onPress={() => goBackOrFallback(navigation)}
+            accessibilityRole="button"
+            accessibilityLabel="Volver"
+          >
+            <Ionicons name="arrow-back" size={20} color={colors.white} />
+            <Text style={styles.backText}>Volver</Text>
+          </TouchableOpacity>
+
+          <View style={styles.heroIcon}>
+            <Ionicons name="trophy" size={28} color={colors.orange} />
+          </View>
+          <Text style={styles.eyebrow}>COMPITE · DISFRUTA · COMPARTE</Text>
+          <Text style={styles.title}>Torneos EasyFutbol</Text>
           <Text style={styles.subtitle}>
-            Apúntate a los torneos especiales de EasyFutbol y vive una experiencia competitiva con buen ambiente.
+            Eventos especiales, ambiente deportivo y una experiencia de fútbol completa.
           </Text>
+        </LinearGradient>
+
+        <View style={styles.sectionHeader}>
+          <View>
+            <Text style={styles.sectionEyebrow}>PRÓXIMAS CITAS</Text>
+            <Text style={styles.sectionTitle}>El siguiente desafío</Text>
+          </View>
+          {!loading && upcomingTournaments.length > 0 ? (
+            <View style={styles.countBadge}>
+              <Text style={styles.countText}>{upcomingTournaments.length}</Text>
+            </View>
+          ) : null}
         </View>
 
         {loading ? (
           <View style={styles.loadingBox}>
-            <ActivityIndicator size="large" />
-            <Text style={styles.loadingText}>Cargando torneos...</Text>
+            <ActivityIndicator size="large" color={colors.orange} />
+            <Text style={styles.loadingText}>Buscando próximos torneos...</Text>
           </View>
-        ) : tournaments.length === 0 ? (
-          <View style={styles.emptyBox}>
-            <Text style={styles.emptyIcon}>🏆</Text>
-            <Text style={styles.emptyTitle}>No hay torneos disponibles</Text>
+        ) : upcomingTournaments.length === 0 ? (
+          <LinearGradient colors={['#171C23', '#101318']} style={styles.emptyBox}>
+            <View style={styles.emptyIconWrap}>
+              <Ionicons name="construct-outline" size={32} color={colors.orange} />
+            </View>
+            <Text style={styles.emptyEyebrow}>PRÓXIMAMENTE</Text>
+            <Text style={styles.emptyTitle}>Estamos trabajando en el siguiente torneo</Text>
             <Text style={styles.emptyText}>
-              Cuando abramos inscripciones aparecerán aquí.
+              Estamos preparando una nueva experiencia EasyFutbol. En cuanto abramos las inscripciones, la encontrarás aquí.
             </Text>
-          </View>
+            <View style={styles.emptyHint}>
+              <Ionicons name="notifications-outline" size={18} color={colors.orange} />
+              <Text style={styles.emptyHintText}>Te avisaremos cuando esté listo</Text>
+            </View>
+          </LinearGradient>
         ) : (
-          tournaments.map((tournament) => {
+          upcomingTournaments.map((tournament) => {
             const confirmedPlayers = Number(tournament.confirmed_players || 0);
             const maxPlayers = Number(tournament.max_players || 0);
             const availableSpots = Number(tournament.available_spots || 0);
             const isOpen = tournament.status === 'open' && availableSpots > 0;
+            const progress = maxPlayers > 0
+              ? Math.min((confirmedPlayers / maxPlayers) * 100, 100)
+              : 0;
 
             return (
               <TouchableOpacity
@@ -147,63 +199,67 @@ const HomeTournamentScreen = ({ navigation }) => {
                 style={styles.card}
                 activeOpacity={0.88}
                 onPress={() => handleOpenTournament(tournament)}
+                accessibilityRole="button"
+                accessibilityLabel={`Ver torneo ${tournament.title}`}
               >
+                <LinearGradient colors={['rgba(255,90,0,0.16)', 'rgba(17,21,27,0)']} style={styles.cardGlow} />
+
                 <View style={styles.cardTopRow}>
                   <View style={styles.badge}>
-                    <Text style={styles.badgeText}>🏆 Torneo</Text>
+                    <Ionicons name="trophy-outline" size={15} color={colors.orange} />
+                    <Text style={styles.badgeText}>TORNEO</Text>
                   </View>
                   <View style={[styles.statusPill, isOpen ? styles.statusOpen : styles.statusClosed]}>
+                    <View style={[styles.statusDot, isOpen && styles.statusDotOpen]} />
                     <Text style={styles.statusText}>{getStatusLabel(tournament.status)}</Text>
                   </View>
                 </View>
 
                 <Text style={styles.cardTitle}>{tournament.title}</Text>
+                {tournament.description ? (
+                  <Text style={styles.cardDescription} numberOfLines={2}>{tournament.description}</Text>
+                ) : null}
 
-                <View style={styles.infoGrid}>
-                  <View style={styles.infoItem}>
-                    <Text style={styles.infoLabel}>Fecha</Text>
-                    <Text style={styles.infoValue}>{formatTournamentDate(tournament.date)}</Text>
+                <View style={styles.detailsCard}>
+                  <View style={styles.detailRow}>
+                    <View style={styles.detailIcon}><Ionicons name="calendar-outline" size={19} color={colors.orange} /></View>
+                    <View style={styles.detailCopy}>
+                      <Text style={styles.detailLabel}>FECHA Y HORA</Text>
+                      <Text style={styles.detailValue}>{formatTournamentDate(tournament.date)} · {formatTournamentTime(tournament.date)}</Text>
+                    </View>
                   </View>
-                  <View style={styles.infoItem}>
-                    <Text style={styles.infoLabel}>Hora</Text>
-                    <Text style={styles.infoValue}>{formatTournamentTime(tournament.date)}</Text>
+                  <View style={styles.detailDivider} />
+                  <View style={styles.detailRow}>
+                    <View style={styles.detailIcon}><Ionicons name="location-outline" size={20} color={colors.orange} /></View>
+                    <View style={styles.detailCopy}>
+                      <Text style={styles.detailLabel}>CIUDAD</Text>
+                      <Text style={styles.detailValue}>{tournament.city || 'Ubicación pendiente'}</Text>
+                    </View>
                   </View>
-                  <View style={styles.infoItem}>
-                    <Text style={styles.infoLabel}>Precio</Text>
-                    <Text style={styles.infoValue}>{tournament.price_easypass} EP</Text>
+                </View>
+
+                <View style={styles.metricsRow}>
+                  <View style={styles.priceBox}>
+                    <Text style={styles.metricLabel}>PRECIO</Text>
+                    <Text style={styles.metricValue}>{tournament.price_easypass} EasyPass</Text>
                   </View>
-                  <View style={styles.infoItem}>
-                    <Text style={styles.infoLabel}>Ciudad</Text>
-                    <Text style={styles.infoValue}>{tournament.city || 'Pendiente'}</Text>
+                  <View style={[styles.spotsBox, availableSpots > 0 && styles.spotsBoxAvailable]}>
+                    <Text style={styles.metricLabel}>PLAZAS LIBRES</Text>
+                    <Text style={[styles.metricValue, availableSpots > 0 && styles.spotsValue]}>{availableSpots}</Text>
                   </View>
                 </View>
 
                 <View style={styles.progressHeader}>
-                  <Text style={styles.progressText}>Plazas</Text>
-                  <Text style={styles.progressText}>{confirmedPlayers}/{maxPlayers}</Text>
+                  <Text style={styles.progressText}>Jugadores confirmados</Text>
+                  <Text style={styles.progressCount}>{confirmedPlayers}/{maxPlayers}</Text>
                 </View>
-
                 <View style={styles.progressBarBackground}>
-                  <View
-                    style={[
-                      styles.progressBarFill,
-                      {
-                        width: `${maxPlayers > 0 ? Math.min((confirmedPlayers / maxPlayers) * 100, 100) : 0}%`,
-                      },
-                    ]}
-                  />
-                </View>
-
-                <Text style={styles.availableText}>
-                  {availableSpots > 0 ? `Quedan ${availableSpots} plazas disponibles` : 'Torneo completo'}
-                </Text>
-
-                <View style={styles.includesBox}>
-                  <Text style={styles.includesText}>Incluye camiseta, partidos grabados y consumición en La Herminia.</Text>
+                  <View style={[styles.progressBarFill, { width: `${progress}%` }]} />
                 </View>
 
                 <View style={styles.ctaButton}>
                   <Text style={styles.ctaText}>Ver torneo</Text>
+                  <Ionicons name="arrow-forward" size={19} color={colors.black} />
                 </View>
               </TouchableOpacity>
             );
@@ -215,192 +271,63 @@ const HomeTournamentScreen = ({ navigation }) => {
 };
 
 const styles = StyleSheet.create({
-  safeArea: {
-    flex: 1,
-    backgroundColor: '#0F172A',
-  },
-  container: {
-    padding: 20,
-    paddingBottom: 36,
-  },
-  header: {
-    marginBottom: 22,
-  },
-  eyebrow: {
-    color: '#F97316',
-    fontSize: 13,
-    fontWeight: '800',
-    textTransform: 'uppercase',
-    letterSpacing: 1,
-    marginBottom: 8,
-  },
-  title: {
-    color: '#FFFFFF',
-    fontSize: 32,
-    fontWeight: '900',
-    marginBottom: 10,
-  },
-  subtitle: {
-    color: '#CBD5E1',
-    fontSize: 15,
-    lineHeight: 22,
-  },
-  loadingBox: {
-    marginTop: 48,
-    alignItems: 'center',
-  },
-  loadingText: {
-    color: '#CBD5E1',
-    marginTop: 12,
-    fontSize: 15,
-  },
-  emptyBox: {
-    backgroundColor: '#111827',
-    borderRadius: 22,
-    padding: 24,
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: '#1F2937',
-  },
-  emptyIcon: {
-    fontSize: 42,
-    marginBottom: 10,
-  },
-  emptyTitle: {
-    color: '#FFFFFF',
-    fontSize: 20,
-    fontWeight: '900',
-    marginBottom: 8,
-  },
-  emptyText: {
-    color: '#CBD5E1',
-    textAlign: 'center',
-    fontSize: 15,
-    lineHeight: 22,
-  },
-  card: {
-    backgroundColor: '#111827',
-    borderRadius: 26,
-    padding: 18,
-    marginBottom: 18,
-    borderWidth: 1,
-    borderColor: '#1F2937',
-  },
-  cardTopRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 14,
-    gap: 10,
-  },
-  badge: {
-    backgroundColor: 'rgba(249, 115, 22, 0.16)',
-    paddingHorizontal: 12,
-    paddingVertical: 7,
-    borderRadius: 999,
-  },
-  badgeText: {
-    color: '#FDBA74',
-    fontSize: 13,
-    fontWeight: '800',
-  },
-  statusPill: {
-    paddingHorizontal: 11,
-    paddingVertical: 7,
-    borderRadius: 999,
-  },
-  statusOpen: {
-    backgroundColor: 'rgba(34, 197, 94, 0.16)',
-  },
-  statusClosed: {
-    backgroundColor: 'rgba(148, 163, 184, 0.18)',
-  },
-  statusText: {
-    color: '#FFFFFF',
-    fontSize: 12,
-    fontWeight: '800',
-  },
-  cardTitle: {
-    color: '#FFFFFF',
-    fontSize: 23,
-    fontWeight: '900',
-    lineHeight: 29,
-    marginBottom: 16,
-  },
-  infoGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    marginHorizontal: -5,
-    marginBottom: 14,
-  },
-  infoItem: {
-    width: '50%',
-    paddingHorizontal: 5,
-    marginBottom: 10,
-  },
-  infoLabel: {
-    color: '#94A3B8',
-    fontSize: 12,
-    fontWeight: '700',
-    marginBottom: 3,
-  },
-  infoValue: {
-    color: '#F8FAFC',
-    fontSize: 14,
-    fontWeight: '800',
-    textTransform: 'capitalize',
-  },
-  progressHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: 7,
-  },
-  progressText: {
-    color: '#CBD5E1',
-    fontSize: 13,
-    fontWeight: '800',
-  },
-  progressBarBackground: {
-    height: 9,
-    borderRadius: 999,
-    backgroundColor: '#1E293B',
-    overflow: 'hidden',
-  },
-  progressBarFill: {
-    height: '100%',
-    borderRadius: 999,
-    backgroundColor: '#F97316',
-  },
-  availableText: {
-    color: '#CBD5E1',
-    fontSize: 13,
-    fontWeight: '700',
-    marginTop: 8,
-  },
-  includesBox: {
-    backgroundColor: '#0F172A',
-    borderRadius: 16,
-    padding: 12,
-    marginTop: 14,
-    marginBottom: 14,
-  },
-  includesText: {
-    color: '#E2E8F0',
-    fontSize: 13,
-    lineHeight: 19,
-    fontWeight: '700',
-  },
-  ctaButton: {
-    backgroundColor: '#F97316',
-    borderRadius: 16,
-    paddingVertical: 13,
-    alignItems: 'center',
-  },
-  ctaText: {
-    color: '#FFFFFF',
-    fontSize: 15,
-    fontWeight: '900',
-  },
+  safeArea: { flex: 1, backgroundColor: colors.background },
+  container: { width: '100%', maxWidth: layout.maxContentWidth, alignSelf: 'center', padding: layout.screenPadding, paddingBottom: spacing(6) },
+  hero: { borderRadius: radii.large, borderWidth: 1, borderColor: 'rgba(255,90,0,0.28)', padding: spacing(2), marginBottom: spacing(2.5), overflow: 'hidden', ...shadows.card },
+  backButton: { minHeight: layout.minTouchTarget, flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-start', gap: spacing(0.75) },
+  backText: { color: colors.white, ...typography.bodyStrong },
+  heroIcon: { width: 54, height: 54, borderRadius: 18, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(255,90,0,0.14)', borderWidth: 1, borderColor: 'rgba(255,90,0,0.35)', marginTop: spacing(1) },
+  eyebrow: { color: colors.orange, ...typography.overline, marginTop: spacing(1.5) },
+  title: { color: colors.white, ...typography.display, marginTop: spacing(0.75) },
+  subtitle: { color: colors.textMuted, ...typography.body, marginTop: spacing(0.75), maxWidth: 600 },
+  sectionHeader: { flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between', marginBottom: spacing(1.5) },
+  sectionEyebrow: { color: colors.orange, ...typography.overline },
+  sectionTitle: { color: colors.white, ...typography.heading, marginTop: 3 },
+  countBadge: { minWidth: 36, height: 36, borderRadius: 12, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(255,90,0,0.14)' },
+  countText: { color: colors.orange, fontWeight: '900' },
+  loadingBox: { minHeight: 220, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.surface, borderRadius: radii.large, borderWidth: 1, borderColor: colors.border },
+  loadingText: { color: colors.textMuted, ...typography.body, marginTop: spacing(1.5) },
+  emptyBox: { alignItems: 'center', borderRadius: radii.large, borderWidth: 1, borderColor: colors.border, paddingHorizontal: spacing(2.5), paddingVertical: spacing(4), overflow: 'hidden', ...shadows.card },
+  emptyIconWrap: { width: 68, height: 68, borderRadius: 22, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(255,90,0,0.12)', borderWidth: 1, borderColor: 'rgba(255,90,0,0.30)' },
+  emptyEyebrow: { color: colors.orange, ...typography.overline, marginTop: spacing(2) },
+  emptyTitle: { color: colors.white, ...typography.title, textAlign: 'center', marginTop: spacing(0.75), maxWidth: 430 },
+  emptyText: { color: colors.textMuted, ...typography.body, textAlign: 'center', marginTop: spacing(1), maxWidth: 500 },
+  emptyHint: { minHeight: layout.minTouchTarget, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: spacing(0.75), backgroundColor: 'rgba(255,90,0,0.10)', borderRadius: radii.medium, paddingHorizontal: spacing(1.5), marginTop: spacing(2) },
+  emptyHintText: { color: colors.white, ...typography.caption },
+  card: { position: 'relative', backgroundColor: colors.surface, borderRadius: radii.large, padding: spacing(2), marginBottom: spacing(2), borderWidth: 1, borderColor: colors.border, overflow: 'hidden', ...shadows.card },
+  cardGlow: { position: 'absolute', top: 0, left: 0, right: 0, height: 110 },
+  cardTopRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: spacing(1), marginBottom: spacing(1.5) },
+  badge: { flexDirection: 'row', alignItems: 'center', gap: spacing(0.5), backgroundColor: 'rgba(255,90,0,0.12)', paddingHorizontal: spacing(1), paddingVertical: spacing(0.75), borderRadius: radii.pill },
+  badgeText: { color: colors.orange, ...typography.overline, fontSize: 10 },
+  statusPill: { flexShrink: 1, flexDirection: 'row', alignItems: 'center', gap: spacing(0.6), paddingHorizontal: spacing(1), paddingVertical: spacing(0.75), borderRadius: radii.pill },
+  statusOpen: { backgroundColor: 'rgba(57,217,138,0.12)' },
+  statusClosed: { backgroundColor: 'rgba(139,147,158,0.16)' },
+  statusDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: colors.textSubtle },
+  statusDotOpen: { backgroundColor: colors.success },
+  statusText: { flexShrink: 1, color: colors.white, ...typography.caption },
+  cardTitle: { color: colors.white, ...typography.title },
+  cardDescription: { color: colors.textMuted, ...typography.body, marginTop: spacing(0.75) },
+  detailsCard: { backgroundColor: 'rgba(0,0,0,0.22)', borderRadius: radii.medium, borderWidth: 1, borderColor: colors.border, marginTop: spacing(2), padding: spacing(1.25) },
+  detailRow: { flexDirection: 'row', alignItems: 'center', gap: spacing(1) },
+  detailIcon: { width: 38, height: 38, borderRadius: 12, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(255,90,0,0.10)' },
+  detailCopy: { flex: 1 },
+  detailLabel: { color: colors.textSubtle, ...typography.overline, fontSize: 9 },
+  detailValue: { color: colors.white, ...typography.bodyStrong, textTransform: 'capitalize', marginTop: 2 },
+  detailDivider: { height: 1, backgroundColor: colors.border, marginVertical: spacing(1) },
+  metricsRow: { flexDirection: 'row', gap: spacing(1), marginTop: spacing(1.25) },
+  priceBox: { flex: 1, minHeight: 74, justifyContent: 'center', backgroundColor: colors.surfaceElevated, borderRadius: radii.medium, padding: spacing(1.25) },
+  spotsBox: { flex: 1, minHeight: 74, justifyContent: 'center', backgroundColor: colors.surfaceElevated, borderRadius: radii.medium, padding: spacing(1.25) },
+  spotsBoxAvailable: { backgroundColor: 'rgba(57,217,138,0.10)', borderWidth: 1, borderColor: 'rgba(57,217,138,0.22)' },
+  metricLabel: { color: colors.textSubtle, ...typography.overline, fontSize: 9 },
+  metricValue: { color: colors.white, ...typography.bodyStrong, marginTop: 3 },
+  spotsValue: { color: colors.success },
+  progressHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: spacing(1.75), marginBottom: spacing(0.75) },
+  progressText: { color: colors.textMuted, ...typography.caption },
+  progressCount: { color: colors.white, ...typography.caption },
+  progressBarBackground: { height: 7, borderRadius: radii.pill, backgroundColor: colors.surfaceElevated, overflow: 'hidden' },
+  progressBarFill: { height: '100%', borderRadius: radii.pill, backgroundColor: colors.orange },
+  ctaButton: { minHeight: 52, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: spacing(0.75), backgroundColor: colors.orange, borderRadius: radii.medium, marginTop: spacing(2), paddingHorizontal: spacing(1.5) },
+  ctaText: { color: colors.black, ...typography.bodyStrong, fontWeight: '900' },
 });
 
 export default HomeTournamentScreen;

@@ -33,7 +33,14 @@ router.get('/me/profile', requireAuth, async (req, res) => {
   try {
     const userId = req.user.id;
     const [[user]] = await pool.query(
-      'SELECT id, name, email, role, created_at, avatar_url, push_token, easypass_balance FROM users WHERE id=? LIMIT 1',
+      `SELECT u.id, u.name, u.email, u.role, u.created_at, u.avatar_url, u.push_token, u.easypass_balance,
+              EXISTS(
+                SELECT 1 FROM user_plus_subscriptions ups
+                WHERE ups.user_id = u.id
+                  AND ups.status IN ('active', 'trialing')
+                  AND (ups.current_period_end IS NULL OR ups.current_period_end > NOW())
+              ) AS is_plus
+       FROM users u WHERE u.id=? LIMIT 1`,
       [userId]
     );
     if (!user) return res.status(404).json({ ok:false, msg:'Usuario no encontrado' });
@@ -104,6 +111,8 @@ router.get('/me/profile', requireAuth, async (req, res) => {
       data: {
         user: {
           ...user,
+          is_plus: Boolean(user.is_plus),
+          isPlus: Boolean(user.is_plus),
           easyPassBalance: Number(user.easypass_balance || 0),
           credits: Number(user.easypass_balance || 0),
           easyPassBalances,

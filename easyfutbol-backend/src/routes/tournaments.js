@@ -510,7 +510,21 @@ router.post('/:id/inscribe', requireAuth, async (req, res) => {
       [userId, locationId]
     );
 
-    const currentBalance = Number(balanceRows[0]?.balance || 0);
+    const currentLocationBalance = Number(balanceRows[0]?.balance || 0);
+    const [[globalBalanceRow]] = await connection.query(
+      `SELECT u.easypass_balance AS global_balance,
+              COALESCE((SELECT SUM(balance) FROM user_easypass_balances WHERE user_id = u.id), 0) AS located_balance
+       FROM users u
+       WHERE u.id = ?
+       LIMIT 1
+       FOR UPDATE`,
+      [userId]
+    );
+    const plusUniversalBalance = Math.max(
+      Number(globalBalanceRow?.global_balance || 0) - Number(globalBalanceRow?.located_balance || 0),
+      0
+    );
+    const currentBalance = currentLocationBalance + plusUniversalBalance;
 
     if (currentBalance < totalEasypassNeeded) {
       await connection.rollback();
@@ -521,15 +535,15 @@ router.post('/:id/inscribe', requireAuth, async (req, res) => {
       });
     }
 
-    await connection.query(
-      `
-      UPDATE user_easypass_balances
-      SET balance = balance - ?
-      WHERE user_id = ?
-        AND location_id = ?
-      `,
-      [totalEasypassNeeded, userId, locationId]
-    );
+    const locationAmountToUse = Math.min(currentLocationBalance, totalEasypassNeeded);
+    if (locationAmountToUse > 0) {
+      await connection.query(
+        `UPDATE user_easypass_balances
+         SET balance = balance - ?
+         WHERE user_id = ? AND location_id = ?`,
+        [locationAmountToUse, userId, locationId]
+      );
+    }
 
     await connection.query(
       `

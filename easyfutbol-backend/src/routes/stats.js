@@ -69,6 +69,12 @@ router.get('/stats/top-players', async (req, res) => {
         u.name,
         u.email,
         u.avatar_url,
+        MAX(EXISTS(
+          SELECT 1 FROM user_plus_subscriptions ups
+          WHERE ups.user_id = u.id
+            AND ups.status IN ('active', 'trialing')
+            AND (ups.current_period_end IS NULL OR ups.current_period_end > NOW())
+        )) AS is_plus,
         MAX(COALESCE(m.location_id, CASE WHEN LOWER(m.city) IN ('avilés','aviles','oviedo','gijón','gijon','asturias') THEN 2 ELSE 1 END)) AS location_id,
         MAX(COALESCE(l.name, CASE WHEN LOWER(m.city) IN ('avilés','aviles','oviedo','gijón','gijon','asturias') THEN 'Asturias' ELSE 'Valladolid' END)) AS location_name,
         MAX(COALESCE(l.slug, CASE WHEN LOWER(m.city) IN ('avilés','aviles','oviedo','gijón','gijon','asturias') THEN 'asturias' ELSE 'valladolid' END)) AS location_slug,
@@ -98,6 +104,8 @@ router.get('/stats/top-players', async (req, res) => {
       ok: true,
       data: rows.map((row) => ({
         ...row,
+        is_plus: Boolean(row.is_plus),
+        isPlus: Boolean(row.is_plus),
         location_id: Number(row.location_id || 0),
         locationId: Number(row.location_id || 0),
         location_name: row.location_name,

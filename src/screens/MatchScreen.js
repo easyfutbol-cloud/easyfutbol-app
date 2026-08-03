@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { View, Text, StyleSheet, StatusBar, TouchableOpacity, ActivityIndicator, Alert, ImageBackground, Image, ScrollView } from 'react-native';
+import { View, Text, StyleSheet, StatusBar, TouchableOpacity, ActivityIndicator, Alert, ImageBackground, Image, ScrollView, Linking, Platform } from 'react-native';
 import { colors, layout, radii, spacing, typography } from '../theme';
 import { goBackOrFallback } from '../utils/navigation';
 import { api } from '../api/client';
 import { useFocusEffect } from '@react-navigation/native';
 import { LinearGradient } from 'expo-linear-gradient';
+import { registerForPushNotificationsAsync } from '../utils/notifications';
 
 
 const MAX_TICKETS_PER_PURCHASE = 8;
@@ -96,6 +97,9 @@ export default function MatchScreen({ route, navigation }) {
   const [easyPassBalance, setEasyPassBalance] = useState(0);
   const [easyPassLoading, setEasyPassLoading] = useState(true);
   const [isGuest, setIsGuest] = useState(false);
+  const [waitlist, setWaitlist] = useState(null);
+  const [waitlistLoading, setWaitlistLoading] = useState(false);
+  const [waitlistNow, setWaitlistNow] = useState(Date.now());
 
   const [attendees, setAttendees] = useState([]);
   const [attendeesLoading, setAttendeesLoading] = useState(true);
@@ -256,6 +260,82 @@ export default function MatchScreen({ route, navigation }) {
     }, [loadEasyPassCredits])
   );
 
+  const loadWaitlist = useCallback(async () => {
+    if (!matchId || isGuest) return;
+    try {
+      const { data } = await api.get(`/matches/${matchId}/waitlist`);
+      setWaitlist(data?.data || null);
+    } catch (error) {
+      if (![401, 403].includes(error?.response?.status)) {
+        console.log('Error cargando lista de espera', error?.message || error);
+      }
+    }
+  }, [matchId, isGuest]);
+
+  useFocusEffect(useCallback(() => { loadWaitlist(); }, [loadWaitlist]));
+
+  useEffect(() => {
+    if (waitlist?.status !== 'offered') return undefined;
+    setQuantity(1);
+    const timer = setInterval(() => setWaitlistNow(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, [waitlist?.status]);
+
+  const confirmJoinWaitlist = async () => {
+    try {
+      setWaitlistLoading(true);
+      const pushToken = await registerForPushNotificationsAsync();
+      if (!pushToken) {
+        Alert.alert(
+          'Activa las notificaciones',
+          'Las necesitamos para avisarte cuando tengas una plaza durante 30 minutos.',
+          [
+            { text: 'Cancelar', style: 'cancel' },
+            { text: 'Abrir ajustes', onPress: () => Linking.openSettings() },
+          ]
+        );
+        return;
+      }
+      await api.post('/push/register-token', { pushToken, platform: Platform.OS });
+      const { data } = await api.post(`/matches/${matchId}/waitlist`, { notifications_consent: true });
+      setWaitlist(data?.data || null);
+      Alert.alert('Lista de espera', data?.msg || 'Te avisaremos cuando haya una plaza para ti.');
+    } catch (error) {
+      Alert.alert('No se pudo entrar', error?.response?.data?.msg || 'Inténtalo de nuevo.');
+    } finally {
+      setWaitlistLoading(false);
+    }
+  };
+
+  const handleJoinWaitlist = () => {
+    Alert.alert(
+      'Entrar en la lista de espera',
+      'Debes aceptar las notificaciones. Cuando llegue tu turno tendrás 30 minutos para reservar; si no lo haces, la plaza pasará a la siguiente persona.',
+      [
+        { text: 'Ahora no', style: 'cancel' },
+        { text: 'Aceptar y continuar', onPress: confirmJoinWaitlist },
+      ]
+    );
+  };
+
+  const handleLeaveWaitlist = async () => {
+    try {
+      setWaitlistLoading(true);
+      await api.delete(`/matches/${matchId}/waitlist`);
+      setWaitlist(null);
+    } catch (error) {
+      Alert.alert('No se pudo salir', error?.response?.data?.msg || 'Inténtalo de nuevo.');
+    } finally {
+      setWaitlistLoading(false);
+    }
+  };
+
+  const offerSecondsLeft = waitlist?.offer_expires_at
+    ? Math.max(0, Math.floor((new Date(waitlist.offer_expires_at).getTime() - waitlistNow) / 1000))
+    : 0;
+  const offerMinutes = String(Math.floor(offerSecondsLeft / 60)).padStart(2, '0');
+  const offerSeconds = String(offerSecondsLeft % 60).padStart(2, '0');
+
   useEffect(() => {
     if (!matchId) {
       setAttendeesLoading(false);
@@ -335,7 +415,9 @@ export default function MatchScreen({ route, navigation }) {
   const isScheduled = match?.status === 'scheduled';
   const isOpen = match?.status === 'open';
   const isPayable = isScheduled || isOpen;
-  const isFull = capacity !== null && spotsTaken >= capacity;
+  const hasActiveWaitlistOffer = waitlist?.offer_active === true;
+  const isFullByCapacity = match?.is_full === true || Number(match?.is_full) === 1 || (capacity !== null && spotsTaken >= capacity);
+  const isFull = isFullByCapacity && !hasActiveWaitlistOffer;
   const canPay = isPayable && !isFull && !paying;
 
   const isAdmin = match?.is_admin === true;
@@ -500,7 +582,13 @@ export default function MatchScreen({ route, navigation }) {
       })
     : '';
   const remainingSpots =
-    capacity != null ? Math.max(capacity - spotsTaken, 0) : null;
+    hasActiveWaitlistOffer
+      ? 1
+      : match?.spots_remaining != null
+      ? Math.max(Number(match.spots_remaining), 0)
+      : capacity != null
+      ? Math.max(capacity - spotsTaken, 0)
+      : null;
 
   return (
     <ImageBackground
@@ -680,6 +768,37 @@ export default function MatchScreen({ route, navigation }) {
         </View>
       ) : (
         <>
+          {(isFull || waitlist?.joined) && (
+            <LinearGradient colors={waitlist?.status === 'offered' ? ['#49310A', '#1A160D'] : ['#1A2028', '#11151B']} style={styles.waitlistCard}>
+              <View style={styles.waitlistHeader}>
+                <View style={styles.waitlistIcon}>
+                  <Text style={styles.waitlistIconText}>{waitlist?.status === 'offered' ? '⚡' : '🔔'}</Text>
+                </View>
+                <View style={styles.waitlistCopy}>
+                  <Text style={styles.waitlistEyebrow}>{waitlist?.status === 'offered' ? 'PLAZA DISPONIBLE' : 'LISTA DE ESPERA'}</Text>
+                  <Text style={styles.waitlistTitle}>
+                    {waitlist?.status === 'offered' ? 'Es tu turno para reservar' : waitlist?.joined ? `Estás en la lista${waitlist.position ? ` · Puesto ${waitlist.position}` : ''}` : 'Te avisamos cuando haya sitio'}
+                  </Text>
+                </View>
+              </View>
+              <Text style={styles.waitlistText}>
+                {waitlist?.status === 'offered'
+                  ? `Esta plaza está reservada para ti durante ${offerMinutes}:${offerSeconds}. Completa la reserva antes de que termine el tiempo.`
+                  : waitlist?.joined
+                  ? `${waitlist.is_plus ? 'Tienes prioridad Plus. ' : ''}Recibirás una notificación cuando llegue tu turno y tendrás 30 minutos para apuntarte.`
+                  : 'Acepta las notificaciones y entra en la cola. Cada plaza se ofrece durante 30 minutos siguiendo el orden de la lista.'}
+              </Text>
+              {!waitlist?.joined ? (
+                <TouchableOpacity style={styles.waitlistPrimaryButton} onPress={handleJoinWaitlist} disabled={waitlistLoading}>
+                  <Text style={styles.waitlistPrimaryText}>{waitlistLoading ? 'Activando…' : 'Aceptar notificaciones y entrar'}</Text>
+                </TouchableOpacity>
+              ) : waitlist?.status !== 'offered' ? (
+                <TouchableOpacity style={styles.waitlistSecondaryButton} onPress={handleLeaveWaitlist} disabled={waitlistLoading}>
+                  <Text style={styles.waitlistSecondaryText}>{waitlistLoading ? 'Saliendo…' : 'Salir de la lista'}</Text>
+                </TouchableOpacity>
+              ) : null}
+            </LinearGradient>
+          )}
           <View style={styles.reservationCard}>
           <Text style={styles.reservationEyebrow}>CONFIGURA TU RESERVA</Text>
           <Text style={styles.reservationTitle}>Tu plaza</Text>
@@ -1097,6 +1216,18 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.border,
   },
+  waitlistCard:{ marginTop:spacing(2), padding:spacing(2), borderRadius:radii.large, borderWidth:1, borderColor:'rgba(255,176,32,0.30)' },
+  waitlistHeader:{ flexDirection:'row', alignItems:'center', gap:spacing(1) },
+  waitlistIcon:{ width:44, height:44, borderRadius:14, alignItems:'center', justifyContent:'center', backgroundColor:'rgba(255,176,32,0.14)' },
+  waitlistIconText:{ fontSize:22 },
+  waitlistCopy:{ flex:1 },
+  waitlistEyebrow:{ color:colors.warning, ...typography.overline, fontSize:9 },
+  waitlistTitle:{ color:colors.white, ...typography.bodyStrong, marginTop:2 },
+  waitlistText:{ color:colors.textMuted, ...typography.body, marginTop:spacing(1) },
+  waitlistPrimaryButton:{ minHeight:layout.minTouchTarget, alignItems:'center', justifyContent:'center', backgroundColor:colors.warning, borderRadius:radii.medium, paddingHorizontal:spacing(1.5), marginTop:spacing(1.5) },
+  waitlistPrimaryText:{ color:colors.black, ...typography.bodyStrong, fontWeight:'900', textAlign:'center' },
+  waitlistSecondaryButton:{ minHeight:layout.minTouchTarget, alignItems:'center', justifyContent:'center', borderWidth:1, borderColor:colors.border, borderRadius:radii.medium, paddingHorizontal:spacing(1.5), marginTop:spacing(1.5) },
+  waitlistSecondaryText:{ color:colors.white, ...typography.bodyStrong },
   easyPassHeader: {
     flexDirection: 'row',
     alignItems: 'center',

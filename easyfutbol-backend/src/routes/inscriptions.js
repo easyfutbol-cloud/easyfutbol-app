@@ -3,16 +3,17 @@ import { pool } from '../config/db.js';
 import { requireAuth } from '../middlewares/auth.js';
 import Stripe from 'stripe';
 import { sendPushNotification } from '../services/pushService.js';
+import { processWaitlistForMatch } from '../services/waitlistService.js';
 
 const router = Router();
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 
 // --- Helper política de reembolso ---
-function refundPercent(startsAtISO) {
+function refundPercent(startsAtISO, isPlus = false) {
   const starts = new Date(startsAtISO).getTime();
   const now = Date.now();
   const diffH = (starts - now) / 36e5;
-  return diffH > 8 ? 100 : 0;
+  return diffH > (isPlus ? 4 : 8) ? 100 : 0;
 }
 
 function hasMatchStarted(startsAtISO) {
@@ -68,10 +69,27 @@ router.get('/me/inscriptions', requireAuth, async (req, res) => {
               m.city,
               m.starts_at,
               m.duration_min,
-              f.name AS field_name
+              f.name AS field_name,
+              COALESCE(own_stats.goals, i.goals, 0) AS goals,
+              COALESCE(own_stats.assists, i.assists, 0) AS assists,
+              COALESCE(own_stats.is_mvp, i.is_mvp, 0) AS is_mvp,
+              mvp_user.name AS mvp_name,
+              EXISTS(
+                SELECT 1 FROM user_plus_subscriptions ups
+                WHERE ups.user_id = i.user_id
+                  AND ups.status IN ('active', 'trialing')
+                  AND (ups.current_period_end IS NULL OR ups.current_period_end > NOW())
+              ) AS is_plus
        FROM inscriptions i
        JOIN matches m ON m.id = i.match_id
        JOIN fields  f ON f.id = m.field_id
+       LEFT JOIN match_player_stats own_stats
+         ON own_stats.match_id = m.id
+        AND own_stats.user_id = i.user_id
+       LEFT JOIN match_player_stats mvp_stats
+         ON mvp_stats.match_id = m.id
+        AND mvp_stats.is_mvp = 1
+       LEFT JOIN users mvp_user ON mvp_user.id = mvp_stats.user_id
        WHERE i.user_id = ?
        ORDER BY m.starts_at DESC, i.id ASC
        LIMIT 300`,
@@ -300,6 +318,12 @@ router.patch('/inscriptions/:id/cancel', requireAuth, async (req, res) => {
               m.city,
               COALESCE(m.location_id, CASE WHEN LOWER(m.city) IN ('avilés','aviles','oviedo','gijón','gijon','asturias') THEN 2 ELSE 1 END) AS location_id,
               COALESCE(m.easypass_cost, 1) AS easypass_cost
+              ,EXISTS(
+                SELECT 1 FROM user_plus_subscriptions ups
+                WHERE ups.user_id = i.user_id
+                  AND ups.status IN ('active', 'trialing')
+                  AND (ups.current_period_end IS NULL OR ups.current_period_end > NOW())
+              ) AS is_plus
        FROM inscriptions i
        JOIN matches m ON m.id = i.match_id
        WHERE i.id = ?
@@ -335,7 +359,7 @@ router.patch('/inscriptions/:id/cancel', requireAuth, async (req, res) => {
       return res.status(400).json({ ok: false, msg: 'No se puede cancelar una entrada después de comenzar el partido' });
     }
 
-    const pct = refundPercent(row.starts_at);
+    const pct = refundPercent(row.starts_at, Boolean(row.is_plus));
 
     const isEasyPassInscription = !row.stripe_session_id && (
       row.payment_type === 'easypass' ||
@@ -390,11 +414,15 @@ router.patch('/inscriptions/:id/cancel', requireAuth, async (req, res) => {
 
       await conn.commit();
 
+      await processWaitlistForMatch(row.match_id).catch((error) => {
+        console.error('[WAITLIST] Error tras cancelar entrada:', error);
+      });
+
       return res.json({
         ok: true,
         msg: pct > 0
           ? `Entrada cancelada y ${refundAmount} EasyPass de ${locationName} devuelto`
-          : 'Entrada cancelada. Al quedar 8 horas o menos, el EasyPass no se devuelve.',
+          : `Entrada cancelada. Al quedar ${row.is_plus ? 4 : 8} horas o menos, el EasyPass no se devuelve.`,
         pct,
         refundedEasyPass: pct > 0 ? refundAmount : 0,
         location_id: locationId,
@@ -416,6 +444,9 @@ router.patch('/inscriptions/:id/cancel', requireAuth, async (req, res) => {
       );
       await conn.query('UPDATE matches SET spots_taken = GREATEST(spots_taken - 1, 0) WHERE id=?', [row.match_id]);
       await conn.commit();
+      await processWaitlistForMatch(row.match_id).catch((error) => {
+        console.error('[WAITLIST] Error tras cancelar entrada Stripe:', error);
+      });
       return res.json({ ok: true, msg: 'Entrada cancelada sin reembolso al quedar 8 horas o menos.', pct: 0, refundedAmount: 0 });
     }
 
@@ -443,6 +474,10 @@ router.patch('/inscriptions/:id/cancel', requireAuth, async (req, res) => {
     );
 
     await conn.commit();
+
+    await processWaitlistForMatch(row.match_id).catch((error) => {
+      console.error('[WAITLIST] Error tras cancelar entrada Stripe:', error);
+    });
 
     return res.json({ ok: true, msg: 'Entrada cancelada con reembolso', pct, refund_id: refund.id });
   } catch (e) {
@@ -481,6 +516,12 @@ router.post('/matches/:id/cancel', requireAuth, async (req, res) => {
               m.city,
               COALESCE(m.location_id, CASE WHEN LOWER(m.city) IN ('avilés','aviles','oviedo','gijón','gijon','asturias') THEN 2 ELSE 1 END) AS location_id,
               COALESCE(m.easypass_cost, 1) AS easypass_cost
+              ,EXISTS(
+                SELECT 1 FROM user_plus_subscriptions ups
+                WHERE ups.user_id = i.user_id
+                  AND ups.status IN ('active', 'trialing')
+                  AND (ups.current_period_end IS NULL OR ups.current_period_end > NOW())
+              ) AS is_plus
        FROM inscriptions i
        JOIN matches m ON m.id = i.match_id
        WHERE i.user_id=?
@@ -519,7 +560,7 @@ router.post('/matches/:id/cancel', requireAuth, async (req, res) => {
       );
 
       if (isEasyPassInscription) {
-        const pct = refundPercent(row.starts_at);
+        const pct = refundPercent(row.starts_at, Boolean(row.is_plus));
         await conn.beginTransaction();
 
         const fallbackLocation = getFallbackLocationFromCity(row.city);
@@ -569,11 +610,15 @@ router.post('/matches/:id/cancel', requireAuth, async (req, res) => {
 
         await conn.commit();
 
+        await processWaitlistForMatch(matchId).catch((error) => {
+          console.error('[WAITLIST] Error tras cancelar entradas:', error);
+        });
+
         return res.json({
           ok:true,
           msg: pct > 0
             ? `Cancelada y ${refundAmount} EasyPass de ${locationName} devuelto(s)`
-            : 'Entradas canceladas. Al quedar 8 horas o menos, los EasyPass no se devuelven.',
+            : `Entradas canceladas. Al quedar ${row.is_plus ? 4 : 8} horas o menos, los EasyPass no se devuelven.`,
           pct,
           refundedEasyPass: pct > 0 ? refundAmount : 0,
           location_id: locationId,
@@ -583,7 +628,7 @@ router.post('/matches/:id/cancel', requireAuth, async (req, res) => {
         });
       }
 
-      const pct = refundPercent(row.starts_at);
+      const pct = refundPercent(row.starts_at, Boolean(row.is_plus));
       if (!row.stripe_session_id) {
         console.warn('Cancelación sin stripe_session_id y no detectada como EasyPass', {
           userId,
@@ -600,7 +645,10 @@ router.post('/matches/:id/cancel', requireAuth, async (req, res) => {
         await conn.query('UPDATE inscriptions SET status="cancelled" WHERE user_id=? AND match_id=? AND status NOT IN ("cancelled","canceled")', [userId, matchId]);
         await conn.query('UPDATE matches SET spots_taken = GREATEST(spots_taken - ?, 0) WHERE id=?', [inscriptionCount, matchId]);
         await conn.commit();
-        return res.json({ ok:true, msg:`Canceladas ${inscriptionCount} plaza(s) sin reembolso al quedar 8 horas o menos.`, pct: 0, refundedAmount: 0 });
+        await processWaitlistForMatch(matchId).catch((error) => {
+          console.error('[WAITLIST] Error tras cancelar entradas Stripe:', error);
+        });
+        return res.json({ ok:true, msg:`Canceladas ${inscriptionCount} plaza(s) sin reembolso al quedar ${row.is_plus ? 4 : 8} horas o menos.`, pct: 0, refundedAmount: 0 });
       }
 
       // Obtener charge desde la sesión
@@ -625,6 +673,10 @@ router.post('/matches/:id/cancel', requireAuth, async (req, res) => {
       );
 
       await conn.commit();
+
+      await processWaitlistForMatch(matchId).catch((error) => {
+        console.error('[WAITLIST] Error tras cancelar entradas Stripe:', error);
+      });
 
       return res.json({ ok:true, msg:`Canceladas ${inscriptionCount} plaza(s) con reembolso`, pct, refund_id: refund.id });
     }

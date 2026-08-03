@@ -67,6 +67,7 @@ export default function AccessScreen({ navigation, route }) {
   const [acceptedTerms, setAcceptedTerms] = useState(false);
   const [isAdult, setIsAdult] = useState(false);
   const [preferredLocation, setPreferredLocation] = useState('');
+  const [referralCode, setReferralCode] = useState('');
 
   // baseURL del backend (api/client). Si termina en /api, lo normalizamos para no duplicar rutas.
   const BASE = (api?.defaults?.baseURL || '')
@@ -357,6 +358,8 @@ export default function AccessScreen({ navigation, route }) {
           preferredLocation,
           location: preferredLocation,
           sede: preferredLocation,
+          referral_code: referralCode.trim().toUpperCase(),
+          referralCode: referralCode.trim().toUpperCase(),
         }
       );
 
@@ -593,6 +596,20 @@ export default function AccessScreen({ navigation, route }) {
                   </TouchableOpacity>
                 </View>
 
+                <Text style={[styles.subtitle, { marginTop: 10 }]}>Código de referido <Text style={styles.optionalLabel}>(opcional)</Text></Text>
+                <TextInput
+                  style={styles.input}
+                  value={referralCode}
+                  onChangeText={(value) => setReferralCode(value.toUpperCase().replace(/\s/g, ''))}
+                  placeholder="Ej: EF000ABC"
+                  placeholderTextColor="#777"
+                  autoCapitalize="characters"
+                  autoCorrect={false}
+                  maxLength={20}
+                  editable={!loading}
+                />
+                <Text style={styles.referralHint}>Si tu amigo compra su primer pack de EasyPass, recibirás 1 punto.</Text>
+
                 <Text style={[styles.subtitle, { marginTop: 10 }]}>Contraseña</Text>
                 <View style={styles.passwordRow}>
                   <TextInput
@@ -706,6 +723,8 @@ const styles = StyleSheet.create({
     marginBottom: spacing(2.5),
   },
   subtitle: { color: colors.textMuted, ...typography.caption, alignSelf: 'flex-start', marginBottom: 6 },
+  optionalLabel:{ color:colors.textSubtle, fontWeight:'600' },
+  referralHint:{ color:colors.textSubtle, ...typography.caption, marginTop:spacing(0.6) },
 
   switchRow: {
     flexDirection: 'row',

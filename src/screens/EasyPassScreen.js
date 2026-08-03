@@ -43,6 +43,7 @@ export default function EasyPassScreen() {
     displayAmount: Number(pack?.easyPassAmount ?? pack?.credits ?? 0),
     displayName: `${Number(pack?.easyPassAmount ?? pack?.credits ?? 0)} EasyPass`,
     displayPriceCents: Number(pack?.price_cents || pack?.priceCents || 0),
+    displayOriginalPriceCents: Number(pack?.original_price_cents || pack?.price_cents || pack?.priceCents || 0),
   }));
 
   const BASE = (api?.defaults?.baseURL || '').replace(/\/+$/, '');
@@ -252,6 +253,16 @@ export default function EasyPassScreen() {
           </Text>
         </View>
 
+        <TouchableOpacity style={styles.plusCard} onPress={() => navigation.navigate('Plus')} activeOpacity={0.86} accessibilityRole="button">
+          <View style={styles.plusIcon}><Text style={styles.plusIconText}>★</Text></View>
+          <View style={styles.plusCopy}>
+            <Text style={styles.plusEyebrow}>EASYFUTBOL PLUS</Text>
+            <Text style={styles.plusTitle}>Juega con más ventajas</Text>
+            <Text style={styles.plusText}>1 EasyPass al mes, 10% de descuento y mucho más.</Text>
+          </View>
+          <Text style={styles.plusArrow}>›</Text>
+        </TouchableOpacity>
+
         {route?.params?.returnTo === 'Match' && route?.params?.matchId ? (
           <TouchableOpacity
             style={styles.backToMatchBtn}
@@ -314,6 +325,8 @@ export default function EasyPassScreen() {
             </View>
 
             <View style={{ alignItems:'flex-end' }}>
+              {p.plus_discount_applied ? <Text style={styles.plusDiscount}>PLUS · −10%</Text> : null}
+              {p.plus_discount_applied ? <Text style={styles.packOriginalPrice}>{formatEuro(p.displayOriginalPriceCents)}</Text> : null}
               <Text style={styles.packPrice}>{formatEuro(p.displayPriceCents)}</Text>
               <TouchableOpacity
                 style={[styles.buyBtn, buyingPackId === p.id && styles.buyBtnDisabled]}
@@ -364,6 +377,16 @@ const styles = StyleSheet.create({
   balanceLabel:{ color:colors.orange, ...typography.overline },
   balanceValue:{ color:colors.white, fontSize:48, lineHeight:56, fontWeight:'900', marginTop:spacing(0.5) },
   balanceHint:{ color:colors.textMuted, marginTop:spacing(0.5), ...typography.body },
+  plusCard:{ minHeight:96, flexDirection:'row', alignItems:'center', gap:spacing(1.25), backgroundColor:'rgba(45,35,10,0.96)', borderRadius:radii.large, borderWidth:1, borderColor:'rgba(244,201,93,0.35)', padding:spacing(1.5), marginBottom:spacing(2) },
+  plusIcon:{ width:46, height:46, borderRadius:15, alignItems:'center', justifyContent:'center', backgroundColor:'#F4C95D' },
+  plusIconText:{ color:'#161109', fontSize:22, fontWeight:'900' },
+  plusCopy:{ flex:1 },
+  plusEyebrow:{ color:'#F4C95D', ...typography.overline, fontSize:9 },
+  plusTitle:{ color:colors.white, ...typography.bodyStrong, marginTop:2 },
+  plusText:{ color:colors.textMuted, ...typography.caption, marginTop:2 },
+  plusArrow:{ color:'#F4C95D', fontSize:30, lineHeight:32 },
+  plusDiscount:{ color:'#F4C95D', fontSize:9, fontWeight:'900', letterSpacing:0.8 },
+  packOriginalPrice:{ color:colors.textSubtle, fontSize:12, textDecorationLine:'line-through', marginTop:2 },
 
   loginRequiredCard:{
     backgroundColor:'rgba(17,17,17,0.96)',

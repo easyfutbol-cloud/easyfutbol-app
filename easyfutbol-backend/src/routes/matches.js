@@ -73,8 +73,8 @@ router.get('/matches', async (req, res) => {
               m.spots_taken,
               m.status,
               COALESCE(m.has_aftergame, 0) AS has_aftergame,
-              (m.capacity - m.spots_taken) AS spots_remaining,
-              CASE WHEN m.spots_taken >= m.capacity THEN 1 ELSE 0 END AS is_full,
+              (m.capacity - m.spots_taken - (SELECT COUNT(*) FROM match_waitlist mw WHERE mw.match_id=m.id AND mw.status='offered' AND mw.offer_expires_at > NOW())) AS spots_remaining,
+              CASE WHEN m.spots_taken + (SELECT COUNT(*) FROM match_waitlist mw WHERE mw.match_id=m.id AND mw.status='offered' AND mw.offer_expires_at > NOW()) >= m.capacity THEN 1 ELSE 0 END AS is_full,
               f.name AS field_name
        FROM matches m
        JOIN fields f ON f.id = m.field_id
@@ -180,8 +180,8 @@ router.get('/matches/:id', async (req, res) => {
               m.spots_taken,
               m.status,
               COALESCE(m.has_aftergame, 0) AS has_aftergame,
-              (m.capacity - m.spots_taken) AS spots_remaining,
-              CASE WHEN m.spots_taken >= m.capacity THEN 1 ELSE 0 END AS is_full,
+              (m.capacity - m.spots_taken - (SELECT COUNT(*) FROM match_waitlist mw WHERE mw.match_id=m.id AND mw.status='offered' AND mw.offer_expires_at > NOW())) AS spots_remaining,
+              CASE WHEN m.spots_taken + (SELECT COUNT(*) FROM match_waitlist mw WHERE mw.match_id=m.id AND mw.status='offered' AND mw.offer_expires_at > NOW()) >= m.capacity THEN 1 ELSE 0 END AS is_full,
               f.name AS field_name
        FROM matches m
        JOIN fields f ON f.id = m.field_id
@@ -274,9 +274,33 @@ router.post('/matches/:id/join-with-easypass', requireAuth, async (req, res) => 
     const capacity = Number(match.capacity) || 0;
     const spotsTaken = Number(match.spots_taken) || 0;
 
-    if (capacity <= 0 || spotsTaken >= capacity || spotsTaken + safeQuantity > capacity) {
+    await conn.query(
+      `UPDATE match_waitlist SET status='expired'
+       WHERE match_id = ? AND status='offered' AND offer_expires_at <= NOW()`,
+      [matchId]
+    );
+    const [[ownOffer]] = await conn.query(
+      `SELECT id FROM match_waitlist
+       WHERE match_id = ? AND user_id = ? AND status='offered' AND offer_expires_at > NOW()
+       LIMIT 1 FOR UPDATE`,
+      [matchId, userId]
+    );
+    const [[otherOffers]] = await conn.query(
+      `SELECT COUNT(*) AS count FROM match_waitlist
+       WHERE match_id = ? AND user_id <> ? AND status='offered' AND offer_expires_at > NOW()`,
+      [matchId, userId]
+    );
+    const availableAfterReservedOffers = capacity - spotsTaken - Number(otherOffers?.count || 0);
+
+    if (capacity <= 0 || availableAfterReservedOffers < safeQuantity) {
       await conn.rollback();
-      return res.status(400).json({ ok: false, msg: 'No hay plazas suficientes para este partido' });
+      return res.status(400).json({
+        ok: false,
+        code: ownOffer ? 'WAITLIST_OFFER_LIMIT' : 'WAITLIST_RESERVED',
+        msg: ownOffer
+          ? 'Tu oferta de lista de espera permite reservar una plaza en este momento'
+          : 'Las plazas libres están reservadas temporalmente para la lista de espera',
+      });
     }
 
     const [[pendingAlready]] = await conn.query(
@@ -325,25 +349,39 @@ router.post('/matches/:id/join-with-easypass', requireAuth, async (req, res) => 
     );
 
     const currentLocationBalance = Number(balanceRow?.balance || 0);
-    if (currentLocationBalance < totalEasyPassCost) {
+    const [[globalBalanceRow]] = await conn.query(
+      `SELECT u.easypass_balance AS global_balance,
+              COALESCE((SELECT SUM(balance) FROM user_easypass_balances WHERE user_id=u.id), 0) AS located_balance
+       FROM users u WHERE u.id=? LIMIT 1 FOR UPDATE`,
+      [userId]
+    );
+    const universalBalance = Math.max(
+      Number(globalBalanceRow?.global_balance || 0) - Number(globalBalanceRow?.located_balance || 0),
+      0
+    );
+    const availableEasyPass = currentLocationBalance + universalBalance;
+    if (availableEasyPass < totalEasyPassCost) {
       await conn.rollback();
       return res.status(400).json({
         ok: false,
-        msg: `No tienes EasyPass suficientes de ${locationName}. Este partido solo acepta EasyPass de ${locationName}.`,
+        msg: `No tienes EasyPass suficientes para este partido de ${locationName}.`,
         location_id: locationId,
         locationId,
         locationName,
         requiredEasyPass: totalEasyPassCost,
-        currentEasyPass: currentLocationBalance,
+        currentEasyPass: availableEasyPass,
       });
     }
 
-    await conn.query(
-      `UPDATE user_easypass_balances
-       SET balance = balance - ?
-       WHERE user_id = ? AND location_id = ?`,
-      [totalEasyPassCost, userId, locationId]
-    );
+    const locationAmountToUse = Math.min(currentLocationBalance, totalEasyPassCost);
+    if (locationAmountToUse > 0) {
+      await conn.query(
+        `UPDATE user_easypass_balances
+         SET balance = balance - ?
+         WHERE user_id = ? AND location_id = ?`,
+        [locationAmountToUse, userId, locationId]
+      );
+    }
 
     await conn.query(
       `UPDATE users
@@ -363,6 +401,14 @@ router.post('/matches/:id/join-with-easypass', requireAuth, async (req, res) => 
     }
 
     await conn.query(`UPDATE matches SET spots_taken = spots_taken + ? WHERE id = ?`, [safeQuantity, matchId]);
+
+    if (ownOffer) {
+      await conn.query(
+        `UPDATE match_waitlist SET status='claimed', offer_expires_at=NULL
+         WHERE id = ?`,
+        [ownOffer.id]
+      );
+    }
 
     await conn.query(
       `INSERT INTO easypass_transactions

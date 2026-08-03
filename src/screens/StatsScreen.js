@@ -97,7 +97,7 @@ export default function StatsScreen() {
         <Image source={{ uri: avatar || DEFAULT_PLAYER_AVATAR }} style={styles.avatar} resizeMode="cover" />
 
         <View style={{ flex: 1 }}>
-          <Text style={styles.name} numberOfLines={1}>{displayName}</Text>
+          <Text style={[styles.name, item.is_plus && styles.plusName]} numberOfLines={1}>{displayName}{item.is_plus ? '  ★' : ''}</Text>
           <Text style={styles.meta}>
             {item.goals ?? 0} G · {item.assists ?? 0} A · {item.wins ?? 0} V
           </Text>
@@ -287,6 +287,7 @@ const styles = StyleSheet.create({
     fontWeight: '800',
   },
   name: { color: colors.white, fontSize: 16, fontWeight: '700' },
+  plusName: { color: '#F4C95D' },
   meta: { color: '#b3b3b3', fontSize: 12, marginTop: 2 },
   locationMeta: { color: ORANGE, fontSize: 11, marginTop: 3, fontWeight: '800' },
   totalWrap: { alignItems: 'flex-end', minWidth: 60 },
