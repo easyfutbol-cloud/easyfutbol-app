@@ -564,7 +564,6 @@ function AppMenu({ currentRouteName }) {
     { label: 'Partidos', screen: 'Matchs' },
     { label: 'Mis partidos', screen: 'MisPartidos' },
     { label: 'Torneos', screen: 'HomeTournament' },
-    { label: 'EasyFutbol Plus', screen: 'Plus' },
     { label: 'Ligas', screen: 'LeaguesHome' },
     { label: 'Mundial EasyFutbol', screen: 'WorldCup' },
     { label: 'Estadísticas', screen: 'Stats' },

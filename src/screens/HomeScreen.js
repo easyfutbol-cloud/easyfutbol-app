@@ -198,15 +198,6 @@ export default function HomeScreen({ navigation }) {
       onPress: () => requireAuth('EasyPass'),
       accent: true,
     },
-    {
-      key: 'plus',
-      title: 'EasyFutbol Plus',
-      eyebrow: '9,99 € AL MES',
-      description: '1 EasyPass mensual, descuentos, prioridad y ventajas exclusivas.',
-      imageSource: CARD_IMAGES.easyPass,
-      onPress: () => requireAuth('Plus'),
-      accent: true,
-    },
   ];
 
   return (
@@ -301,12 +292,12 @@ export default function HomeScreen({ navigation }) {
           </View>
 
           <View style={styles.cardGrid}>
-            {cards.map((card) => (
+            {cards.map(({ key, ...cardProps }) => (
               <View
-                key={card.key}
+                key={key}
                 style={[styles.cardCell, useTwoColumns && styles.cardCellWide]}
               >
-                <SportsFeatureCard {...card} compact={useTwoColumns} />
+                <SportsFeatureCard {...cardProps} compact={useTwoColumns} />
               </View>
             ))}
           </View>

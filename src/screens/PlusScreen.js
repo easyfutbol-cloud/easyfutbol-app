@@ -12,7 +12,7 @@ const BENEFITS = [
   { icon: 'pricetag-outline', title: '10% de descuento', text: 'Aplicado automáticamente al comprar packs de EasyPass.' },
   { icon: 'flash-outline', title: 'Prioridad en listas de espera', text: 'Tu solicitud Plus tendrá prioridad cuando se libere una plaza.' },
   { icon: 'trophy-outline', title: 'Torneos antes que nadie', text: 'Acceso anticipado a las inscripciones de próximos torneos.' },
-  { icon: 'time-outline', title: 'Cancelación más flexible', text: 'Recupera tu EasyPass cancelando con más de 4 horas de antelación.' },
+  { icon: 'time-outline', title: 'Cancelación más flexible', text: 'Recupera tu EasyPass cancelando con más de 3 horas de antelación.' },
   { icon: 'star-outline', title: 'Identidad Plus', text: 'Tu nombre aparecerá en dorado dentro de EasyFutbol.' },
 ];
 
@@ -76,12 +76,15 @@ export default function PlusScreen({ navigation }) {
             <ActivityIndicator color="#F4C95D" style={styles.loader} />
           ) : status?.is_plus ? (
             <View style={styles.activeCard}>
-              <View style={styles.activePill}><View style={styles.activeDot} /><Text style={styles.activePillText}>PLUS ACTIVO</Text></View>
+              <View style={styles.activePill}><View style={[styles.activeDot, status.plus_benefits_suspended && styles.suspendedDot]} /><Text style={styles.activePillText}>{status.plus_benefits_suspended ? 'VENTAJAS SUSPENDIDAS' : 'PLUS ACTIVO'}</Text></View>
               <Text style={styles.activeText}>
-                {status.cancel_at_period_end
+                {status.plus_benefits_suspended
+                  ? 'Has alcanzado 3 avisos este mes. Hasta el próximo mes podrás jugar comprando EasyPass normales, sin ventajas Plus.'
+                  : status.cancel_at_period_end
                   ? `Tus ventajas estarán activas hasta ${renewalDate || 'el final del periodo'}.`
                   : `Próxima renovación: ${renewalDate || 'según tu periodo de Stripe'}.`}
               </Text>
+              <Text style={styles.warningCounter}>Avisos este mes: {Number(status.fair_play_warnings || 0)}/3</Text>
               <TouchableOpacity style={styles.manageButton} onPress={() => openStripeFlow('/plus/portal', 'portal_url')} disabled={processing}>
                 <Text style={styles.manageButtonText}>{processing ? 'Abriendo Stripe…' : 'Gestionar suscripción'}</Text>
               </TouchableOpacity>
@@ -110,6 +113,7 @@ export default function PlusScreen({ navigation }) {
         </View>
 
         <Text style={styles.terms}>Suscripción mensual con renovación automática. Puedes gestionarla o cancelarla en cualquier momento desde Stripe; las ventajas permanecen activas hasta el final del periodo pagado.</Text>
+        <Text style={styles.terms}>Política de juego limpio: cancelar con 3 horas o menos o no asistir genera un aviso. Con 3 avisos, las ventajas Plus quedan suspendidas hasta el mes siguiente y las reservas deberán realizarse con EasyPass normales.</Text>
       </ScrollView>
     </View>
   );
@@ -134,8 +138,10 @@ const styles = StyleSheet.create({
   activeCard: { backgroundColor: 'rgba(244,201,93,0.10)', borderWidth: 1, borderColor: 'rgba(244,201,93,0.26)', borderRadius: radii.medium, padding: spacing(1.5), marginTop: spacing(2) },
   activePill: { flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-start', gap: spacing(0.6) },
   activeDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: colors.success },
+  suspendedDot: { backgroundColor:colors.danger },
   activePillText: { color: '#F4C95D', ...typography.overline },
   activeText: { color: colors.white, ...typography.body, marginTop: spacing(0.75) },
+  warningCounter: { color:'#F4C95D', ...typography.caption, marginTop:spacing(0.75), fontWeight:'900' },
   manageButton: { minHeight: layout.minTouchTarget, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: 'rgba(244,201,93,0.38)', borderRadius: radii.medium, marginTop: spacing(1.25) },
   manageButtonText: { color: '#F4C95D', ...typography.bodyStrong },
   sectionEyebrow: { color: '#F4C95D', ...typography.overline },

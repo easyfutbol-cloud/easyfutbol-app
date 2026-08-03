@@ -4,6 +4,7 @@ import { requireAuth } from '../middlewares/auth.js';
 import Stripe from 'stripe';
 import { sendPushNotification } from '../services/pushService.js';
 import { processWaitlistForMatch } from '../services/waitlistService.js';
+import { addPlusFairPlayWarning, getPlusFairPlayStatus } from '../services/plusFairPlayService.js';
 
 const router = Router();
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
@@ -13,7 +14,11 @@ function refundPercent(startsAtISO, isPlus = false) {
   const starts = new Date(startsAtISO).getTime();
   const now = Date.now();
   const diffH = (starts - now) / 36e5;
-  return diffH > (isPlus ? 4 : 8) ? 100 : 0;
+  return diffH > (isPlus ? 3 : 8) ? 100 : 0;
+}
+
+function hoursUntil(startsAtISO) {
+  return (new Date(startsAtISO).getTime() - Date.now()) / 36e5;
 }
 
 function hasMatchStarted(startsAtISO) {
@@ -359,7 +364,10 @@ router.patch('/inscriptions/:id/cancel', requireAuth, async (req, res) => {
       return res.status(400).json({ ok: false, msg: 'No se puede cancelar una entrada después de comenzar el partido' });
     }
 
-    const pct = refundPercent(row.starts_at, Boolean(row.is_plus));
+    const fairPlay = await getPlusFairPlayStatus(conn, userId);
+    row.is_plus = fairPlay.eligible;
+    const earnsLateWarning = fairPlay.eligible && hoursUntil(row.starts_at) <= 3;
+    const pct = refundPercent(row.starts_at, fairPlay.eligible);
 
     const isEasyPassInscription = !row.stripe_session_id && (
       row.payment_type === 'easypass' ||
@@ -407,6 +415,10 @@ router.patch('/inscriptions/:id/cancel', requireAuth, async (req, res) => {
         [row.match_id]
       );
 
+      const warningStatus = earnsLateWarning
+        ? await addPlusFairPlayWarning(conn, { userId, inscriptionId, matchId: row.match_id, reason: 'late_cancellation' })
+        : fairPlay;
+
       const [[updatedUser]] = await conn.query(
         'SELECT easypass_balance AS easyPassBalance FROM users WHERE id=? LIMIT 1',
         [userId]
@@ -422,13 +434,15 @@ router.patch('/inscriptions/:id/cancel', requireAuth, async (req, res) => {
         ok: true,
         msg: pct > 0
           ? `Entrada cancelada y ${refundAmount} EasyPass de ${locationName} devuelto`
-          : `Entrada cancelada. Al quedar ${row.is_plus ? 4 : 8} horas o menos, el EasyPass no se devuelve.`,
+          : `Entrada cancelada sin devolución.${earnsLateWarning ? ` Aviso Plus ${warningStatus.warningCount}/3.` : ''}`,
         pct,
         refundedEasyPass: pct > 0 ? refundAmount : 0,
         location_id: locationId,
         locationId,
         locationName,
         easyPassBalance: Number(updatedUser?.easyPassBalance || 0),
+        plusWarningCount: warningStatus.warningCount,
+        plusBenefitsSuspended: warningStatus.suspended,
       });
     }
 
@@ -443,11 +457,21 @@ router.patch('/inscriptions/:id/cancel', requireAuth, async (req, res) => {
         [inscriptionId, userId]
       );
       await conn.query('UPDATE matches SET spots_taken = GREATEST(spots_taken - 1, 0) WHERE id=?', [row.match_id]);
+      const warningStatus = earnsLateWarning
+        ? await addPlusFairPlayWarning(conn, { userId, inscriptionId, matchId: row.match_id, reason: 'late_cancellation' })
+        : fairPlay;
       await conn.commit();
       await processWaitlistForMatch(row.match_id).catch((error) => {
         console.error('[WAITLIST] Error tras cancelar entrada Stripe:', error);
       });
-      return res.json({ ok: true, msg: 'Entrada cancelada sin reembolso al quedar 8 horas o menos.', pct: 0, refundedAmount: 0 });
+      return res.json({
+        ok: true,
+        msg: `Entrada cancelada sin reembolso.${earnsLateWarning ? ` Aviso Plus ${warningStatus.warningCount}/3.` : ''}`,
+        pct: 0,
+        refundedAmount: 0,
+        plusWarningCount: warningStatus.warningCount,
+        plusBenefitsSuspended: warningStatus.suspended,
+      });
     }
 
     const session = await stripe.checkout.sessions.retrieve(row.stripe_session_id, {
@@ -551,6 +575,10 @@ router.post('/matches/:id/cancel', requireAuth, async (req, res) => {
     // Si estaba confirmado, calcular política
     if (row.status === 'confirmed') {
 
+      const fairPlay = await getPlusFairPlayStatus(conn, userId);
+      row.is_plus = fairPlay.eligible;
+      const earnsLateWarning = fairPlay.eligible && hoursUntil(row.starts_at) <= 3;
+
       const isEasyPassInscription = !row.stripe_session_id && (
         row.payment_type === 'easypass' ||
         row.ticket_type === 'credit' ||
@@ -603,6 +631,10 @@ router.post('/matches/:id/cancel', requireAuth, async (req, res) => {
           [inscriptionCount, matchId]
         );
 
+        const warningStatus = earnsLateWarning
+          ? await addPlusFairPlayWarning(conn, { userId, inscriptionId: row.inscription_id, matchId, reason: 'late_cancellation' })
+          : fairPlay;
+
         const [[updatedUser]] = await conn.query(
           'SELECT easypass_balance AS easyPassBalance FROM users WHERE id=? LIMIT 1',
           [userId]
@@ -618,13 +650,15 @@ router.post('/matches/:id/cancel', requireAuth, async (req, res) => {
           ok:true,
           msg: pct > 0
             ? `Cancelada y ${refundAmount} EasyPass de ${locationName} devuelto(s)`
-            : `Entradas canceladas. Al quedar ${row.is_plus ? 4 : 8} horas o menos, los EasyPass no se devuelven.`,
+            : `Entradas canceladas sin devolución.${earnsLateWarning ? ` Aviso Plus ${warningStatus.warningCount}/3.` : ''}`,
           pct,
           refundedEasyPass: pct > 0 ? refundAmount : 0,
           location_id: locationId,
           locationId,
           locationName,
           easyPassBalance: Number(updatedUser?.easyPassBalance || 0),
+          plusWarningCount: warningStatus.warningCount,
+          plusBenefitsSuspended: warningStatus.suspended,
         });
       }
 
@@ -644,11 +678,21 @@ router.post('/matches/:id/cancel', requireAuth, async (req, res) => {
         await conn.beginTransaction();
         await conn.query('UPDATE inscriptions SET status="cancelled" WHERE user_id=? AND match_id=? AND status NOT IN ("cancelled","canceled")', [userId, matchId]);
         await conn.query('UPDATE matches SET spots_taken = GREATEST(spots_taken - ?, 0) WHERE id=?', [inscriptionCount, matchId]);
+        const warningStatus = earnsLateWarning
+          ? await addPlusFairPlayWarning(conn, { userId, inscriptionId: row.inscription_id, matchId, reason: 'late_cancellation' })
+          : fairPlay;
         await conn.commit();
         await processWaitlistForMatch(matchId).catch((error) => {
           console.error('[WAITLIST] Error tras cancelar entradas Stripe:', error);
         });
-        return res.json({ ok:true, msg:`Canceladas ${inscriptionCount} plaza(s) sin reembolso al quedar ${row.is_plus ? 4 : 8} horas o menos.`, pct: 0, refundedAmount: 0 });
+        return res.json({
+          ok:true,
+          msg:`Canceladas ${inscriptionCount} plaza(s) sin reembolso.${earnsLateWarning ? ` Aviso Plus ${warningStatus.warningCount}/3.` : ''}`,
+          pct:0,
+          refundedAmount:0,
+          plusWarningCount:warningStatus.warningCount,
+          plusBenefitsSuspended:warningStatus.suspended,
+        });
       }
 
       // Obtener charge desde la sesión

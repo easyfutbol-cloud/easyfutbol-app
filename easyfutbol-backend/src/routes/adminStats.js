@@ -2,6 +2,7 @@
 import { Router } from 'express';
 import { pool } from '../config/db.js';
 import { requireAuth, requireAdmin } from '../middlewares/auth.js';
+import { addPlusFairPlayWarning, getPlusFairPlayStatus } from '../services/plusFairPlayService.js';
 // import { checkAndUnlockAchievements, awardReward } from '../services/achievementsService.js';
 
 
@@ -51,7 +52,8 @@ router.get(
             i.assists,
             i.ticket_type,
             i.status,
-            i.is_mvp
+            i.is_mvp,
+            EXISTS(SELECT 1 FROM plus_fair_play_warnings pfw WHERE pfw.inscription_id=i.id AND pfw.reason='no_show') AS marked_no_show
            FROM inscriptions i
            JOIN users buyer ON buyer.id = i.user_id
            LEFT JOIN users assigned ON assigned.id = i.assigned_user_id
@@ -71,7 +73,8 @@ router.get(
             i.assists,
             i.ticket_type,
             i.status,
-            i.is_mvp
+            i.is_mvp,
+            EXISTS(SELECT 1 FROM plus_fair_play_warnings pfw WHERE pfw.inscription_id=i.id AND pfw.reason='no_show') AS marked_no_show
            FROM inscriptions i
            JOIN users u ON u.id = i.user_id
            WHERE i.match_id = ? AND i.status IN ('confirmed', 'paid', 'active')
@@ -99,6 +102,35 @@ router.get(
     }
   }
 );
+
+router.post('/admin/inscriptions/:id/no-show', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const inscriptionId = Number(req.params.id);
+    const [[inscription]] = await pool.query(
+      `SELECT i.id, i.user_id, i.match_id, m.starts_at
+       FROM inscriptions i JOIN matches m ON m.id=i.match_id
+       WHERE i.id=? LIMIT 1`,
+      [inscriptionId]
+    );
+    if (!inscription) return res.status(404).json({ ok: false, msg: 'Inscripción no encontrada' });
+    if (new Date(inscription.starts_at).getTime() > Date.now()) {
+      return res.status(400).json({ ok: false, msg: 'No puedes marcar una ausencia antes de empezar el partido' });
+    }
+    const current = await getPlusFairPlayStatus(pool, inscription.user_id);
+    if (!current.isActive) return res.status(409).json({ ok: false, msg: 'El jugador no tiene una suscripción Plus activa' });
+    const status = await addPlusFairPlayWarning(pool, {
+      userId: inscription.user_id,
+      inscriptionId,
+      matchId: inscription.match_id,
+      reason: 'no_show',
+      createdBy: req.user.id,
+    });
+    return res.json({ ok: true, msg: `Ausencia registrada. Aviso Plus ${status.warningCount}/3.`, data: status });
+  } catch (error) {
+    console.error('[POST no-show]', error);
+    return res.status(500).json({ ok: false, msg: 'No se pudo registrar la ausencia' });
+  }
+});
 
 /**
  * Importar de forma atómica las estadísticas completas de un partido.

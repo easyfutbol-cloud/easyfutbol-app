@@ -494,10 +494,12 @@ export default function MisPartidosScreen({ navigation }) {
       selectedMatch?.start_date ||
       selectedMatch?.date;
     const hoursUntilMatch = (new Date(startsAt).getTime() - Date.now()) / 36e5;
-    const refundEligible = Number.isFinite(hoursUntilMatch) && hoursUntilMatch > 8;
+    const isPlus = Boolean(entry?.is_plus);
+    const deadlineHours = isPlus ? 3 : 8;
+    const refundEligible = Number.isFinite(hoursUntilMatch) && hoursUntilMatch > deadlineHours;
     const policyMessage = refundEligible
-      ? 'Como quedan más de 8 horas, se devolverá el EasyPass utilizado.'
-      : 'Quedan 8 horas o menos. La entrada se cancelará, pero el EasyPass utilizado no se devolverá.';
+      ? `Como quedan más de ${deadlineHours} horas, se devolverá el EasyPass utilizado.`
+      : `Quedan ${deadlineHours} horas o menos. La entrada se cancelará sin devolución.${isPlus ? ' Además, recibirás un aviso Plus.' : ''}`;
 
     Alert.alert(
       'Cancelar entrada',

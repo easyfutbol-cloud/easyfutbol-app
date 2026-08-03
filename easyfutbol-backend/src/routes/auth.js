@@ -135,7 +135,7 @@ function sign(user) {
 router.post('/auth/register', async (req, res) => {
   try {
     const body = req.body || {};
-    const name = body.username || body.user || body.name || body.nombre;
+    const name = String(body.username || body.user || body.name || body.nombre || '').trim();
     const emailRaw = body.email || body.correo;
     const phone = body.phone || body.telefono || body.tel;
     const password = body.password;
@@ -162,8 +162,20 @@ router.post('/auth/register', async (req, res) => {
       return res.status(400).json({ ok: false, msg: 'Teléfono no válido' });
     }
 
-    const [rows] = await pool.query('SELECT id FROM users WHERE email=?', [email]);
-    if (rows.length) {
+    const [existingUsers] = await pool.query(
+      'SELECT id, name, email FROM users WHERE email=? OR LOWER(name)=LOWER(?)',
+      [email, name]
+    );
+    const usernameTaken = existingUsers.some(
+      (user) => String(user.name || '').trim().toLowerCase() === name.toLowerCase()
+    );
+    if (usernameTaken) {
+      return res.status(409).json({ ok: false, code: 'USERNAME_TAKEN', msg: 'Este nombre de usuario ya está en uso' });
+    }
+    const emailTaken = existingUsers.some(
+      (user) => normalizeEmail(user.email) === email
+    );
+    if (emailTaken) {
       return res.status(409).json({ ok: false, msg: 'Email ya registrado' });
     }
 
@@ -227,6 +239,16 @@ router.post('/auth/register', async (req, res) => {
     return res.status(201).json({ ok: true, needsEmailVerification: true });
   } catch (e) {
     console.error(e);
+    if (e?.code === 'ER_DUP_ENTRY') {
+      const duplicateDetail = String(e?.sqlMessage || e?.message || '').toLowerCase();
+      if (duplicateDetail.includes('name')) {
+        return res.status(409).json({ ok: false, code: 'USERNAME_TAKEN', msg: 'Este nombre de usuario ya está en uso' });
+      }
+      if (duplicateDetail.includes('email')) {
+        return res.status(409).json({ ok: false, code: 'EMAIL_TAKEN', msg: 'Este correo electrónico ya está registrado' });
+      }
+      return res.status(409).json({ ok: false, code: 'ACCOUNT_EXISTS', msg: 'Ya existe una cuenta con esos datos' });
+    }
     return res.status(500).json({ ok: false, msg: 'Error servidor' });
   }
 });

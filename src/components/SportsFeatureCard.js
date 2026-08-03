@@ -7,6 +7,7 @@ import {
   View,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
+import { BlurView } from 'expo-blur';
 import {
   colors,
   gradients,
@@ -37,6 +38,13 @@ export default function SportsFeatureCard({
       accessibilityHint={accessibilityHint || `Abre la sección ${title}`}
     >
       <ImageBackground source={imageSource} style={styles.background} imageStyle={styles.image}>
+        <BlurView
+          pointerEvents="none"
+          intensity={14}
+          tint="dark"
+          experimentalBlurMethod="dimezisBlurView"
+          style={StyleSheet.absoluteFill}
+        />
         <LinearGradient
           colors={accent ? ['rgba(132, 42, 0, 0.30)', 'rgba(8, 10, 14, 0.96)'] : gradients.card}
           start={{ x: 0.5, y: 0 }}

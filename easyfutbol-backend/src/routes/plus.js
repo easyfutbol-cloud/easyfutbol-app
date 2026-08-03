@@ -2,27 +2,32 @@ import express from 'express';
 import Stripe from 'stripe';
 import { pool } from '../config/db.js';
 import { requireAuth } from '../middlewares/auth.js';
+import { getPlusFairPlayStatus } from '../services/plusFairPlayService.js';
 
 const router = express.Router();
 const stripe = process.env.STRIPE_SECRET_KEY ? new Stripe(process.env.STRIPE_SECRET_KEY) : null;
 const APP_BASE_URL = String(process.env.APP_BASE_URL || process.env.FRONTEND_URL || 'https://easyfutbol.es').replace(/\/$/, '');
 const ACTIVE_STATUSES = new Set(['active', 'trialing']);
 
-const serializeSubscription = (row) => {
+const serializeSubscription = (row, fairPlay = {}) => {
   const isActive = ACTIVE_STATUSES.has(String(row?.status || '').toLowerCase());
+  const benefitsActive = isActive && !fairPlay.suspended;
   return {
     is_plus: isActive,
     isPlus: isActive,
     status: row?.status || 'inactive',
     current_period_end: row?.current_period_end || null,
     cancel_at_period_end: Boolean(row?.cancel_at_period_end),
+    plus_benefits_suspended: Boolean(fairPlay.suspended),
+    fair_play_warnings: Number(fairPlay.warningCount || 0),
+    fair_play_warnings_remaining: Number(fairPlay.warningsRemaining ?? 3),
     benefits: {
       monthly_easypass: 1,
       easypass_discount_percent: 10,
-      waitlist_priority: isActive,
-      tournament_early_access: isActive,
-      cancellation_deadline_hours: isActive ? 4 : 8,
-      golden_name: isActive,
+      waitlist_priority: benefitsActive,
+      tournament_early_access: benefitsActive,
+      cancellation_deadline_hours: benefitsActive ? 3 : 8,
+      golden_name: benefitsActive,
     },
   };
 };
@@ -36,7 +41,8 @@ router.get('/status', requireAuth, async (req, res) => {
        LIMIT 1`,
       [req.user.id]
     );
-    return res.json({ ok: true, data: serializeSubscription(subscription) });
+    const fairPlay = await getPlusFairPlayStatus(pool, req.user.id);
+    return res.json({ ok: true, data: serializeSubscription(subscription, fairPlay) });
   } catch (error) {
     console.error('[GET /plus/status]', error);
     return res.status(500).json({ ok: false, msg: 'No se pudo consultar EasyFutbol Plus' });

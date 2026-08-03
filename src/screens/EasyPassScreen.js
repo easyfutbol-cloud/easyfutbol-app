@@ -253,7 +253,8 @@ export default function EasyPassScreen() {
           </Text>
         </View>
 
-        <TouchableOpacity style={styles.plusCard} onPress={() => navigation.navigate('Plus')} activeOpacity={0.86} accessibilityRole="button">
+        <Text style={styles.plusSectionLabel}>EASYPASS PLUS</Text>
+        <TouchableOpacity style={styles.plusCard} onPress={() => navigation.navigate('Plus')} activeOpacity={0.86} accessibilityRole="button" accessibilityLabel="Abrir EasyFutbol Plus">
           <View style={styles.plusIcon}><Text style={styles.plusIconText}>★</Text></View>
           <View style={styles.plusCopy}>
             <Text style={styles.plusEyebrow}>EASYFUTBOL PLUS</Text>
@@ -377,6 +378,7 @@ const styles = StyleSheet.create({
   balanceLabel:{ color:colors.orange, ...typography.overline },
   balanceValue:{ color:colors.white, fontSize:48, lineHeight:56, fontWeight:'900', marginTop:spacing(0.5) },
   balanceHint:{ color:colors.textMuted, marginTop:spacing(0.5), ...typography.body },
+  plusSectionLabel:{ color:'#F4C95D', ...typography.overline, marginBottom:spacing(1) },
   plusCard:{ minHeight:96, flexDirection:'row', alignItems:'center', gap:spacing(1.25), backgroundColor:'rgba(45,35,10,0.96)', borderRadius:radii.large, borderWidth:1, borderColor:'rgba(244,201,93,0.35)', padding:spacing(1.5), marginBottom:spacing(2) },
   plusIcon:{ width:46, height:46, borderRadius:15, alignItems:'center', justifyContent:'center', backgroundColor:'#F4C95D' },
   plusIconText:{ color:'#161109', fontSize:22, fontWeight:'900' },

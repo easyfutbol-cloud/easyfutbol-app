@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { pool } from '../config/db.js';
 import { requireAuth } from '../middlewares/auth.js';
 import { processWaitlistForMatch } from '../services/waitlistService.js';
+import { getPlusFairPlayStatus } from '../services/plusFairPlayService.js';
 
 const router = Router();
 
@@ -74,12 +75,7 @@ router.post('/matches/:id/waitlist', requireAuth, async (req, res) => {
     );
     if (inscription) return res.status(409).json({ ok: false, msg: 'Ya tienes una entrada para este partido' });
 
-    const [[plus]] = await pool.query(
-      `SELECT 1 AS active FROM user_plus_subscriptions
-       WHERE user_id = ? AND status IN ('active','trialing')
-         AND (current_period_end IS NULL OR current_period_end > NOW()) LIMIT 1`,
-      [userId]
-    );
+    const plus = await getPlusFairPlayStatus(pool, userId);
 
     await pool.query(
       `INSERT INTO match_waitlist
@@ -87,7 +83,7 @@ router.post('/matches/:id/waitlist', requireAuth, async (req, res) => {
        VALUES (?, ?, 'waiting', ?, NOW(), NULL, NULL)
        ON DUPLICATE KEY UPDATE status='waiting', is_plus_snapshot=VALUES(is_plus_snapshot),
          notifications_consent_at=NOW(), notified_at=NULL, offer_expires_at=NULL`,
-      [matchId, userId, plus ? 1 : 0]
+      [matchId, userId, plus.eligible ? 1 : 0]
     );
 
     await processWaitlistForMatch(matchId);

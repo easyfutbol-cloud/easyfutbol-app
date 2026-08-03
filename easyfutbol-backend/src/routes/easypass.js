@@ -2,6 +2,7 @@ import express from 'express';
 import Stripe from 'stripe';
 import { pool } from '../config/db.js';
 import * as authMiddleware from '../middlewares/auth.js';
+import { getPlusFairPlayStatus } from '../services/plusFairPlayService.js';
 
 const requireAuth =
   authMiddleware.default ||
@@ -23,15 +24,8 @@ const APP_BASE_URL =
   'https://easyfutbol.es';
 
 async function hasActivePlus(userId) {
-  const [[row]] = await pool.query(
-    `SELECT 1 AS active
-     FROM user_plus_subscriptions
-     WHERE user_id = ? AND status IN ('active', 'trialing')
-       AND (current_period_end IS NULL OR current_period_end > NOW())
-     LIMIT 1`,
-    [userId]
-  );
-  return Boolean(row?.active);
+  const status = await getPlusFairPlayStatus(pool, userId);
+  return status.eligible;
 }
 
 /**

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
+  Alert,
   FlatList,
   StatusBar,
   StyleSheet,
@@ -25,6 +26,25 @@ export default function AdminMatchStatsScreen({ route, navigation }) {
   const [loading, setLoading] = useState(false);
   const [loadingMatches, setLoadingMatches] = useState(true);
   const [error, setError] = useState('');
+  const [markingNoShowId, setMarkingNoShowId] = useState(null);
+
+  const markNoShow = (player) => {
+    Alert.alert('Registrar ausencia', `¿Confirmas que ${player.name || player.buyer_name || 'este jugador'} no asistió?`, [
+      { text: 'Cancelar', style: 'cancel' },
+      { text: 'Registrar aviso', style: 'destructive', onPress: async () => {
+        try {
+          setMarkingNoShowId(player.inscription_id);
+          const { data } = await api.post(`/admin/inscriptions/${player.inscription_id}/no-show`);
+          setPlayers((current) => current.map((item) => item.inscription_id === player.inscription_id ? { ...item, marked_no_show: true } : item));
+          Alert.alert('Aviso registrado', data?.msg || 'La ausencia se ha guardado.');
+        } catch (requestError) {
+          Alert.alert('No se pudo registrar', requestError?.response?.data?.msg || 'Inténtalo de nuevo.');
+        } finally {
+          setMarkingNoShowId(null);
+        }
+      } },
+    ]);
+  };
 
   useEffect(() => {
     let active = true;
@@ -129,6 +149,13 @@ export default function AdminMatchStatsScreen({ route, navigation }) {
                 <View style={styles.statChip}><Text style={styles.statChipValue}>{Number(item.assists || 0)}</Text><Text style={styles.statChipLabel}>A</Text></View>
                 {item.is_mvp ? <View style={styles.mvpChip}><Ionicons name="star" size={12} color={colors.black} /><Text style={styles.mvpChipText}>MVP</Text></View> : null}
               </View>
+              <TouchableOpacity
+                style={[styles.noShowButton, item.marked_no_show && styles.noShowButtonDone]}
+                disabled={Boolean(item.marked_no_show) || markingNoShowId === item.inscription_id}
+                onPress={() => markNoShow(item)}
+              >
+                <Text style={styles.noShowButtonText}>{item.marked_no_show ? 'Ausencia registrada' : 'No asistió'}</Text>
+              </TouchableOpacity>
             </View>
           )}
         />
@@ -167,7 +194,7 @@ const styles = StyleSheet.create({
   error: { color: colors.danger, ...typography.caption, textAlign: 'center', marginBottom: spacing(1) },
   list: { width: '100%', maxWidth: layout.maxContentWidth, alignSelf: 'center', paddingBottom: spacing(4) },
   empty: { color: colors.textSubtle, ...typography.body, textAlign: 'center', marginTop: spacing(4) },
-  playerCard: { minHeight: 78, flexDirection: 'row', alignItems: 'center', gap: spacing(1.25), backgroundColor: colors.surface, borderRadius: radii.medium, borderWidth: 1, borderColor: colors.border, padding: spacing(1.5), marginBottom: spacing(1) },
+  playerCard: { minHeight: 78, flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: spacing(1.25), backgroundColor: colors.surface, borderRadius: radii.medium, borderWidth: 1, borderColor: colors.border, padding: spacing(1.5), marginBottom: spacing(1) },
   teamMarker: { width: 10, height: 40, borderRadius: radii.pill },
   whiteMarker: { backgroundColor: colors.white },
   blackMarker: { backgroundColor: colors.black, borderWidth: 1, borderColor: colors.textSubtle },
@@ -180,4 +207,7 @@ const styles = StyleSheet.create({
   statChipLabel: { color: colors.textSubtle, fontSize: 9, fontWeight: '800' },
   mvpChip: { height: 34, flexDirection: 'row', alignItems: 'center', gap: 3, backgroundColor: colors.orange, borderRadius: 11, paddingHorizontal: 7 },
   mvpChipText: { color: colors.black, fontSize: 9, fontWeight: '900' },
+  noShowButton: { width:'100%', minHeight:38, borderRadius:10, borderWidth:1, borderColor:'rgba(255,92,92,0.45)', alignItems:'center', justifyContent:'center' },
+  noShowButtonDone: { borderColor:colors.border, opacity:0.55 },
+  noShowButtonText: { color:'#ff8c8c', fontSize:12, fontWeight:'800' },
 });
