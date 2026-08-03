@@ -3,6 +3,7 @@ import Stripe from 'stripe';
 import { pool } from '../config/db.js';
 import { requireAuth } from '../middlewares/auth.js';
 import { getUserEntitlements, getUserSubscription, listSubscriptionPlans } from '../services/subscriptionService.js';
+import { getFirstDayBillingConfig } from '../services/subscriptionBillingService.js';
 
 const router = express.Router();
 const stripe = process.env.STRIPE_SECRET_KEY ? new Stripe(process.env.STRIPE_SECRET_KEY) : null;
@@ -38,10 +39,11 @@ router.post('/:planCode/checkout', requireAuth, async (req, res) => {
     const [[previous]] = await pool.query('SELECT stripe_customer_id FROM user_subscriptions WHERE user_id=? AND stripe_customer_id IS NOT NULL ORDER BY id DESC LIMIT 1',[req.user.id]);
     const metadata = { kind:'easyfutbol_subscription', subscriptionPlan:planCode, userId:String(req.user.id) };
     const lineItem=priceId ? { price:priceId,quantity:1 } : { price_data:{ currency:String(plan.currency || 'EUR').toLowerCase(),unit_amount:Number(plan.price_cents),recurring:{ interval:plan.billing_interval || 'month' },product_data:{ name:plan.name,description:`Suscripción mensual ${plan.name}` } },quantity:1 };
+    const billingConfig=getFirstDayBillingConfig();
     const session = await stripe.checkout.sessions.create({
       mode:'subscription', customer:previous?.stripe_customer_id || undefined,
       customer_email:previous?.stripe_customer_id ? undefined : user?.email, client_reference_id:String(req.user.id),
-      line_items:[lineItem], metadata, subscription_data:{ metadata },
+      line_items:[lineItem], metadata, subscription_data:{ metadata,...billingConfig },
       success_url:`${APP_BASE_URL}/pago-ok/?subscription=${planCode}&session_id={CHECKOUT_SESSION_ID}`,
       cancel_url:`${APP_BASE_URL}/pago-cancelado/?subscription=${planCode}`,
     });

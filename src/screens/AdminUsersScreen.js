@@ -4,13 +4,13 @@ import {
   FlatList,
   Linking,
   RefreshControl,
-  SafeAreaView,
   StyleSheet,
   Text,
   TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { api } from '../api/client';
 
 const ORANGE = '#ff5a00';

@@ -27,7 +27,6 @@ const CATEGORIES = [
   { key: 'EasyPass', label: 'EasyPass', icon: 'card-outline' },
   { key: 'Estadísticas', label: 'Estadísticas', icon: 'stats-chart-outline' },
   { key: 'Vídeos', label: 'Vídeos', icon: 'videocam-outline' },
-  { key: 'Mundial', label: 'Mundial', icon: 'globe-outline' },
   { key: 'Normas', label: 'Normas', icon: 'shield-checkmark-outline' },
   { key: 'Aplicación', label: 'App', icon: 'phone-portrait-outline' },
 ];
@@ -59,8 +58,6 @@ const FAQS = [
   { category: 'Vídeos', question: '¿Todos los partidos se graban?', answer: 'Siempre que sea posible, los partidos serán grabados.' },
   { category: 'Vídeos', question: '¿Cuándo estarán disponibles los vídeos?', answer: 'Los vídeos se subirán a YouTube antes de las 19:00 del día siguiente al partido.' },
   { category: 'Vídeos', question: '¿Dónde puedo ver los vídeos?', answer: 'Podrás acceder a ellos desde la aplicación o a través del canal de YouTube de EasyFutbol.' },
-  { category: 'Mundial', question: '¿Qué es el Mundial EasyFutbol?', answer: 'Es una competición en la que representas a una selección nacional y sumas puntos para ayudar a tu país a subir en la clasificación.' },
-  { category: 'Mundial', question: '¿Puedo cambiar de selección?', answer: 'No. Una vez elegida una selección, permanecerás con ella hasta que finalice esa edición del Mundial.' },
   { category: 'Normas', question: '¿Qué ocurre si tengo un mal comportamiento?', answer: 'Los comportamientos inadecuados pueden suponer advertencias, suspensiones o la expulsión de EasyFutbol.' },
   { category: 'Normas', question: '¿Qué pasa si insulto o falto al respeto a otros jugadores?', answer: 'No se toleran las faltas de respeto. Cualquier comportamiento antideportivo podrá ser sancionado por la organización.' },
   { category: 'Normas', question: '¿Qué hago si me lesiono durante un partido?', answer: 'Avisa inmediatamente al organizador para que pueda ayudarte y actuar de la forma más adecuada.' },

@@ -28,6 +28,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Application from 'expo-application';
 import Constants from 'expo-constants';
 import { api, setUnauthorizedHandler } from './src/api/client';
+import { menuController } from './src/navigation/menuController';
 
 // Screens
 import HomeScreen from './src/screens/HomeScreen';
@@ -56,16 +57,6 @@ import AdminCompetitiveMatchesScreen from './src/screens/AdminCompetitiveMatches
 import AdminCompetitiveEvaluationScreen from './src/screens/AdminCompetitiveEvaluationScreen';
 import AdminCompetitiveSeasonsScreen from './src/screens/AdminCompetitiveSeasonsScreen';
 import AchievementsScreen from './src/screens/AchievementsScreen';
-import LeaguesHomeScreen from './src/screens/leagues/LeaguesHomeScreen';
-import JoinLeagueScreen from './src/screens/leagues/JoinLeagueScreen';
-import LeagueCalendarScreen from './src/screens/leagues/LeagueCalendarScreen';
-import MyTeamScreen from './src/screens/leagues/MyTeamScreen';
-import LeagueVideosScreen from './src/screens/leagues/LeagueVideosScreen';
-import LeagueStatsScreen from './src/screens/leagues/LeagueStatsScreen';
-import LeagueStandingsScreen from './src/screens/leagues/LeagueStandingsScreen';
-import LeagueInfoScreen from './src/screens/leagues/LeagueInfoScreen';
-import WorldCupScreen from './src/screens/worldcup/WorldCupScreen';
-import WorldCupSelectTeamScreen from './src/screens/worldcup/WorldCupSelectTeamScreen';
 import HomeTournamentScreen from './src/screens/tournament/hometournamentscreen';
 import TournamentDetailScreen from './src/screens/tournament/tournamentdetailscreen';
 import TournamentRulesScreen from './src/screens/tournament/TournamentRulesScreen';
@@ -89,9 +80,6 @@ const navTheme = {
 
 // === Navigation Ref para navegar desde fuera de las screens ===
 export const navigationRef = createNavigationContainerRef();
-
-// === Controlador global para abrir/cerrar el menú desde cualquier screen ===
-export const menuController = { open: () => {}, close: () => {} };
 
 function normalizeVersion(version) {
   return String(version || '0')
@@ -569,8 +557,6 @@ function AppMenu({ currentRouteName }) {
     { label: 'Partidos', screen: 'Matchs' },
     { label: 'Mis partidos', screen: 'MisPartidos' },
     { label: 'Torneos', screen: 'HomeTournament' },
-    { label: 'Ligas', screen: 'LeaguesHome' },
-    { label: 'Mundial EasyFutbol', screen: 'WorldCup' },
     { label: 'Estadísticas', screen: 'Stats' },
     { label: 'Modo competitivo', screen: 'Competitive' },
     { label: 'Perfil', screen: 'Profile' },
@@ -700,16 +686,6 @@ function AppShell({ currentRouteName }) {
         <Stack.Screen name="MisPartidos" component={MisPartidosScreen} />
         <Stack.Screen name="Stats" component={StatsScreen} />
         <Stack.Screen name="Profile" component={ProfileScreen} />
-        <Stack.Screen name="LeaguesHome" component={LeaguesHomeScreen} options={{ title: 'Ligas' }} />
-        <Stack.Screen name="JoinLeague" component={JoinLeagueScreen} options={{ title: 'Mi invitación' }} />
-        <Stack.Screen name="LeagueCalendar" component={LeagueCalendarScreen} options={{ title: 'Calendario' }} />
-        <Stack.Screen name="MyTeam" component={MyTeamScreen} options={{ title: 'Mi equipo' }} />
-        <Stack.Screen name="LeagueVideos" component={LeagueVideosScreen} options={{ title: 'Vídeos' }} />
-        <Stack.Screen name="LeagueStats" component={LeagueStatsScreen} options={{ title: 'Estadísticas' }} />
-        <Stack.Screen name="LeagueStandings" component={LeagueStandingsScreen} options={{ title: 'Clasificación' }} />
-        <Stack.Screen name="LeagueInfo" component={LeagueInfoScreen} options={{ title: 'Funcionamiento' }} />
-        <Stack.Screen name="WorldCup" component={WorldCupScreen} />
-        <Stack.Screen name="WorldCupSelectTeam" component={WorldCupSelectTeamScreen} />
         <Stack.Screen name="HomeTournament" component={HomeTournamentScreen} />
         <Stack.Screen name="TournamentDetail" component={TournamentDetailScreen} />
         <Stack.Screen name="TournamentRules" component={TournamentRulesScreen} />

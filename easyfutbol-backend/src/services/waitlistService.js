@@ -1,7 +1,8 @@
 import { pool } from '../config/db.js';
 import { sendPushNotification } from './pushService.js';
+import { getWaitlistOffersToCreate, WAITLIST_OFFER_MINUTES } from './waitlistPolicyService.js';
 
-const OFFER_MINUTES = 30;
+const OFFER_MINUTES = WAITLIST_OFFER_MINUTES;
 
 export async function processWaitlistForMatch(matchId) {
   const conn = await pool.getConnection();
@@ -32,8 +33,11 @@ export async function processWaitlistForMatch(matchId) {
        WHERE match_id = ? AND status = 'offered' AND offer_expires_at > NOW()`,
       [matchId]
     );
-    const freeSpots = Math.max(Number(match.capacity || 0) - Number(match.spots_taken || 0), 0);
-    const offersToCreate = Math.max(freeSpots - Number(offerCountRow?.count || 0), 0);
+    const offersToCreate = getWaitlistOffersToCreate({
+      capacity: match.capacity,
+      spotsTaken: match.spots_taken,
+      activeOffers: offerCountRow?.count,
+    });
 
     if (!offersToCreate) {
       await conn.commit();

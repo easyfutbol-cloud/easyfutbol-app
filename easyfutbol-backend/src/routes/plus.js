@@ -3,6 +3,7 @@ import Stripe from 'stripe';
 import { pool } from '../config/db.js';
 import { requireAuth } from '../middlewares/auth.js';
 import { getPlusFairPlayStatus } from '../services/plusFairPlayService.js';
+import { getFirstDayBillingConfig } from '../services/subscriptionBillingService.js';
 
 const router = express.Router();
 const stripe = process.env.STRIPE_SECRET_KEY ? new Stripe(process.env.STRIPE_SECRET_KEY) : null;
@@ -88,7 +89,7 @@ router.post('/checkout', requireAuth, async (req, res) => {
       client_reference_id: String(userId),
       line_items: [lineItem],
       metadata,
-      subscription_data: { metadata },
+      subscription_data: { metadata, ...getFirstDayBillingConfig() },
       success_url: `${APP_BASE_URL}/pago-ok/?plus=1&session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${APP_BASE_URL}/pago-cancelado/?plus=1`,
     });

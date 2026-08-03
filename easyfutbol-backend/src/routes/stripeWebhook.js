@@ -3,6 +3,7 @@ import Stripe from 'stripe';
 import { pool } from '../config/db.js';
 import { qualifyReferralFromPurchase } from '../services/referralService.js';
 import { grantPlusTrialForCurrentSeason } from '../services/competitiveService.js';
+import { grantSubscriptionEasyPass } from '../services/subscriptionGrantService.js';
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 const endpointSecret = process.env.STRIPE_WEBHOOK_SECRET;
@@ -62,22 +63,6 @@ async function upsertGenericSubscription(conn, { userId, customerId, subscriptio
   );
 }
 
-async function grantPlanEasyPass(conn, { userId, planCode, amount, reference }) {
-  const [grant] = await conn.query(
-    `INSERT IGNORE INTO subscription_monthly_grants (user_id, plan_code, stripe_reference, easypass_amount)
-     VALUES (?, ?, ?, ?)`,
-    [userId, planCode, reference, amount]
-  );
-  if (!grant.affectedRows) return false;
-  await conn.query('UPDATE users SET easypass_balance=COALESCE(easypass_balance,0)+? WHERE id=?', [amount, userId]);
-  await conn.query(
-    `INSERT INTO easypass_transactions (user_id, type, amount, description, payment_reference, created_at)
-     VALUES (?, 'plus_grant', ?, ?, ?, NOW())`,
-    [userId, amount, `${amount} EasyPass mensuales de EasyFutbol ${planCode === 'pro' ? 'Pro' : 'Plus'}`, reference]
-  );
-  return true;
-}
-
 async function handleGenericSubscriptionEvent(event) {
   const object = event.data.object;
   if (event.type === 'checkout.session.completed' && object?.metadata?.kind === 'easyfutbol_subscription') {
@@ -90,7 +75,7 @@ async function handleGenericSubscriptionEvent(event) {
     try {
       await conn.beginTransaction();
       await upsertGenericSubscription(conn, { userId, customerId:object.customer, subscription, planCode });
-      await grantPlanEasyPass(conn, { userId, planCode, amount, reference:`subscription_checkout:${object.id}` });
+      await grantSubscriptionEasyPass(conn, { userId, planCode, amount, reference:`subscription_checkout:${object.id}` });
       if (planCode === 'plus') await grantPlusTrialForCurrentSeason(conn, userId, `subscription_checkout:${object.id}`);
       await conn.commit();
     } catch (error) { await conn.rollback(); throw error; } finally { conn.release(); }
@@ -105,7 +90,7 @@ async function handleGenericSubscriptionEvent(event) {
     try {
       await conn.beginTransaction();
       await upsertGenericSubscription(conn, { userId, customerId:object.customer, subscription, planCode });
-      await grantPlanEasyPass(conn, { userId, planCode, amount:planCode === 'pro' ? 4 : 1, reference:`subscription_invoice:${object.id}` });
+      await grantSubscriptionEasyPass(conn, { userId, planCode, amount:planCode === 'pro' ? 4 : 1, reference:`subscription_invoice:${object.id}` });
       await conn.commit();
     } catch (error) { await conn.rollback(); throw error; } finally { conn.release(); }
     return true;
@@ -385,6 +370,7 @@ webhookRouter.post('/webhook', express.raw({ type: 'application/json' }), async 
   } catch (e) {
     await conn.rollback();
     console.error('DB error en webhook EasyPass:', e);
+    return res.status(500).json({ received: false });
   } finally {
     conn.release();
   }

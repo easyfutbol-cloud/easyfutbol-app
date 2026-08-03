@@ -22,6 +22,32 @@ const currentFile = fileURLToPath(import.meta.url);
 const migrationsDir = path.resolve(path.dirname(currentFile), '../../migrations');
 const statusOnly = process.argv.includes('--status');
 const dryRun = process.argv.includes('--dry-run');
+const verifyFilesOnly = process.argv.includes('--verify-files');
+
+const migrationFiles = (await fs.readdir(migrationsDir))
+  .filter((filename) => filename.endsWith('.sql'))
+  .sort();
+const missingMigrationFiles = migrationOrder.filter((filename) => !migrationFiles.includes(filename));
+const unorderedMigrationFiles = migrationFiles.filter((filename) => !migrationOrder.includes(filename));
+
+if (missingMigrationFiles.length || unorderedMigrationFiles.length) {
+  if (missingMigrationFiles.length) {
+    console.error(`Migraciones declaradas que no existen: ${missingMigrationFiles.join(', ')}`);
+  }
+  if (unorderedMigrationFiles.length) {
+    console.error(`Migraciones SQL no incluidas en migrationOrder: ${unorderedMigrationFiles.join(', ')}`);
+  }
+  process.exit(1);
+}
+
+if (verifyFilesOnly) {
+  await Promise.all(migrationOrder.map(async (filename) => {
+    const sql = await fs.readFile(path.join(migrationsDir, filename), 'utf8');
+    if (!sql.trim()) throw new Error(`La migración ${filename} está vacía`);
+  }));
+  console.log(`Inventario de migraciones correcto: ${migrationOrder.length} archivo(s).`);
+  process.exit(0);
+}
 
 const required = ['DB_HOST','DB_USER','DB_NAME'];
 const missing = required.filter((name) => !process.env[name]);

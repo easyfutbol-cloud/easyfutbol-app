@@ -6,9 +6,12 @@
   "scripts": {
     "dev": "nodemon src/index.js",
     "start": "node src/index.js",
+    "test": "node --test",
+    "test:integration": "RUN_DB_INTEGRATION=1 node --test test/integration",
     "migrate": "node src/scripts/runMigrations.js",
     "migrate:status": "node src/scripts/runMigrations.js --status",
-    "migrate:dry-run": "node src/scripts/runMigrations.js --dry-run"
+    "migrate:dry-run": "node src/scripts/runMigrations.js --dry-run",
+    "migrate:verify": "node src/scripts/runMigrations.js --verify-files"
   },
   "dependencies": {
     "bcrypt": "^5.1.1",

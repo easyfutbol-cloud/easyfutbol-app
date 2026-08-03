@@ -165,6 +165,7 @@ export default function PlusScreen({ navigation }) {
         </View>
 
         <Text style={styles.terms}>Suscripción mensual con renovación automática. Puedes gestionarla o cancelarla en cualquier momento desde Stripe; las ventajas permanecen activas hasta el final del periodo pagado.</Text>
+        <Text style={styles.terms}>El acceso comienza al contratar. Si te suscribes del día 2 al último día del mes, el primer cobro completo se realizará el próximo día 1, sin prorrata. Si te suscribes el día 1, el cobro será inmediato.</Text>
         <Text style={styles.terms}>Política de juego limpio: cancelar con 4 horas o menos o no asistir genera un aviso. Con 3 avisos, las ventajas Plus quedan suspendidas hasta el mes siguiente y las reservas deberán realizarse con EasyPass normales.</Text>
       </ScrollView>
     </View>

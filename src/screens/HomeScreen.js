@@ -16,9 +16,9 @@ import { useFocusEffect } from '@react-navigation/native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { menuController } from '../../App';
 import { api } from '../api/client';
 import SportsFeatureCard from '../components/SportsFeatureCard';
+import { menuController } from '../navigation/menuController';
 import {
   colors,
   gradients,
@@ -292,12 +292,20 @@ export default function HomeScreen({ navigation }) {
           </View>
 
           <View style={styles.cardGrid}>
-            {cards.map(({ key, ...cardProps }) => (
+            {cards.map((card) => (
               <View
-                key={key}
+                key={card.key}
                 style={[styles.cardCell, useTwoColumns && styles.cardCellWide]}
               >
-                <SportsFeatureCard {...cardProps} compact={useTwoColumns} />
+                <SportsFeatureCard
+                  title={card.title}
+                  eyebrow={card.eyebrow}
+                  description={card.description}
+                  imageSource={card.imageSource}
+                  onPress={card.onPress}
+                  accent={card.accent}
+                  compact={useTwoColumns}
+                />
               </View>
             ))}
           </View>

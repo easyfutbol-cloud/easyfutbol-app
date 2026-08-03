@@ -2,10 +2,21 @@ const MAX_WARNINGS = 3;
 
 export async function getPlusFairPlayStatus(db, userId) {
   const [[subscription]] = await db.query(
-    `SELECT 1 AS active FROM user_plus_subscriptions
-     WHERE user_id=? AND status IN ('active','trialing')
-       AND (current_period_end IS NULL OR current_period_end > NOW()) LIMIT 1`,
-    [userId]
+    `SELECT 1 AS active
+     FROM (
+       SELECT ups.user_id, ups.status, ups.current_period_end
+       FROM user_plus_subscriptions ups
+       WHERE ups.user_id=?
+       UNION ALL
+       SELECT us.user_id, us.status, us.current_period_end
+       FROM user_subscriptions us
+       JOIN subscription_plans sp ON sp.id=us.plan_id
+       WHERE us.user_id=? AND sp.code IN ('plus','pro')
+     ) subscriptions
+     WHERE status IN ('active','trialing')
+       AND (current_period_end IS NULL OR current_period_end > NOW())
+     LIMIT 1`,
+    [userId, userId]
   );
   const [[warnings]] = await db.query(
     `SELECT COUNT(*) AS total FROM plus_fair_play_warnings

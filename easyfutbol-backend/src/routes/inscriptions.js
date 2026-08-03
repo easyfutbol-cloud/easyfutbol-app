@@ -5,24 +5,22 @@ import Stripe from 'stripe';
 import { sendPushNotification } from '../services/pushService.js';
 import { processWaitlistForMatch } from '../services/waitlistService.js';
 import { addPlusFairPlayWarning, getPlusFairPlayStatus } from '../services/plusFairPlayService.js';
+import {
+  getCancellationPolicy,
+  hasMatchStarted,
+  hoursUntilMatch,
+} from '../services/cancellationPolicyService.js';
 
 const router = Router();
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 
 // --- Helper política de reembolso ---
 function refundPercent(startsAtISO, isPlus = false) {
-  const starts = new Date(startsAtISO).getTime();
-  const now = Date.now();
-  const diffH = (starts - now) / 36e5;
-  return diffH > (isPlus ? 4 : 8) ? 100 : 0;
+  return getCancellationPolicy(startsAtISO, isPlus).refundable ? 100 : 0;
 }
 
 function hoursUntil(startsAtISO) {
-  return (new Date(startsAtISO).getTime() - Date.now()) / 36e5;
-}
-
-function hasMatchStarted(startsAtISO) {
-  return new Date(startsAtISO).getTime() <= Date.now();
+  return hoursUntilMatch(startsAtISO);
 }
 
 function formatMatchDateTime(startsAtISO) {
