@@ -43,9 +43,11 @@ const transporter = (BREVO_SMTP_USER && BREVO_SMTP_PASS)
 
 async function sendMail({ to, subject, text, html }) {
   if (!transporter) {
-    // Fallback seguro para entorno sin SMTP configurado
-    console.log('[MAIL DEV] to=', to, 'subject=', subject);
-    if (text) console.log('[MAIL DEV] text=', text);
+    if (process.env.NODE_ENV === 'production') {
+      throw new Error('SMTP no está configurado en producción');
+    }
+    // En desarrollo confirmamos el intento sin escribir códigos ni enlaces sensibles.
+    console.log('[MAIL DEV] Envío simulado', { to, subject });
     return;
   }
 
@@ -120,8 +122,9 @@ async function sendEmailOtp({ email, code }) {
 
   await sendMail({ to: email, subject, text, html });
 
-  // Log auxiliar en dev (sin filtrar si SMTP está activo, por si se necesita debug)
-  console.log(`[EMAIL OTP] Código para ${email}: ${code} (caduca en ${EMAIL_OTP_TTL_MIN} min)`);
+  if (process.env.NODE_ENV !== 'production' && process.env.LOG_EMAIL_CODES === 'true') {
+    console.log(`[EMAIL OTP DEV] Código para ${email}: ${code} (caduca en ${EMAIL_OTP_TTL_MIN} min)`);
+  }
 }
 
 function sign(user) {

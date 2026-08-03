@@ -45,7 +45,6 @@ app.use('/api/stripe', webhookRouter);
 app.use(cors({ origin: process.env.CORS_ORIGIN?.split(',') || '*' }));
 app.use(express.json());
 
-// Healthcheck directo para la app (evita 404 en /api/health)
 app.post('/api/push/register-token', requireAuth, async (req, res) => {
   try {
     const userId = req.user?.id;
@@ -121,16 +120,6 @@ app.post('/api/push/test', requireAuth, async (req, res) => {
       ok: false,
       msg: 'Error interno del servidor',
     });
-  }
-});
-
-app.get('/api/health', async (_req, res) => {
-  try {
-    await assertDB();
-    res.json({ ok: true, msg: 'ok' });
-  } catch (e) {
-    console.error('Error en /api/health:', e);
-    res.status(500).json({ ok: false, msg: 'Error conectando a la base de datos' });
   }
 });
 

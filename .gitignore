@@ -12,4 +12,8 @@ easyfutbol-backend/.env.save
 easyfutbol-backend/.env
 easyfutbol-backend/.env.*
 easyfutbol-backend/.env.save
+
+# Datos persistentes del servidor: nunca deben entrar en Git.
+easyfutbol-backend/uploads/**
+easyfutbol-backend/backups/**
 .expo/
