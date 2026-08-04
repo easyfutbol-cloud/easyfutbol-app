@@ -4,7 +4,18 @@
     "appVersionSource": "local"
   },
   "build": {
+    "preview": {
+      "distribution": "internal",
+      "channel": "preview-2-0",
+      "android": {
+        "buildType": "apk"
+      },
+      "ios": {
+        "simulator": false
+      }
+    },
     "production": {
+      "channel": "production",
       "android": {
         "buildType": "app-bundle"
       },
