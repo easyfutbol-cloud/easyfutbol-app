@@ -1,10 +1,22 @@
 import React from 'react';
 import { Image, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { api } from '../../api/client';
+
+const API_BASE = String(api?.defaults?.baseURL || '').replace(/\/+$/, '');
+const PUBLIC_BASE = API_BASE.replace(/\/api\/?$/, '');
+
+export function resolveSocialAvatarUrl(uri) {
+  const value = String(uri || '').trim();
+  if (!value) return null;
+  if (/^https?:\/\//i.test(value)) return value;
+  return `${PUBLIC_BASE}${value.startsWith('/') ? '' : '/'}${value}`;
+}
 
 export function SocialAvatar({ uri, name, size=48 }) {
   const style={width:size,height:size,borderRadius:size/2};
-  return uri ? <Image source={{uri}} style={[style,styles.avatar]} /> : <View style={[style,styles.placeholder]}><Text style={styles.initial}>{String(name||'?').slice(0,1).toUpperCase()}</Text></View>;
+  const resolvedUri = resolveSocialAvatarUrl(uri);
+  return resolvedUri ? <Image source={{uri:resolvedUri}} style={[style,styles.avatar]} /> : <View style={[style,styles.placeholder]}><Text style={styles.initial}>{String(name||'?').slice(0,1).toUpperCase()}</Text></View>;
 }
 export function FriendCard({ item, onPress, actionLabel, onAction, secondaryLabel, onSecondary }) {
   return <TouchableOpacity style={styles.card} onPress={onPress} activeOpacity={0.8}>
