@@ -11,8 +11,10 @@ CREATE TABLE IF NOT EXISTS friendships (
   UNIQUE KEY uq_friendship_pair (user_low_id, user_high_id),
   KEY idx_friendship_requester_status (requester_id, status, updated_at),
   KEY idx_friendship_addressee_status (addressee_id, status, updated_at),
-  CONSTRAINT fk_friendship_requester FOREIGN KEY (requester_id) REFERENCES users(id) ON DELETE CASCADE,
-  CONSTRAINT fk_friendship_addressee FOREIGN KEY (addressee_id) REFERENCES users(id) ON DELETE CASCADE,
+  -- MySQL no permite CASCADE sobre columnas base usadas por columnas generadas.
+  -- RESTRICT conserva la integridad y la pareja normalizada evita duplicados invertidos.
+  CONSTRAINT fk_friendship_requester FOREIGN KEY (requester_id) REFERENCES users(id) ON DELETE RESTRICT,
+  CONSTRAINT fk_friendship_addressee FOREIGN KEY (addressee_id) REFERENCES users(id) ON DELETE RESTRICT,
   CONSTRAINT chk_friendship_not_self CHECK (requester_id <> addressee_id)
 );
 
