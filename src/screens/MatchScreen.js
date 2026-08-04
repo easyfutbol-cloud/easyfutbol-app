@@ -6,6 +6,7 @@ import { api } from '../api/client';
 import { useFocusEffect } from '@react-navigation/native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { registerForPushNotificationsAsync } from '../utils/notifications';
+import InviteFriendsModal from '../components/social/InviteFriendsModal';
 
 
 const MAX_TICKETS_PER_PURCHASE = 8;
@@ -103,6 +104,8 @@ export default function MatchScreen({ route, navigation }) {
 
   const [attendees, setAttendees] = useState([]);
   const [attendeesLoading, setAttendeesLoading] = useState(true);
+  const [inviteFriendsVisible, setInviteFriendsVisible] = useState(false);
+  const [matchFriends, setMatchFriends] = useState([]);
 
   const attendeesNormalized = useMemo(() => {
     const apiBase = (api?.defaults?.baseURL || '').replace(/\/+$/, '');
@@ -143,11 +146,12 @@ export default function MatchScreen({ route, navigation }) {
         ticketColor,
         worldcupTeam,
         flag: getWorldCupFlag(worldcupTeam),
+        isFriend: matchFriends.some((friend) => Number(friend.id) === Number(userId)),
       });
     });
 
     return out;
-  }, [attendees]);
+  }, [attendees, matchFriends]);
 
   useEffect(() => {
     if (!matchId) {
@@ -176,6 +180,8 @@ export default function MatchScreen({ route, navigation }) {
         }
       }
     })();
+
+    api.get(`/social/matches/${matchId}/friends`).then((response)=>setMatchFriends(response.data?.items||[])).catch(()=>setMatchFriends([]));
 
     return () => {
       cancelled = true;
@@ -671,7 +677,10 @@ export default function MatchScreen({ route, navigation }) {
       )}
 
       <View style={styles.attendeesSectionCard}>
-        <Text style={styles.attendeesSectionTitle}>Jugadores apuntados</Text>
+        <View style={{flexDirection:'row',alignItems:'center',justifyContent:'space-between'}}>
+          <Text style={styles.attendeesSectionTitle}>Jugadores apuntados{matchFriends.length ? ` · ${matchFriends.length} amigos` : ''}</Text>
+          {!isGuest && <TouchableOpacity onPress={()=>setInviteFriendsVisible(true)} style={{backgroundColor:'rgba(255,90,0,.16)',borderRadius:12,paddingHorizontal:12,paddingVertical:8}}><Text style={{color:colors.orange,fontWeight:'900',fontSize:12}}>Invitar amigos</Text></TouchableOpacity>}
+        </View>
 
       {attendeesLoading ? (
         <View style={styles.attendeesLoadingRow}>
@@ -687,7 +696,7 @@ export default function MatchScreen({ route, navigation }) {
           contentContainerStyle={styles.attendeesRow}
         >
           {attendeesNormalized.map((p) => (
-            <View key={p.key} style={styles.attendeeCard}>
+            <TouchableOpacity key={p.key} style={[styles.attendeeCard,p.isFriend&&{backgroundColor:'rgba(255,90,0,.12)',borderRadius:14,padding:6}]} onPress={()=>p.id&&navigation.navigate('PlayerSocialProfile',{userId:p.id})}>
               <View style={styles.attendeeAvatarOuter}>
                 {p.ticketColor === 'mixed' ? (
                   <View style={styles.attendeeAvatarMixedBorder}>
@@ -736,10 +745,12 @@ export default function MatchScreen({ route, navigation }) {
               <Text style={styles.attendeeName} numberOfLines={1}>
                 {p.username}
               </Text>
-            </View>
+              {p.isFriend?<Text style={{color:colors.orange,fontSize:9,fontWeight:'900'}}>AMIGO</Text>:null}
+            </TouchableOpacity>
           ))}
         </ScrollView>
       )}
+      <InviteFriendsModal visible={inviteFriendsVisible} onClose={()=>setInviteFriendsVisible(false)} matchId={matchId}/>
       </View>
       {isGuest ? (
         <View style={styles.loginPromptCard}>

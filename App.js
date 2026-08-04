@@ -64,6 +64,9 @@ import HomeTournamentScreen from './src/screens/tournament/hometournamentscreen'
 import TournamentDetailScreen from './src/screens/tournament/tournamentdetailscreen';
 import TournamentRulesScreen from './src/screens/tournament/TournamentRulesScreen';
 import FaqScreen from './src/screens/FaqScreen';
+import SocialScreen from './src/screens/SocialScreen';
+import PlayerSocialProfileScreen from './src/screens/PlayerSocialProfileScreen';
+import FriendGroupDetailScreen from './src/screens/FriendGroupDetailScreen';
 
 // Notificaciones (opcional)
 let Notifications = null;
@@ -678,6 +681,9 @@ function AppShell({ currentRouteName }) {
         <Stack.Screen name="MisPartidos" component={MisPartidosScreen} />
         <Stack.Screen name="Stats" component={StatsScreen} />
         <Stack.Screen name="Profile" component={ProfileScreen} />
+        <Stack.Screen name="Social" component={SocialScreen} />
+        <Stack.Screen name="PlayerSocialProfile" component={PlayerSocialProfileScreen} />
+        <Stack.Screen name="FriendGroupDetail" component={FriendGroupDetailScreen} />
         <Stack.Screen name="HomeTournament" component={HomeTournamentScreen} />
         <Stack.Screen name="TournamentDetail" component={TournamentDetailScreen} />
         <Stack.Screen name="TournamentRules" component={TournamentRulesScreen} />

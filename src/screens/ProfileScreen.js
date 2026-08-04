@@ -40,6 +40,7 @@ export default function ProfileScreen({ navigation }) {
   const [activeCollaboration, setActiveCollaboration] = useState('herminia');
   const [referralData, setReferralData] = useState(null);
   const [competitiveProfile, setCompetitiveProfile] = useState(null);
+  const [socialSummary, setSocialSummary] = useState(null);
 
   const BASE = (api?.defaults?.baseURL || '').replace(/\/+$/, '');
   // BASE suele ser https://.../api. Para assets (/uploads/...) necesitamos el origen sin /api
@@ -228,6 +229,11 @@ export default function ProfileScreen({ navigation }) {
     }
   };
 
+  const loadSocialSummary = async () => {
+    try { const response = await api.get('/social/summary'); setSocialSummary(response.data || null); }
+    catch (error) { console.log('Error cargando comunidad:', error?.message || error); }
+  };
+
   const shareReferralCode = async () => {
     if (!referralData?.referral_code) return;
     try {
@@ -277,6 +283,7 @@ export default function ProfileScreen({ navigation }) {
       await loadEasyPass();
       await loadReferrals();
       await loadCompetitiveProfile();
+      await loadSocialSummary();
     } catch (e) {
       setErrMsg(e?.message?.toString?.() || 'Network Error');
       setData(null);
@@ -291,6 +298,7 @@ export default function ProfileScreen({ navigation }) {
     loadEasyPass();
     loadReferrals();
     loadCompetitiveProfile();
+    loadSocialSummary();
   }, []));
 
   const logout = async () => {
@@ -594,6 +602,25 @@ export default function ProfileScreen({ navigation }) {
             {competitiveBadges.length ? <View style={styles.profileBadges}>{competitiveBadges.map((badge)=><View key={badge.id} style={styles.profileBadge}><Ionicons name={badge.icon || 'ribbon'} size={15} color={badge.color_hex} /><Text style={styles.profileBadgeText}>{badge.name}</Text></View>)}</View> : null}
             <View style={styles.competitiveActions}><TouchableOpacity style={styles.competitivePrimary} onPress={() => navigation.navigate('Competitive')}><Text style={styles.competitivePrimaryText}>{competitivePlayer ? 'Ver rendimiento' : 'Entrar al competitivo'}</Text></TouchableOpacity><TouchableOpacity style={styles.competitiveSecondary} onPress={() => navigation.navigate('CompetitiveHistory')}><Text style={styles.competitiveSecondaryText}>Historial</Text></TouchableOpacity></View>
           </LinearGradient>
+
+          <TouchableOpacity
+            style={[styles.communityCard, { borderColor:'rgba(255,90,0,.35)', borderWidth:1 }]}
+            onPress={() => navigation.navigate('Social')}
+            activeOpacity={0.84}
+            accessibilityRole="button"
+          >
+            <View style={{ flexDirection:'row', alignItems:'center', gap:12 }}>
+              <View style={{ width:46,height:46,borderRadius:15,backgroundColor:'rgba(255,90,0,.16)',alignItems:'center',justifyContent:'center' }}>
+                <Ionicons name="people" size={24} color={ORANGE} />
+              </View>
+              <View style={{ flex:1 }}>
+                <Text style={styles.section}>MI COMUNIDAD</Text>
+                <Text style={[styles.communityText,{marginBottom:0}]}>{Number(socialSummary?.friends||0)} amigos · {Number(socialSummary?.groups_count||0)} grupos</Text>
+                {Number(socialSummary?.pending_requests||0)+Number(socialSummary?.match_invitations||0)>0 ? <Text style={{color:ORANGE,fontWeight:'800',marginTop:5}}>{Number(socialSummary?.pending_requests||0)+Number(socialSummary?.match_invitations||0)} novedades pendientes</Text>:null}
+              </View>
+              <Ionicons name="chevron-forward" color="#888" size={22}/>
+            </View>
+          </TouchableOpacity>
 
           <View style={styles.collabCard}>
             <Text style={styles.section}>COLABORACIONES</Text>

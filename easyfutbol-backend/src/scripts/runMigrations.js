@@ -13,6 +13,7 @@ const migrationOrder = [
   '20260803_scheduled_matches.sql',
   '20260804_subscription_platform.sql',
   '20260804_easypass_subscription_transaction_type.sql',
+  '20260804_social_system.sql',
   '20260804_competitive_foundation.sql',
   '20260804_competitive_evaluations.sql',
   '20260804_competitive_weekly_scoring.sql',
