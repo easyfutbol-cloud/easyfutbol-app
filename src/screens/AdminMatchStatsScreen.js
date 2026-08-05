@@ -80,64 +80,69 @@ export default function AdminMatchStatsScreen({ route, navigation }) {
   return (
     <View style={styles.screen}>
       <StatusBar barStyle="light-content" />
-      <LinearGradient colors={['#241208', '#11151B']} style={styles.hero}>
-        <TouchableOpacity style={styles.backButton} onPress={() => goBackOrFallback(navigation)}>
-          <Ionicons name="arrow-back" size={20} color={colors.white} />
-          <Text style={styles.backText}>Volver</Text>
-        </TouchableOpacity>
-        <View style={styles.heroIcon}>
-          <Ionicons name="stats-chart" size={25} color={colors.orange} />
-        </View>
-        <Text style={styles.eyebrow}>CENTRO DE PARTIDO</Text>
-        <Text style={styles.title}>Estadísticas</Text>
-        <Text style={styles.description}>Revisa la convocatoria y carga el acta definitiva desde un único lugar.</Text>
-      </LinearGradient>
+      <FlatList
+        style={styles.pageList}
+        data={loading ? [] : players}
+        keyExtractor={(item, index) => String(item.inscription_id ?? `${item.user_id}-${index}`)}
+        contentContainerStyle={styles.list}
+        showsVerticalScrollIndicator={false}
+        ListHeaderComponent={(
+          <>
+            <LinearGradient colors={['#241208', '#11151B']} style={styles.hero}>
+              <TouchableOpacity style={styles.backButton} onPress={() => goBackOrFallback(navigation)}>
+                <Ionicons name="arrow-back" size={20} color={colors.white} />
+                <Text style={styles.backText}>Volver</Text>
+              </TouchableOpacity>
+              <View style={styles.heroIcon}>
+                <Ionicons name="stats-chart" size={25} color={colors.orange} />
+              </View>
+              <Text style={styles.eyebrow}>CENTRO DE PARTIDO</Text>
+              <Text style={styles.title}>Estadísticas</Text>
+              <Text style={styles.description}>Revisa la convocatoria y carga el acta definitiva desde un único lugar.</Text>
+            </LinearGradient>
 
-      <View style={styles.selectorCard}>
-        <View style={styles.sectionHeading}>
-          <View style={styles.sectionNumber}><Text style={styles.sectionNumberText}>1</Text></View>
-          <View style={styles.sectionCopy}>
-            <Text style={styles.sectionTitle}>Selecciona el partido</Text>
-            <Text style={styles.sectionHint}>El ID se enviará automáticamente al acta.</Text>
-          </View>
-        </View>
-        {loadingMatches ? <ActivityIndicator color={colors.orange} /> : (
-          <View style={styles.pickerWrap}>
-            <Picker selectedValue={selectedMatchId} onValueChange={setSelectedMatchId} dropdownIconColor={colors.white} style={styles.picker}>
-              <Picker.Item label="Selecciona un partido" value="" />
-              {matches.map((match) => <Picker.Item key={match.id} label={match.label} value={match.id} />)}
-            </Picker>
-          </View>
+            <View style={styles.selectorCard}>
+              <View style={styles.sectionHeading}>
+                <View style={styles.sectionNumber}><Text style={styles.sectionNumberText}>1</Text></View>
+                <View style={styles.sectionCopy}>
+                  <Text style={styles.sectionTitle}>Selecciona el partido</Text>
+                  <Text style={styles.sectionHint}>El ID se enviará automáticamente al acta.</Text>
+                </View>
+              </View>
+              {loadingMatches ? <ActivityIndicator color={colors.orange} /> : (
+                <View style={styles.pickerWrap}>
+                  <Picker selectedValue={selectedMatchId} onValueChange={setSelectedMatchId} dropdownIconColor={colors.white} style={styles.picker}>
+                    <Picker.Item label="Selecciona un partido" value="" />
+                    {matches.map((match) => <Picker.Item key={match.id} label={match.label} value={match.id} />)}
+                  </Picker>
+                </View>
+              )}
+              <TouchableOpacity
+                style={[styles.importButton, !selectedMatchId && styles.disabledButton]}
+                disabled={!selectedMatchId}
+                onPress={() => navigation.navigate('AdminMatchStatsImport', { matchId: selectedMatchId })}
+              >
+                <Ionicons name="clipboard-outline" size={20} color={colors.white} />
+                <Text style={styles.importButtonText}>Pegar acta de estadísticas</Text>
+                <Ionicons name="chevron-forward" size={18} color={colors.white} />
+              </TouchableOpacity>
+            </View>
+
+            {selectedMatchId ? (
+              <View style={styles.listHeading}>
+                <View>
+                  <Text style={styles.listEyebrow}>CONVOCATORIA</Text>
+                  <Text style={styles.listTitle}>{players.length} jugadores registrados</Text>
+                </View>
+                <View style={styles.matchBadge}><Text style={styles.matchBadgeText}>#{selectedMatchId}</Text></View>
+              </View>
+            ) : null}
+            {error ? <Text style={styles.error}>{error}</Text> : null}
+            {loading ? <ActivityIndicator color={colors.orange} style={styles.loader} /> : null}
+          </>
         )}
-        <TouchableOpacity
-          style={[styles.importButton, !selectedMatchId && styles.disabledButton]}
-          disabled={!selectedMatchId}
-          onPress={() => navigation.navigate('AdminMatchStatsImport', { matchId: selectedMatchId })}
-        >
-          <Ionicons name="clipboard-outline" size={20} color={colors.white} />
-          <Text style={styles.importButtonText}>Pegar acta de estadísticas</Text>
-          <Ionicons name="chevron-forward" size={18} color={colors.white} />
-        </TouchableOpacity>
-      </View>
-
-      {selectedMatchId ? (
-        <View style={styles.listHeading}>
-          <View>
-            <Text style={styles.listEyebrow}>CONVOCATORIA</Text>
-            <Text style={styles.listTitle}>{players.length} jugadores registrados</Text>
-          </View>
-          <View style={styles.matchBadge}><Text style={styles.matchBadgeText}>#{selectedMatchId}</Text></View>
-        </View>
-      ) : null}
-
-      {error ? <Text style={styles.error}>{error}</Text> : null}
-      {loading ? <ActivityIndicator color={colors.orange} style={styles.loader} /> : (
-        <FlatList
-          data={players}
-          keyExtractor={(item, index) => String(item.inscription_id ?? `${item.user_id}-${index}`)}
-          contentContainerStyle={styles.list}
-          ListEmptyComponent={<Text style={styles.empty}>{selectedMatchId ? 'No hay jugadores asignados.' : 'Selecciona un partido.'}</Text>}
-          renderItem={({ item }) => (
+        ListEmptyComponent={!loading ? <Text style={styles.empty}>{selectedMatchId ? 'No hay jugadores asignados.' : 'Selecciona un partido.'}</Text> : null}
+        renderItem={({ item }) => (
             <View style={styles.playerCard}>
               <View style={[styles.teamMarker, item.ticket_type === 'white' ? styles.whiteMarker : styles.blackMarker]} />
               <View style={styles.playerCopy}>
@@ -157,15 +162,15 @@ export default function AdminMatchStatsScreen({ route, navigation }) {
                 <Text style={styles.noShowButtonText}>{item.marked_no_show ? 'Ausencia registrada' : 'No asistió'}</Text>
               </TouchableOpacity>
             </View>
-          )}
-        />
-      )}
+        )}
+      />
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.background, paddingHorizontal: layout.screenPadding },
+  pageList: { flex: 1 },
   hero: { width: '100%', maxWidth: layout.maxContentWidth, alignSelf: 'center', borderRadius: radii.large, borderWidth: 1, borderColor: 'rgba(255,90,0,0.25)', padding: spacing(2), marginBottom: spacing(2), overflow: 'hidden' },
   backButton: { minHeight: 42, flexDirection: 'row', alignItems: 'center', gap: spacing(0.75), alignSelf: 'flex-start' },
   backText: { color: colors.white, ...typography.bodyStrong },
