@@ -64,7 +64,8 @@ export async function createSocialNotification(db, {
     [userId,userId]
   );
   const tokens=[...new Set(tokenRows.map((row)=>row.token).filter(Boolean))];
-  if (tokens.length) sendPushNotification(tokens,{ title,body,data }).catch((error)=>console.error('[SOCIAL PUSH]',error?.message || error));
+  const pushData={...data,notificationId:Number(result.insertId)};
+  if (tokens.length) sendPushNotification(tokens,{ title,body,data:pushData }).catch((error)=>console.error('[SOCIAL PUSH]',error?.message || error));
   return true;
 }
 

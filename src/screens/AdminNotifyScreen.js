@@ -13,6 +13,7 @@ import {
   View,
 } from 'react-native';
 import { Picker } from '@react-native-picker/picker';
+import DateTimePicker from '@react-native-community/datetimepicker';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import SegmentedControl from '../components/SegmentedControl';
@@ -23,7 +24,10 @@ import { goBackOrFallback } from '../utils/navigation';
 const TARGET_OPTIONS = [
   { value: 'city', label: 'Por ciudad' },
   { value: 'match', label: 'Por partido' },
+  { value: 'segment', label: 'Segmento' },
 ];
+const DELIVERY_OPTIONS=[{value:'now',label:'Ahora'},{value:'scheduled',label:'Programar'},{value:'draft',label:'Borrador'}];
+const pad=value=>String(value).padStart(2,'0');
 
 function formatMatch(match) {
   const date = new Date(match.starts_at);
@@ -40,12 +44,20 @@ export default function AdminNotifyScreen({ route, navigation }) {
   const [matches, setMatches] = useState([]);
   const [locationSlug, setLocationSlug] = useState('');
   const [matchId, setMatchId] = useState(initialMatchId);
+  const [segments,setSegments]=useState([]);
+  const [segmentId,setSegmentId]=useState('');
+  const [audience,setAudience]=useState(null);
   const [title, setTitle] = useState('');
   const [body, setBody] = useState('');
   const [loadingOptions, setLoadingOptions] = useState(true);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [diagnostics, setDiagnostics] = useState(null);
+  const [history, setHistory] = useState([]);
+  const [templates,setTemplates]=useState([]);
+  const [deliveryMode,setDeliveryMode]=useState('now');
+  const [scheduledDate,setScheduledDate]=useState(new Date(Date.now()+60*60*1000));
+  const [editingId,setEditingId]=useState(null);
 
   useEffect(() => {
     let active = true;
@@ -57,6 +69,8 @@ export default function AdminNotifyScreen({ route, navigation }) {
         setLocations(nextLocations);
         setMatches(nextMatches);
         setDiagnostics(data?.data?.diagnostics || null);
+        setTemplates(data?.data?.templates||[]);
+        const nextSegments=data?.data?.segments||[];setSegments(nextSegments);if(nextSegments[0]?.id)setSegmentId(nextSegments[0].id);
         if (!locationSlug && nextLocations[0]?.slug) setLocationSlug(String(nextLocations[0].slug));
       })
       .catch((requestError) => active && setError(requestError?.response?.data?.msg || 'No se pudieron cargar los destinatarios.'))
@@ -64,10 +78,15 @@ export default function AdminNotifyScreen({ route, navigation }) {
     return () => { active = false; };
   }, []);
 
+  const loadHistory=()=>api.get('/admin/notify/history').then(({data})=>setHistory(data?.items||[])).catch(()=>{});
+  useEffect(()=>{loadHistory();},[]);
+  useEffect(()=>{if(targetType!=='segment'||!segmentId){setAudience(null);return;}let active=true;setAudience(null);api.get(`/admin/notify/segments/${segmentId}/preview`).then(({data})=>active&&setAudience(data?.audience||null)).catch(()=>active&&setAudience(null));return()=>{active=false;};},[targetType,segmentId]);
+
   const selectedLocation = useMemo(() => locations.find((location) => String(location.slug) === locationSlug), [locations, locationSlug]);
   const selectedMatch = useMemo(() => matches.find((match) => String(match.id) === matchId), [matches, matchId]);
-  const targetName = targetType === 'city' ? selectedLocation?.name : selectedMatch?.title;
-  const hasTarget = targetType === 'city' ? Boolean(locationSlug) : Boolean(matchId);
+  const selectedSegment=useMemo(()=>segments.find(segment=>segment.id===segmentId),[segments,segmentId]);
+  const targetName = targetType === 'city' ? selectedLocation?.name : targetType==='match'?selectedMatch?.title:selectedSegment?.name;
+  const hasTarget = targetType === 'city' ? Boolean(locationSlug) : targetType==='match'?Boolean(matchId):Boolean(segmentId);
   const canSend = hasTarget && title.trim() && body.trim() && !loading;
 
   const send = () => {
@@ -78,31 +97,44 @@ export default function AdminNotifyScreen({ route, navigation }) {
 
     const targetDescription = targetType === 'city'
       ? `todos los jugadores de ${selectedLocation?.name || locationSlug}`
-      : `los jugadores inscritos en “${selectedMatch?.title || `Partido #${matchId}`}”`;
+      : targetType==='match'?`los jugadores inscritos en “${selectedMatch?.title || `Partido #${matchId}`}”`:`${audience?.users||0} jugadores del segmento “${selectedSegment?.name}”`;
 
+    const actionLabel=editingId?'Guardar cambios':deliveryMode==='now'?'Enviar ahora':deliveryMode==='scheduled'?'Programar':'Guardar borrador';
     Alert.alert(
-      'Confirmar envío',
-      `Vas a enviar esta notificación a ${targetDescription}.`,
+      actionLabel,
+      deliveryMode==='now'?`Vas a enviar esta notificación a ${targetDescription}.`:`La campaña quedará ${deliveryMode==='scheduled'?'programada en horario de Madrid':'guardada para continuar después'}.`,
       [
         { text: 'Cancelar', style: 'cancel' },
         {
-          text: 'Enviar ahora',
+          text: actionLabel,
           onPress: async () => {
             setLoading(true);
             try {
-              const endpoint = targetType === 'city'
-                ? `/admin/notify/city/${encodeURIComponent(locationSlug)}`
-                : `/admin/notify/match/${matchId}`;
-              const { data } = await api.post(endpoint, { title: title.trim(), body: body.trim() });
+              let endpoint,payload;
+              if(editingId){
+                endpoint=`/admin/notify/campaigns/${editingId}`;
+                payload={title:title.trim(),body:body.trim(),mode:deliveryMode};
+                if(deliveryMode==='scheduled'){payload.schedule_date=`${scheduledDate.getFullYear()}-${pad(scheduledDate.getMonth()+1)}-${pad(scheduledDate.getDate())}`;payload.schedule_time=`${pad(scheduledDate.getHours())}:${pad(scheduledDate.getMinutes())}`;}
+              }else if(deliveryMode==='now'){
+                endpoint=targetType==='city'?`/admin/notify/city/${encodeURIComponent(locationSlug)}`:targetType==='match'?`/admin/notify/match/${matchId}`:`/admin/notify/segment/${segmentId}`;
+                payload={title:title.trim(),body:body.trim()};
+              }else{
+                endpoint='/admin/notify/campaigns';
+                payload={target_type:targetType,target_id:targetType==='city'?locationSlug:targetType==='match'?matchId:segmentId,title:title.trim(),body:body.trim(),mode:deliveryMode};
+                if(deliveryMode==='scheduled'){payload.schedule_date=`${scheduledDate.getFullYear()}-${pad(scheduledDate.getMonth()+1)}-${pad(scheduledDate.getDate())}`;payload.schedule_time=`${pad(scheduledDate.getHours())}:${pad(scheduledDate.getMinutes())}`;}
+              }
+              const { data } = editingId?await api.patch(endpoint,payload):await api.post(endpoint,payload);
               if (!data?.ok) throw new Error(data?.msg || 'No se pudo enviar');
               Alert.alert(
-                'Notificación enviada',
-                data.sent > 0
+                editingId?'Campaña actualizada':deliveryMode==='now'?'Notificación enviada':deliveryMode==='scheduled'?'Campaña programada':'Borrador guardado',
+                editingId||deliveryMode!=='now'?'Puedes gestionarla desde el historial.':data.sent > 0
                   ? `Se ha enviado a ${data.sent} dispositivo${data.sent === 1 ? '' : 's'}.`
                   : 'No se encontraron dispositivos con notificaciones activas para este grupo.'
               );
               setTitle('');
               setBody('');
+              setEditingId(null);
+              loadHistory();
             } catch (requestError) {
               Alert.alert('No se pudo enviar', requestError?.response?.data?.msg || requestError.message || 'Inténtalo de nuevo.');
             } finally {
@@ -148,21 +180,22 @@ export default function AdminNotifyScreen({ route, navigation }) {
                   <Picker.Item label="Selecciona una ciudad" value="" />
                   {locations.map((location) => <Picker.Item key={location.id} label={location.name} value={String(location.slug)} />)}
                 </Picker>
-              ) : (
+              ) : targetType==='match'?(
                 <Picker selectedValue={matchId} onValueChange={setMatchId} dropdownIconColor={colors.white} style={styles.picker}>
                   <Picker.Item label="Selecciona un partido" value="" />
                   {matches.map((match) => <Picker.Item key={match.id} label={formatMatch(match)} value={String(match.id)} />)}
                 </Picker>
-              )}
+              ):(<Picker selectedValue={segmentId} onValueChange={setSegmentId} dropdownIconColor={colors.white} style={styles.picker}>{segments.map(segment=><Picker.Item key={segment.id} label={`${segment.name} · ${segment.description}`} value={segment.id}/>)}</Picker>)}
             </View>
           )}
           {error ? <Text style={styles.error}>{error}</Text> : null}
           {hasTarget ? (
             <View style={styles.targetSummary}>
-              <Ionicons name={targetType === 'city' ? 'location' : 'football'} size={18} color={colors.orange} />
+              <Ionicons name={targetType === 'city' ? 'location' : targetType==='match'?'football':'filter'} size={18} color={colors.orange} />
               <View style={styles.targetCopy}>
-                <Text style={styles.targetLabel}>{targetType === 'city' ? 'Todos los jugadores de' : 'Jugadores inscritos en'}</Text>
+                <Text style={styles.targetLabel}>{targetType === 'city' ? 'Todos los jugadores de' : targetType==='match'?'Jugadores inscritos en':'Segmentación dinámica'}</Text>
                 <Text style={styles.targetValue}>{targetName || (targetType === 'match' ? `Partido #${matchId}` : locationSlug)}</Text>
+                {targetType==='segment'?<Text style={styles.audience}>{audience?`${audience.users} jugadores · ${audience.devices} dispositivos disponibles`:'Calculando alcance…'}</Text>:null}
               </View>
               <Ionicons name="checkmark-circle" size={22} color={colors.success} />
             </View>
@@ -200,11 +233,15 @@ export default function AdminNotifyScreen({ route, navigation }) {
             textAlignVertical="top"
           />
           <Text style={styles.counter}>{body.length}/220</Text>
+          <Text style={styles.label}>Plantillas rápidas</Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.templates}>{templates.map(template=><TouchableOpacity key={template.id} style={styles.template} onPress={()=>{setTitle(template.title);setBody(template.body);}}><Ionicons name="flash-outline" color={colors.orange} size={14}/><Text style={styles.templateText}>{template.label}</Text></TouchableOpacity>)}</ScrollView>
         </View>
+
+        <View style={styles.card}><View style={styles.stepHeading}><View style={styles.stepNumber}><Text style={styles.stepNumberText}>3</Text></View><View style={styles.stepCopy}><Text style={styles.cardTitle}>Cuándo enviarla</Text><Text style={styles.help}>Hora peninsular de Madrid, con cambio de verano automático.</Text></View></View><SegmentedControl options={DELIVERY_OPTIONS} value={deliveryMode} onChange={setDeliveryMode} accessibilityLabel="Momento del envío"/>{deliveryMode==='scheduled'?<View style={styles.datePicker}><DateTimePicker value={scheduledDate} mode="datetime" minimumDate={new Date(Date.now()+5*60*1000)} onChange={(_event,value)=>value&&setScheduledDate(value)} themeVariant="dark"/><Text style={styles.scheduleSummary}>Se enviará el {scheduledDate.toLocaleString('es-ES',{dateStyle:'medium',timeStyle:'short'})}</Text></View>:null}</View>
 
         <View style={styles.card}>
           <View style={styles.stepHeading}>
-            <View style={styles.stepNumber}><Text style={styles.stepNumberText}>3</Text></View>
+            <View style={styles.stepNumber}><Text style={styles.stepNumberText}>4</Text></View>
             <View style={styles.stepCopy}>
               <Text style={styles.cardTitle}>Vista previa</Text>
               <Text style={styles.help}>Así aparecerá aproximadamente en el móvil.</Text>
@@ -221,15 +258,19 @@ export default function AdminNotifyScreen({ route, navigation }) {
         </View>
 
         <TouchableOpacity style={[styles.sendButton, !canSend && styles.disabledButton]} onPress={send} disabled={!canSend}>
-          {loading ? <ActivityIndicator color={colors.white} /> : <><Ionicons name="send" size={20} color={colors.white} /><Text style={styles.sendText}>Enviar notificación</Text></>}
+          {loading ? <ActivityIndicator color={colors.white} /> : <><Ionicons name={editingId?'create-outline':deliveryMode==='draft'?'save-outline':deliveryMode==='scheduled'?'time-outline':'send'} size={20} color={colors.white} /><Text style={styles.sendText}>{editingId?'Guardar cambios':deliveryMode==='draft'?'Guardar borrador':deliveryMode==='scheduled'?'Programar notificación':'Enviar notificación'}</Text></>}
         </TouchableOpacity>
         <Text style={styles.safety}>Se solicitará confirmación antes del envío. Las notificaciones no se pueden retirar.</Text>
+
+        <View style={styles.historyHeader}><Text style={styles.historyTitle}>Historial de envíos</Text><Text style={styles.historyHelp}>Últimas campañas y estado real de entrega</Text></View>
+        {!history.length?<View style={styles.emptyHistory}><Text style={styles.help}>Todavía no hay campañas registradas.</Text></View>:history.map(campaign=><View key={campaign.id} style={styles.historyCard}><View style={styles.historyTop}><View style={styles.historyIcon}><Ionicons name={campaign.target_type==='match'?'football':'location'} color={colors.orange} size={17}/></View><View style={{flex:1}}><Text style={styles.historyItemTitle}>{campaign.title}</Text><Text style={styles.historyTarget}>{campaign.target_name} · {new Date(campaign.scheduled_at||campaign.sent_at||campaign.created_at).toLocaleString('es-ES',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'})}</Text></View><View style={[styles.statusBadge,campaign.status==='sent'&&styles.statusSent]}><Text style={styles.statusText}>{({draft:'BORRADOR',scheduled:'PROGRAMADA',sending:'ENVIANDO',sent:'ENVIADA',cancelled:'CANCELADA',failed:'ERROR'})[campaign.status]||campaign.status}</Text></View></View><Text style={styles.historyBody} numberOfLines={2}>{campaign.body}</Text>{['draft','scheduled'].includes(campaign.status)?<View style={styles.pendingActions}><TouchableOpacity onPress={()=>{setEditingId(campaign.id);setTitle(campaign.title);setBody(campaign.body);setDeliveryMode(campaign.status);if(campaign.scheduled_at)setScheduledDate(new Date(campaign.scheduled_at));}} style={styles.smallAction}><Text style={styles.smallActionText}>Editar</Text></TouchableOpacity><TouchableOpacity onPress={()=>api.post(`/admin/notify/campaigns/${campaign.id}/send`).then(loadHistory).catch(e=>Alert.alert('Campaña',e?.response?.data?.msg||'No se pudo enviar'))} style={styles.smallAction}><Text style={styles.smallActionText}>Enviar</Text></TouchableOpacity><TouchableOpacity onPress={()=>Alert.alert('Cancelar campaña','¿Seguro que quieres cancelarla?',[{text:'No',style:'cancel'},{text:'Cancelar',style:'destructive',onPress:()=>api.delete(`/admin/notify/campaigns/${campaign.id}`).then(loadHistory)}])} style={styles.smallAction}><Text style={styles.smallActionText}>Cancelar</Text></TouchableOpacity></View>:<View style={styles.deliveryRow}><Delivery label="ACEPTADAS" value={campaign.accepted_count}/><Delivery label="ENTREGADAS" value={campaign.delivered_count} good/><Delivery label="PENDIENTES" value={campaign.pending_count}/><Delivery label="ERRORES" value={campaign.error_count} danger={campaign.error_count>0}/></View>}{campaign.created_by_name?<Text style={styles.author}>Creada por {campaign.created_by_name}</Text>:null}</View>)}
       </ScrollView>
     </KeyboardAvoidingView>
   );
 }
 
 function Metric({label,value,danger}){return <View style={styles.metric}><Text style={[styles.metricValue,danger&&{color:colors.danger}]}>{Number(value)||0}</Text><Text style={styles.metricLabel}>{label}</Text></View>}
+function Delivery({label,value,good,danger}){return<View style={styles.delivery}><Text style={[styles.deliveryValue,good&&{color:colors.success},danger&&{color:colors.danger}]}>{Number(value)||0}</Text><Text style={styles.deliveryLabel}>{label}</Text></View>}
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.background },
@@ -256,11 +297,13 @@ const styles = StyleSheet.create({
   targetCopy: { flex: 1 },
   targetLabel: { color: colors.textSubtle, ...typography.caption },
   targetValue: { color: colors.white, ...typography.bodyStrong, marginTop: 2 },
+  audience:{color:colors.orange,fontSize:10,fontWeight:'800',marginTop:5},
   error: { color: colors.danger, ...typography.caption, marginTop: spacing(1) },
   label: { color: colors.textMuted, ...typography.caption, marginBottom: spacing(0.75), marginTop: spacing(0.5) },
   input: { minHeight: 52, backgroundColor: '#090B0F', borderWidth: 1, borderColor: colors.border, borderRadius: radii.medium, color: colors.white, paddingHorizontal: spacing(1.5), ...typography.body },
   messageInput: { minHeight: 124, paddingTop: spacing(1.5) },
   counter: { color: colors.textSubtle, ...typography.caption, textAlign: 'right', marginTop: spacing(0.5), marginBottom: spacing(1) },
+  templates:{gap:8,paddingVertical:5},template:{flexDirection:'row',alignItems:'center',gap:5,borderWidth:1,borderColor:colors.border,borderRadius:12,paddingHorizontal:10,paddingVertical:9,backgroundColor:colors.surfaceElevated},templateText:{color:colors.textMuted,fontSize:10,fontWeight:'800'},datePicker:{alignItems:'center',marginTop:14},scheduleSummary:{color:colors.orange,...typography.caption,marginTop:8},
   notificationPreview: { flexDirection: 'row', gap: spacing(1.25), backgroundColor: '#22262D', borderRadius: radii.large, padding: spacing(1.5), borderWidth: 1, borderColor: 'rgba(255,255,255,0.13)' },
   appIcon: { width: 42, height: 42, borderRadius: 12, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.orange },
   previewCopy: { flex: 1 },
@@ -273,4 +316,6 @@ const styles = StyleSheet.create({
   disabledButton: { opacity: 0.4 },
   sendText: { color: colors.white, ...typography.bodyStrong },
   safety: { color: colors.textSubtle, ...typography.caption, textAlign: 'center', marginTop: spacing(1) },
+  historyHeader:{marginTop:spacing(3),marginBottom:spacing(1.25)},historyTitle:{color:colors.white,...typography.heading},historyHelp:{color:colors.textSubtle,...typography.caption,marginTop:3},emptyHistory:{padding:spacing(2),borderRadius:radii.medium,backgroundColor:colors.surface,alignItems:'center'},historyCard:{backgroundColor:colors.surface,borderWidth:1,borderColor:colors.border,borderRadius:radii.large,padding:spacing(1.5),marginBottom:spacing(1.25)},historyTop:{flexDirection:'row',alignItems:'center',gap:10},historyIcon:{width:35,height:35,borderRadius:11,backgroundColor:'rgba(255,90,0,.12)',alignItems:'center',justifyContent:'center'},historyItemTitle:{color:colors.white,...typography.bodyStrong},historyTarget:{color:colors.textSubtle,fontSize:10,marginTop:3},historyBody:{color:colors.textMuted,...typography.caption,lineHeight:17,marginTop:10},deliveryRow:{flexDirection:'row',borderTopWidth:1,borderTopColor:colors.border,marginTop:12,paddingTop:11},delivery:{flex:1,alignItems:'center'},deliveryValue:{color:colors.white,fontSize:15,fontWeight:'900'},deliveryLabel:{color:colors.textSubtle,fontSize:7,fontWeight:'900',marginTop:3},author:{color:colors.textSubtle,fontSize:9,textAlign:'right',marginTop:10},
+  statusBadge:{backgroundColor:'#3a2a12',borderRadius:8,paddingHorizontal:7,paddingVertical:5},statusSent:{backgroundColor:'#153722'},statusText:{color:colors.white,fontSize:7,fontWeight:'900'},pendingActions:{flexDirection:'row',gap:8,marginTop:12},smallAction:{flex:1,borderWidth:1,borderColor:colors.border,borderRadius:10,padding:10,alignItems:'center'},smallActionText:{color:colors.orange,fontSize:9,fontWeight:'900'},
 });

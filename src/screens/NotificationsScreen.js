@@ -4,16 +4,19 @@ import{useFocusEffect}from'@react-navigation/native';
 import{Ionicons}from'@expo/vector-icons';
 import{api}from'../api/client';
 import ScreenHeader from'../components/ScreenHeader';
+import{publishUnreadNotifications}from'../utils/notificationEvents';
+import{syncNotificationBadge}from'../utils/notifications';
 
 const META={friend_request:['person-add-outline','#8b5cf6'],friend_accepted:['people-outline','#22c55e'],match_invitation:['football-outline','#ff5a00'],group_invitation:['people-circle-outline','#ff5a00'],match_cancelled:['close-circle-outline','#ef4444'],match_updated:['calendar-outline','#f59e0b'],match_reminder:['alarm-outline','#38bdf8'],easypass_gift:['gift-outline','#22c55e'],news:['megaphone-outline','#38bdf8']};
 const dateLabel=value=>{if(!value)return'';const date=new Date(value);return Number.isNaN(date.getTime())?'':date.toLocaleString('es-ES',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'});};
 
 export default function NotificationsScreen({navigation}){
   const[data,setData]=useState(null),[refreshing,setRefreshing]=useState(false);
-  const load=useCallback(async()=>{try{const response=await api.get('/social/notifications');setData(response.data);}catch{Alert.alert('Notificaciones','No se pudieron cargar tus avisos.');}},[]);
+  const updateCount=count=>{publishUnreadNotifications(count);syncNotificationBadge(count);};
+  const load=useCallback(async()=>{try{const response=await api.get('/social/notifications');setData(response.data);updateCount(response.data.unread_count);}catch{Alert.alert('Notificaciones','No se pudieron cargar tus avisos.');}},[]);
   useFocusEffect(useCallback(()=>{load();},[load]));
-  const readAll=async()=>{try{await api.patch('/social/notifications/read-all');setData(current=>({...current,unread_count:0,items:current.items.map(item=>({...item,read_at:item.read_at||new Date().toISOString()}))}));}catch{Alert.alert('Notificaciones','No se pudieron marcar como leídas.');}};
-  const openItem=async item=>{if(!item.read_at){api.patch(`/social/notifications/${item.id}/read`).catch(()=>{});setData(current=>({...current,unread_count:Math.max(0,current.unread_count-1),items:current.items.map(row=>row.id===item.id?{...row,read_at:new Date().toISOString()}:row)}));}const target=item.data?.screen;if(target){const{screen,...params}=item.data;navigation.navigate(screen,params);}};
+  const readAll=async()=>{try{await api.patch('/social/notifications/read-all');setData(current=>({...current,unread_count:0,items:current.items.map(item=>({...item,read_at:item.read_at||new Date().toISOString()}))}));updateCount(0);}catch{Alert.alert('Notificaciones','No se pudieron marcar como leídas.');}};
+  const openItem=async item=>{if(!item.read_at){api.patch(`/social/notifications/${item.id}/read`).catch(()=>{});const next=Math.max(0,data.unread_count-1);setData(current=>({...current,unread_count:next,items:current.items.map(row=>row.id===item.id?{...row,read_at:new Date().toISOString()}:row)}));updateCount(next);}const target=item.data?.screen;if(target){const{screen,...params}=item.data;navigation.navigate(screen,params);}};
   if(!data)return<View style={s.page}><ActivityIndicator color="#ff5a00" style={{marginTop:90}}/></View>;
   return<View style={s.page}><ScrollView contentContainerStyle={s.content} refreshControl={<RefreshControl refreshing={refreshing} tintColor="#ff5a00" onRefresh={async()=>{setRefreshing(true);await load();setRefreshing(false);}}/>}>
     <ScreenHeader eyebrow={`${data.unread_count} SIN LEER`} title="Notificaciones" description="Todo lo importante de tus partidos y tu comunidad, en un solo lugar." action={<TouchableOpacity style={s.back} onPress={()=>navigation.goBack()}><Ionicons name="chevron-back" color="#fff" size={21}/></TouchableOpacity>}/>

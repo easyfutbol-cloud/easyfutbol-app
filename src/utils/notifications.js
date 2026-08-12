@@ -9,14 +9,23 @@ Notifications.setNotificationHandler({
     shouldShowBanner: true,
     shouldShowList: true,
     shouldPlaySound: true,
-    shouldSetBadge: false,
+    shouldSetBadge: true,
   }),
 });
 
 /**
  * Pide permisos y devuelve el token de Expo para notificaciones push.
  */
-export async function registerForPushNotificationsAsync() {
+export async function configureNotificationChannels(){
+  if(Platform.OS!=='android')return;
+  const channels=[['default','General',Notifications.AndroidImportance.DEFAULT],['matches','Partidos',Notifications.AndroidImportance.MAX],['social','Actividad social',Notifications.AndroidImportance.DEFAULT],['easypass','EasyPass',Notifications.AndroidImportance.HIGH],['news','Novedades',Notifications.AndroidImportance.DEFAULT]];
+  await Promise.all(channels.map(([id,name,importance])=>Notifications.setNotificationChannelAsync(id,{name,importance,vibrationPattern:[0,250,250,250],lightColor:'#FF5A00'})));
+}
+
+export async function getNotificationPermissionStatus(){const result=await Notifications.getPermissionsAsync();return result.status;}
+export async function syncNotificationBadge(count){try{await Notifications.setBadgeCountAsync(Math.max(0,Number(count)||0));}catch{}}
+
+export async function registerForPushNotificationsAsync({requestPermission=true}={}) {
   try {
     console.log('[PUSH] Inicio registerForPushNotificationsAsync');
     console.log('[PUSH] Platform:', Platform.OS);
@@ -27,22 +36,14 @@ export async function registerForPushNotificationsAsync() {
       return null;
     }
 
-    if (Platform.OS === 'android') {
-      console.log('[PUSH] Configurando notification channel Android...');
-      await Notifications.setNotificationChannelAsync('default', {
-        name: 'default',
-        importance: Notifications.AndroidImportance.MAX,
-        vibrationPattern: [0, 250, 250, 250],
-        lightColor: '#FF5A00',
-      });
-    }
+    await configureNotificationChannels();
 
     const { status: existingStatus } = await Notifications.getPermissionsAsync();
     console.log('[PUSH] existingStatus:', existingStatus);
 
     let finalStatus = existingStatus;
 
-    if (existingStatus !== 'granted') {
+    if (existingStatus !== 'granted' && requestPermission) {
       const { status } = await Notifications.requestPermissionsAsync();
       finalStatus = status;
       console.log('[PUSH] finalStatus tras requestPermissionsAsync:', finalStatus);
@@ -70,7 +71,7 @@ export async function registerForPushNotificationsAsync() {
 
     const token = tokenResponse?.data ?? null;
 
-    console.log('[PUSH] Expo push token:', token);
+    console.log('[PUSH] Token Expo obtenido correctamente');
     return token;
   } catch (error) {
     console.log('[PUSH] Error obteniendo token push:', error?.message || error);

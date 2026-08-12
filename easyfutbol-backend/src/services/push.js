@@ -74,6 +74,28 @@ export async function getCityPushTokens(locationSlug) {
   return uniqueTokens(rows);
 }
 
+const segmentConditions={
+  active_30d:`EXISTS(SELECT 1 FROM inscriptions i JOIN matches m ON m.id=i.match_id WHERE i.user_id=u.id AND i.status IN ('confirmed','paid','active') AND m.starts_at BETWEEN DATE_SUB(UTC_TIMESTAMP(),INTERVAL 30 DAY) AND UTC_TIMESTAMP())`,
+  inactive_60d:`u.created_at<DATE_SUB(UTC_TIMESTAMP(),INTERVAL 60 DAY) AND NOT EXISTS(SELECT 1 FROM inscriptions i JOIN matches m ON m.id=i.match_id WHERE i.user_id=u.id AND i.status IN ('confirmed','paid','active') AND m.starts_at>=DATE_SUB(UTC_TIMESTAMP(),INTERVAL 60 DAY))`,
+  plus:`EXISTS(SELECT 1 FROM user_subscriptions us JOIN subscription_plans sp ON sp.id=us.plan_id WHERE us.user_id=u.id AND sp.code='plus' AND us.status IN ('active','trialing') AND (us.current_period_end IS NULL OR us.current_period_end>UTC_TIMESTAMP()))`,
+  pro:`EXISTS(SELECT 1 FROM user_subscriptions us JOIN subscription_plans sp ON sp.id=us.plan_id WHERE us.user_id=u.id AND sp.code='pro' AND us.status IN ('active','trialing') AND (us.current_period_end IS NULL OR us.current_period_end>UTC_TIMESTAMP()))`,
+  no_upcoming:`NOT EXISTS(SELECT 1 FROM inscriptions i JOIN matches m ON m.id=i.match_id WHERE i.user_id=u.id AND i.status IN ('confirmed','paid','active') AND m.starts_at>UTC_TIMESTAMP() AND m.status<>'cancelled')`,
+  new_30d:`u.created_at>=DATE_SUB(UTC_TIMESTAMP(),INTERVAL 30 DAY)`,
+};
+export const notificationSegments=[
+  {id:'active_30d',name:'Jugadores activos',description:'Han jugado durante los últimos 30 días'},
+  {id:'inactive_60d',name:'Jugadores inactivos',description:'Llevan 60 días sin jugar'},
+  {id:'plus',name:'Suscriptores Plus',description:'Plan Plus activo o en prueba'},
+  {id:'pro',name:'Suscriptores Pro',description:'Plan Pro activo o en prueba'},
+  {id:'no_upcoming',name:'Sin próximo partido',description:'No tienen ninguna inscripción futura'},
+  {id:'new_30d',name:'Usuarios nuevos',description:'Registrados durante los últimos 30 días'},
+];
+export async function getSegmentPushAudience(segmentId){
+  const condition=segmentConditions[segmentId];if(!condition)throw new Error('Segmento no válido');
+  const[rows]=await pool.query(`SELECT u.id user_id,token_data.push_token FROM users u JOIN (SELECT id user_id,CONVERT(push_token USING utf8mb4) COLLATE utf8mb4_unicode_ci push_token FROM users WHERE push_token IS NOT NULL AND push_token<>'' UNION SELECT user_id,CONVERT(expo_push_token USING utf8mb4) COLLATE utf8mb4_unicode_ci push_token FROM push_tokens WHERE is_active=1 AND expo_push_token IS NOT NULL AND expo_push_token<>'') token_data ON token_data.user_id=u.id LEFT JOIN user_notification_preferences np ON np.user_id=u.id WHERE (${condition}) AND COALESCE(np.news_enabled,1)=1`);
+  return{users:new Set(rows.map(row=>Number(row.user_id))).size,tokens:[...new Set(rows.map(row=>row.push_token).filter(Boolean))]};
+}
+
 /** Token de un usuario */
 export async function getUserPushToken(userId) {
   const [[row]] = await pool.query(

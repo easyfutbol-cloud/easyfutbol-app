@@ -24,6 +24,9 @@ const migrationOrder = [
   '20260812_social_safety.sql',
   '20260812_notification_preferences.sql',
   '20260812_push_delivery_tracking.sql',
+  '20260812_notification_campaigns.sql',
+  '20260812_scheduled_notifications.sql',
+  '20260812_notification_segments.sql',
 ];
 
 const currentFile = fileURLToPath(import.meta.url);

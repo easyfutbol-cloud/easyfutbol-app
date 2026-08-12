@@ -30,6 +30,8 @@ import * as Application from 'expo-application';
 import Constants from 'expo-constants';
 import { api, setUnauthorizedHandler } from './src/api/client';
 import { menuController } from './src/navigation/menuController';
+import { publishUnreadNotifications, subscribeUnreadNotifications } from './src/utils/notificationEvents';
+import { syncNotificationBadge } from './src/utils/notifications';
 import AppBottomNavigation from './src/components/AppBottomNavigation';
 import LeagueBottomNavigation from './src/components/LeagueBottomNavigation';
 import { isLeagueRoute } from './src/navigation/leagueNavigation';
@@ -559,7 +561,7 @@ function AppMenu({ currentRouteName }) {
         (Array.isArray(user?.permissions) && user.permissions.includes('admin'));
       setIsLogged(true);
       setIsAdmin(!!admin);
-      api.get('/social/notifications').then(({data})=>setUnreadNotifications(Number(data.unread_count)||0)).catch(()=>setUnreadNotifications(0));
+      api.get('/social/notifications').then(({data})=>{const count=Number(data.unread_count)||0;setUnreadNotifications(count);publishUnreadNotifications(count);syncNotificationBadge(count);}).catch(()=>setUnreadNotifications(0));
     } catch {
       setIsLogged(false);
       setIsAdmin(false);
@@ -570,6 +572,8 @@ function AppMenu({ currentRouteName }) {
   useEffect(() => {
     refreshAuth();
   }, [currentRouteName]); // refresca al cambiar de ruta
+
+  useEffect(()=>subscribeUnreadNotifications(setUnreadNotifications),[]);
 
   // En Access y VerifyEmail no mostramos ni botón ni modal
   if (currentRouteName === 'Access' || currentRouteName === 'VerifyEmail') return null;
@@ -826,9 +830,12 @@ export default function App() {
 
   useEffect(() => {
     if (!Notifications) return;
-    const subReceived = Notifications.addNotificationReceivedListener(() => {});
-    const subResponse = Notifications.addNotificationResponseReceivedListener((response) => {
+    const refreshUnread=()=>api.get('/social/notifications').then(({data})=>{const count=Number(data.unread_count)||0;publishUnreadNotifications(count);syncNotificationBadge(count);}).catch(()=>{});
+    refreshUnread();
+    const subReceived = Notifications.addNotificationReceivedListener(refreshUnread);
+    const subResponse = Notifications.addNotificationResponseReceivedListener(async(response) => {
       const data = response?.notification?.request?.content?.data || {};
+      if(data.notificationId){await api.patch(`/social/notifications/${Number(data.notificationId)}/read`).catch(()=>{});refreshUnread();}
       if (data.screen && navigationRef.isReady()) {
         const { screen, ...rawParams } = data;
         const params = { ...rawParams };

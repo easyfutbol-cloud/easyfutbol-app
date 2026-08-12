@@ -32,6 +32,7 @@ import { sendPushNotification, startPushReceiptScheduler } from './services/push
 import { startMatchReminderScheduler } from './services/reminderService.js';
 import { startWaitlistScheduler } from './services/waitlistService.js';
 import { startScheduledMatchPublisher } from './services/scheduledMatchService.js';
+import { startNotificationCampaignScheduler } from './services/notificationCampaignService.js';
 
 const app = express();
 const PORT = Number(process.env.PORT || 4000);
@@ -160,6 +161,7 @@ app.get('/', (_req, res) => res.send('EasyFutbol Backend up'));
       startWaitlistScheduler();
       startScheduledMatchPublisher();
       startPushReceiptScheduler();
+      startNotificationCampaignScheduler();
     });
   } catch (e) {
     console.error('❌ DB no responde:', e.message);

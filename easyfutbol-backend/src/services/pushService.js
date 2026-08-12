@@ -13,14 +13,14 @@ async function deactivateToken(token) {
   ]);
 }
 
-async function recordTicket(token,ticket,type) {
+async function recordTicket(token,ticket,type,campaignId) {
   const error=ticket?.status==='error';
   if (ticket?.details?.error==='DeviceNotRegistered') await deactivateToken(token);
   await pool.query(
     `INSERT INTO push_delivery_receipts
-       (ticket_id,expo_push_token,notification_type,status,error_code,error_message,checked_at)
-     VALUES (?,?,?,?,?,?,?)`,
-    [ticket?.id||null,token,type||null,error?'error':'queued',ticket?.details?.error||null,ticket?.message||null,error?new Date():null]
+       (campaign_id,ticket_id,expo_push_token,notification_type,status,error_code,error_message,checked_at)
+     VALUES (?,?,?,?,?,?,?,?)`,
+    [campaignId||null,ticket?.id||null,token,type||null,error?'error':'queued',ticket?.details?.error||null,ticket?.message||null,error?new Date():null]
   );
 }
 
@@ -33,9 +33,11 @@ export async function sendPushNotification(tokens = [], { title, body, data = {}
       continue;
     }
 
+    const channelId={match_cancelled:'matches',match_updated:'matches',match_reminder:'matches',waitlist_offer:'matches',friend_request:'social',friend_accepted:'social',match_invitation:'social',group_invitation:'social',easypass_gift:'easypass',news:'news'}[data?.type]||'default';
     messages.push({
       to: token,
       sound: 'default',
+      channelId,
       title,
       body,
       data,
@@ -53,7 +55,7 @@ export async function sendPushNotification(tokens = [], { title, body, data = {}
     try {
       const ticketChunk = await expo.sendPushNotificationsAsync(chunk);
       tickets.push(...ticketChunk);
-      await Promise.all(ticketChunk.map((ticket,index)=>recordTicket(chunk[index].to,ticket,data?.type).catch(error=>console.error('[PUSH TRACKING]',error?.message||error))));
+      await Promise.all(ticketChunk.map((ticket,index)=>recordTicket(chunk[index].to,ticket,data?.type,data?.campaignId).catch(error=>console.error('[PUSH TRACKING]',error?.message||error))));
     } catch (error) {
       console.error('Error enviando push chunk:', error);
     }
