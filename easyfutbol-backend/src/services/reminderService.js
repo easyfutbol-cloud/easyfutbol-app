@@ -3,6 +3,7 @@
 import { pool } from '../config/db.js';
 import { sendPushNotification } from './pushService.js';
 import { markSchedulerFailure, markSchedulerSuccess, registerScheduler } from './operationalHealthService.js';
+import { isNotificationPushEnabled } from './socialService.js';
 
 function formatMatchHour(startsAtISO) {
   return new Date(startsAtISO).toLocaleTimeString('es-ES', {
@@ -86,11 +87,22 @@ export async function sendMatchReminders({ hoursAhead = 4, windowMinutes = 10 } 
     scanned: candidates.length,
     sent: 0,
     skippedWithoutTokens: 0,
+    skippedByPreference: 0,
     failed: 0,
   };
 
   for (const candidate of candidates) {
     try {
+      if (!await isNotificationPushEnabled(pool,candidate.user_id,'match_reminders_enabled')) {
+        await pool.query(
+          `INSERT INTO push_notification_logs (user_id, match_id, type)
+           VALUES (?, ?, 'match_reminder')
+           ON DUPLICATE KEY UPDATE sent_at = CURRENT_TIMESTAMP`,
+          [candidate.user_id,candidate.match_id]
+        );
+        results.skippedByPreference += 1;
+        continue;
+      }
       const [tokenRows] = await pool.query(
         `SELECT CONVERT(push_token USING utf8mb4) COLLATE utf8mb4_unicode_ci AS push_token
          FROM users

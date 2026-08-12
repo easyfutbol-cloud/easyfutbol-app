@@ -22,6 +22,8 @@ const migrationOrder = [
   '20260812_player_match_preferences.sql',
   '20260812_player_sport_profile.sql',
   '20260812_social_safety.sql',
+  '20260812_notification_preferences.sql',
+  '20260812_push_delivery_tracking.sql',
 ];
 
 const currentFile = fileURLToPath(import.meta.url);

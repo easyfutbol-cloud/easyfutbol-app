@@ -71,6 +71,8 @@ import SocialScreen from './src/screens/SocialScreen';
 import SocialPrivacyScreen from './src/screens/SocialPrivacyScreen';
 import PlayerSocialProfileScreen from './src/screens/PlayerSocialProfileScreen';
 import FriendGroupDetailScreen from './src/screens/FriendGroupDetailScreen';
+import NotificationsScreen from './src/screens/NotificationsScreen';
+import NotificationPreferencesScreen from './src/screens/NotificationPreferencesScreen';
 import LeaguesHomeScreen from './src/screens/leagues/LeaguesHomeScreen';
 import LeagueCalendarScreen from './src/screens/leagues/LeagueCalendarScreen';
 import LeagueStandingsScreen from './src/screens/leagues/LeagueStandingsScreen';
@@ -528,6 +530,7 @@ function AppMenu({ currentRouteName }) {
   const [open, setOpen] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
   const [isLogged, setIsLogged] = useState(false);
+  const [unreadNotifications, setUnreadNotifications] = useState(0);
 
   // Exponer controlador global
   useEffect(() => {
@@ -546,6 +549,7 @@ function AppMenu({ currentRouteName }) {
       if (!raw) {
         setIsLogged(false);
         setIsAdmin(false);
+        setUnreadNotifications(0);
         return;
       }
       const user = JSON.parse(raw);
@@ -555,9 +559,11 @@ function AppMenu({ currentRouteName }) {
         (Array.isArray(user?.permissions) && user.permissions.includes('admin'));
       setIsLogged(true);
       setIsAdmin(!!admin);
+      api.get('/social/notifications').then(({data})=>setUnreadNotifications(Number(data.unread_count)||0)).catch(()=>setUnreadNotifications(0));
     } catch {
       setIsLogged(false);
       setIsAdmin(false);
+      setUnreadNotifications(0);
     }
   };
 
@@ -569,6 +575,7 @@ function AppMenu({ currentRouteName }) {
   if (currentRouteName === 'Access' || currentRouteName === 'VerifyEmail') return null;
 
   const baseItems = [
+    ...(isLogged ? [{ label: 'Notificaciones', screen: 'Notifications', icon:'notifications-outline', badge:unreadNotifications }] : []),
     { label: 'Torneos', screen: 'HomeTournament' },
     { label: 'Estadísticas', screen: 'Stats' },
     { label: 'Logros', screen: 'Achievements' },
@@ -627,6 +634,7 @@ function AppMenu({ currentRouteName }) {
               <Pressable key={it.screen} onPress={() => goTo(it.screen)} style={styles.item}>
                 <Ionicons name={it.icon || 'chevron-forward-circle-outline'} size={19} color={ORANGE} />
                 <Text style={styles.itemText}>{it.label}</Text>
+                {it.badge>0&&<View style={styles.menuBadge}><Text style={styles.menuBadgeText}>{it.badge>99?'99+':it.badge}</Text></View>}
               </Pressable>
             ))}
 
@@ -699,6 +707,8 @@ function AppShell({ currentRouteName }) {
         <Stack.Screen name="SocialPrivacy" component={SocialPrivacyScreen} />
         <Stack.Screen name="PlayerSocialProfile" component={PlayerSocialProfileScreen} />
         <Stack.Screen name="FriendGroupDetail" component={FriendGroupDetailScreen} />
+        <Stack.Screen name="Notifications" component={NotificationsScreen} />
+        <Stack.Screen name="NotificationPreferences" component={NotificationPreferencesScreen} />
         <Stack.Screen name="LeagueHome" component={LeaguesHomeScreen} />
         <Stack.Screen name="LeagueCalendar" component={LeagueCalendarScreen} />
         <Stack.Screen name="LeagueStandings" component={LeagueStandingsScreen} />
@@ -967,7 +977,10 @@ const styles = StyleSheet.create({
   itemText: {
     color: '#fff',
     fontSize: 16,
+    flex: 1,
   },
+  menuBadge:{minWidth:24,height:24,borderRadius:12,backgroundColor:ORANGE,alignItems:'center',justifyContent:'center',paddingHorizontal:6},
+  menuBadgeText:{color:'#fff',fontSize:10,fontWeight:'900'},
   divider: {
     height: 1,
     backgroundColor: 'rgba(255,255,255,0.08)',

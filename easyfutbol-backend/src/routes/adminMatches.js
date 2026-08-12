@@ -2,15 +2,22 @@ import express from 'express';
 import { pool } from '../config/db.js';
 import { requireAuth, requireAdmin } from '../middlewares/auth.js';
 import { formatMadridAdminDateTime, madridWallTimeToUtc, toMysqlUtc } from '../utils/madridDateTime.js';
-import { getMatchPushTokens, sendExpoPush } from '../services/push.js';
+import { createSocialNotification } from '../services/socialService.js';
 
 const router = express.Router();
 
 async function notifyMatchPlayers(matchId, title, body, type) {
   try {
-    const tokens = await getMatchPushTokens(matchId);
-    if (!tokens.length) return;
-    await sendExpoPush(tokens, title, body, { type, screen: 'Match', matchId: Number(matchId) });
+    const [players] = await pool.query(
+      `SELECT DISTINCT user_id FROM inscriptions
+       WHERE match_id=? AND user_id IS NOT NULL AND status IN ('pending','confirmed')`,
+      [matchId]
+    );
+    await Promise.all(players.map(({user_id:userId})=>createSocialNotification(pool,{
+      userId,type,entityType:'match',entityId:Number(matchId),title,body,
+      data:{type,screen:'Match',matchId:Number(matchId)},
+      dedupeKey:`admin-match:${type}:${matchId}:${userId}:${Date.now()}`,
+    })));
   } catch (error) {
     console.error('[ADMIN MATCH NOTIFICATION]', { matchId, type, error: error?.message || error });
   }

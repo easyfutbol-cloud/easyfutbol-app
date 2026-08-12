@@ -28,7 +28,7 @@ import scheduledMatches from './routes/scheduledMatches.js';
 import subscriptions from './routes/subscriptions.js';
 import social from './routes/social.js';
 import { requireAuth } from './middlewares/auth.js';
-import { sendPushNotification } from './services/pushService.js';
+import { sendPushNotification, startPushReceiptScheduler } from './services/pushService.js';
 import { startMatchReminderScheduler } from './services/reminderService.js';
 import { startWaitlistScheduler } from './services/waitlistService.js';
 import { startScheduledMatchPublisher } from './services/scheduledMatchService.js';
@@ -159,6 +159,7 @@ app.get('/', (_req, res) => res.send('EasyFutbol Backend up'));
       startMatchReminderScheduler();
       startWaitlistScheduler();
       startScheduledMatchPublisher();
+      startPushReceiptScheduler();
     });
   } catch (e) {
     console.error('❌ DB no responde:', e.message);

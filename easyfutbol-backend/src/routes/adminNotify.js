@@ -24,7 +24,16 @@ router.get('/admin/notify/options', requireAuth, requireAdmin, async (_req, res)
        ORDER BY m.starts_at DESC
        LIMIT 100`
     );
-    return res.json({ ok: true, data: { locations, matches } });
+    const [[diagnostics]] = await pool.query(
+      `SELECT
+        (SELECT COUNT(*) FROM push_tokens WHERE is_active=1) active_tokens,
+        SUM(created_at>=DATE_SUB(NOW(),INTERVAL 24 HOUR)) attempts_24h,
+        SUM(status='delivered' AND created_at>=DATE_SUB(NOW(),INTERVAL 24 HOUR)) delivered_24h,
+        SUM(status='error' AND created_at>=DATE_SUB(NOW(),INTERVAL 24 HOUR)) errors_24h,
+        SUM(status='queued' AND created_at>=DATE_SUB(NOW(),INTERVAL 24 HOUR)) pending_24h
+       FROM push_delivery_receipts`
+    );
+    return res.json({ ok: true, data: { locations, matches, diagnostics } });
   } catch (e) {
     console.error('Error cargando opciones de notificación', e);
     return res.status(500).json({ ok: false, msg: 'Error cargando destinatarios' });

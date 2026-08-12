@@ -1,15 +1,7 @@
 // src/services/push.js
 // Envío a la API HTTP de Expo sin SDK
 import { pool } from '../config/db.js';
-
-const EXPO_ENDPOINT = 'https://exp.host/--/api/v2/push/send';
-
-// Pequeña utilidad para trocear arrays (límite recomendado por Expo ~100)
-function chunk(arr, size = 99) {
-  const out = [];
-  for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size));
-  return out;
-}
+import { sendPushNotification } from './pushService.js';
 
 // Valida formato ExponentPushToken[xxxxx]
 function isExpoPushToken(token) {
@@ -33,30 +25,8 @@ async function hasAssignedUserIdColumn() {
 export async function sendExpoPush(tokens, title, body, data = {}) {
   const valid = tokens.filter(isExpoPushToken);
   if (!valid.length) return { sent: 0 };
-
-  const messages = valid.map(t => ({
-    to: t,
-    sound: 'default',
-    title,
-    body,
-    data
-  }));
-
-  let sent = 0;
-  for (const batch of chunk(messages)) {
-    const res = await fetch(EXPO_ENDPOINT, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(batch)
-    });
-    if (!res.ok) {
-      const txt = await res.text().catch(() => '');
-      console.error('Expo push error:', txt);
-      continue;
-    }
-    sent += batch.length;
-  }
-  return { sent };
+  const tickets=await sendPushNotification(valid,{title,body,data});
+  return { sent:tickets.filter(ticket=>ticket?.status==='ok').length,failed:tickets.filter(ticket=>ticket?.status==='error').length };
 }
 
 /** Tokens de los inscritos confirmados en un partido */

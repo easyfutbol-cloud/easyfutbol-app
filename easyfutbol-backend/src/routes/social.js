@@ -352,8 +352,20 @@ router.patch('/match-invitations/:id/:action(view|decline)', async (req,res) => 
 });
 
 router.get('/notifications', async (req,res) => {
-  try { const [rows]=await pool.query(`SELECT n.*,u.name actor_name,u.avatar_url actor_avatar FROM social_notifications n LEFT JOIN users u ON u.id=n.actor_id WHERE n.user_id=? ORDER BY n.created_at DESC LIMIT 100`,[req.user.id]); res.json({ok:true,items:rows.map(r=>({...r,data:typeof r.data==='string'?JSON.parse(r.data):r.data}))}); } catch(error){console.error('[SOCIAL notifications]',error);fail(res,500,'No se pudieron cargar las notificaciones');}
+  try { const [rows]=await pool.query(`SELECT n.*,u.name actor_name,u.avatar_url actor_avatar FROM social_notifications n LEFT JOIN users u ON u.id=n.actor_id WHERE n.user_id=? ORDER BY n.created_at DESC LIMIT 100`,[req.user.id]); const [[count]]=await pool.query('SELECT COUNT(*) unread_count FROM social_notifications WHERE user_id=? AND read_at IS NULL',[req.user.id]); res.json({ok:true,unread_count:Number(count.unread_count),items:rows.map(r=>({...r,data:typeof r.data==='string'?JSON.parse(r.data):r.data}))}); } catch(error){console.error('[SOCIAL notifications]',error);fail(res,500,'No se pudieron cargar las notificaciones');}
 });
 router.patch('/notifications/:id/read', async (req,res) => { try { await pool.query('UPDATE social_notifications SET read_at=COALESCE(read_at,NOW()) WHERE id=? AND user_id=?',[positiveId(req.params.id),req.user.id]); res.json({ok:true}); } catch(error){fail(res,500,'No se pudo marcar como leída');} });
+router.patch('/notifications/read-all', async (req,res) => { try { const [result]=await pool.query('UPDATE social_notifications SET read_at=NOW() WHERE user_id=? AND read_at IS NULL',[req.user.id]); res.json({ok:true,updated:result.affectedRows}); } catch(error){fail(res,500,'No se pudieron marcar como leídas');} });
+
+router.get('/notification-preferences', async (req,res) => {
+  try { await pool.query('INSERT IGNORE INTO user_notification_preferences(user_id) VALUES (?)',[req.user.id]); const [[row]]=await pool.query('SELECT social_enabled,match_updates_enabled,match_reminders_enabled,easypass_enabled,news_enabled FROM user_notification_preferences WHERE user_id=?',[req.user.id]); res.json({ok:true,preferences:Object.fromEntries(Object.entries(row).map(([key,value])=>[key,Boolean(value)]))}); }
+  catch(error){console.error('[NOTIFICATION preferences]',error);fail(res,500,'No se pudieron cargar las preferencias');}
+});
+router.patch('/notification-preferences', async (req,res) => {
+  const keys=['social_enabled','match_updates_enabled','match_reminders_enabled','easypass_enabled','news_enabled'];
+  const values=keys.map((key)=>req.body?.[key] ? 1 : 0);
+  try { await pool.query(`INSERT INTO user_notification_preferences(user_id,${keys.join(',')}) VALUES (?,?,?,?,?,?) ON DUPLICATE KEY UPDATE ${keys.map((key)=>`${key}=VALUES(${key})`).join(',')}`,[req.user.id,...values]); res.json({ok:true}); }
+  catch(error){console.error('[NOTIFICATION preferences update]',error);fail(res,500,'No se pudieron guardar las preferencias');}
+});
 
 export default router;

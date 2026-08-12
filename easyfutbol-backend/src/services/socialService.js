@@ -29,6 +29,14 @@ export async function getFriendshipStatus(db, viewerId, otherUserId) {
   };
 }
 
+const preferenceColumns = new Set(['social_enabled','match_updates_enabled','match_reminders_enabled','easypass_enabled','news_enabled']);
+export async function isNotificationPushEnabled(db,userId,column) {
+  if (!preferenceColumns.has(column)) return true;
+  await db.query('INSERT IGNORE INTO user_notification_preferences(user_id) VALUES (?)',[userId]);
+  const [[row]]=await db.query(`SELECT ${column} AS enabled FROM user_notification_preferences WHERE user_id=?`,[userId]);
+  return Boolean(row?.enabled);
+}
+
 export async function createSocialNotification(db, {
   userId, actorId=null, type, entityType, entityId, title, body, data={}, dedupeKey,
 }) {
@@ -39,6 +47,14 @@ export async function createSocialNotification(db, {
     [userId,actorId,type,entityType,entityId,title,body,JSON.stringify(data),dedupeKey || null]
   );
   if (!result.affectedRows) return false;
+  const preferenceColumn = {
+    friend_request:'social_enabled', friend_accepted:'social_enabled', match_invitation:'social_enabled', group_invitation:'social_enabled',
+    match_cancelled:'match_updates_enabled', match_updated:'match_updates_enabled', match_reminder:'match_reminders_enabled',
+    easypass_gift:'easypass_enabled', news:'news_enabled',
+  }[type];
+  if (preferenceColumn) {
+    if (!await isNotificationPushEnabled(db,userId,preferenceColumn)) return true;
+  }
   const [tokenRows] = await db.query(
     `SELECT CONVERT(expo_push_token USING utf8mb4) COLLATE utf8mb4_unicode_ci AS token
        FROM push_tokens WHERE user_id=? AND is_active=1

@@ -20,6 +20,8 @@ const ROUTE_TAB = {
   SocialPrivacy: 'friends',
   PlayerSocialProfile: 'friends',
   FriendGroupDetail: 'friends',
+  Notifications: 'profile',
+  NotificationPreferences: 'profile',
   Profile: 'profile',
   Stats: 'profile',
   Achievements: 'profile',

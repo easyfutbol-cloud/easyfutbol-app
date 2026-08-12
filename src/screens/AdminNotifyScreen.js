@@ -45,6 +45,7 @@ export default function AdminNotifyScreen({ route, navigation }) {
   const [loadingOptions, setLoadingOptions] = useState(true);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [diagnostics, setDiagnostics] = useState(null);
 
   useEffect(() => {
     let active = true;
@@ -55,6 +56,7 @@ export default function AdminNotifyScreen({ route, navigation }) {
         const nextMatches = data?.data?.matches || [];
         setLocations(nextLocations);
         setMatches(nextMatches);
+        setDiagnostics(data?.data?.diagnostics || null);
         if (!locationSlug && nextLocations[0]?.slug) setLocationSlug(String(nextLocations[0].slug));
       })
       .catch((requestError) => active && setError(requestError?.response?.data?.msg || 'No se pudieron cargar los destinatarios.'))
@@ -126,6 +128,8 @@ export default function AdminNotifyScreen({ route, navigation }) {
           <Text style={styles.title}>Enviar notificación</Text>
           <Text style={styles.description}>Comunica cambios y avisos importantes a los jugadores adecuados.</Text>
         </LinearGradient>
+
+        {diagnostics ? <View style={styles.healthCard}><View style={styles.healthTop}><Ionicons name="pulse" size={18} color={colors.success}/><Text style={styles.healthTitle}>Entregas · últimas 24 h</Text></View><View style={styles.metrics}><Metric label="DISPOSITIVOS" value={diagnostics.active_tokens}/><Metric label="ENTREGADAS" value={diagnostics.delivered_24h}/><Metric label="PENDIENTES" value={diagnostics.pending_24h}/><Metric label="ERRORES" value={diagnostics.errors_24h} danger={Number(diagnostics.errors_24h)>0}/></View></View> : null}
 
         <View style={styles.card}>
           <View style={styles.stepHeading}>
@@ -225,6 +229,8 @@ export default function AdminNotifyScreen({ route, navigation }) {
   );
 }
 
+function Metric({label,value,danger}){return <View style={styles.metric}><Text style={[styles.metricValue,danger&&{color:colors.danger}]}>{Number(value)||0}</Text><Text style={styles.metricLabel}>{label}</Text></View>}
+
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.background },
   content: { width: '100%', maxWidth: layout.maxContentWidth, alignSelf: 'center', padding: layout.screenPadding, paddingBottom: spacing(6) },
@@ -235,6 +241,8 @@ const styles = StyleSheet.create({
   eyebrow: { color: colors.orange, ...typography.overline, marginTop: spacing(1.5) },
   title: { color: colors.white, ...typography.display, marginTop: spacing(0.75) },
   description: { color: colors.textMuted, ...typography.body, marginTop: spacing(0.75) },
+  healthCard:{backgroundColor:colors.surface,borderRadius:radii.large,borderWidth:1,borderColor:colors.border,padding:spacing(1.5),marginBottom:spacing(2)},
+  healthTop:{flexDirection:'row',alignItems:'center',gap:8,marginBottom:12},healthTitle:{color:colors.white,...typography.bodyStrong},metrics:{flexDirection:'row'},metric:{flex:1,alignItems:'center'},metricValue:{color:colors.white,fontSize:18,fontWeight:'900'},metricLabel:{color:colors.textSubtle,fontSize:8,fontWeight:'800',marginTop:3},
   card: { backgroundColor: colors.surface, borderRadius: radii.large, borderWidth: 1, borderColor: colors.border, padding: spacing(2), marginBottom: spacing(2), ...shadows.card },
   stepHeading: { flexDirection: 'row', alignItems: 'center', gap: spacing(1.25), marginBottom: spacing(1.5) },
   stepNumber: { width: 34, height: 34, alignItems: 'center', justifyContent: 'center', borderRadius: 12, backgroundColor: colors.orange },
