@@ -141,7 +141,7 @@ export default function AdminMatchesScreen({ navigation }) {
         </View>
 
         <Text style={styles.metaText}>
-          {formatDate(item.match_date)} · {formatTime(item.start_time)} - {formatTime(item.end_time)}
+          {formatDate(item.local_match_date || item.match_date)} · {formatTime(item.local_start_time || item.start_time)} - {formatTime(item.local_end_time || item.end_time)}
         </Text>
 
         <Text style={styles.metaText}>

@@ -45,10 +45,9 @@ const getBackendDateTimeFromLocal = (dateValue, timeValue) => {
     0
   );
 
-  const iso = localMatchDate.toISOString();
   return {
-    backendDate: iso.slice(0, 10),
-    backendTime: iso.slice(11, 16),
+    backendDate: `${localMatchDate.getFullYear()}-${String(localMatchDate.getMonth() + 1).padStart(2, '0')}-${String(localMatchDate.getDate()).padStart(2, '0')}`,
+    backendTime: `${String(localMatchDate.getHours()).padStart(2, '0')}:${String(localMatchDate.getMinutes()).padStart(2, '0')}`,
   };
 };
 
@@ -253,12 +252,13 @@ export default function AdminCreateMatchScreen({ navigation }) {
       const body = {
         title: cleanTitle,
         city,
-        date: backendDate,      // UTC para que en la app se vea la hora local correcta
-        time: backendTime,      // UTC para evitar el desfase de +2h en España
+        date: backendDate,      // Hora local elegida por el administrador (Europe/Madrid)
+        time: backendTime,
         price_eur: 0,
         easypass_cost: EASY_PASS_COST,
         location_id: selectedLocationId,
         location_slug: selectedLocationSlug,
+        time_zone: 'Europe/Madrid',
         capacity: capacityNum,
         duration_min: durationNum,
         has_aftergame: hasAftergame ? 1 : 0,

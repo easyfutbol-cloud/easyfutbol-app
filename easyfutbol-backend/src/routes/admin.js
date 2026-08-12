@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { pool } from '../config/db.js';
 import { requireAuth, requireAdmin } from '../middlewares/auth.js';
+import { madridWallTimeToUtc, toMysqlUtc } from '../utils/madridDateTime.js';
 
 const router = Router();
 
@@ -16,19 +17,6 @@ function isValidCity(city) {
 function isPositiveInt(n) {
   return Number.isInteger(n) && n > 0;
 }
-function toMySQLDateTime(d) {
-  // Recibe Date o string ISO; devuelve 'YYYY-MM-DD HH:mm:ss'
-  const date = (d instanceof Date) ? d : new Date(d);
-  const pad = (x) => String(x).padStart(2, '0');
-  const yyyy = date.getFullYear();
-  const MM = pad(date.getMonth() + 1);
-  const dd = pad(date.getDate());
-  const hh = pad(date.getHours());
-  const mm = pad(date.getMinutes());
-  const ss = pad(date.getSeconds());
-  return `${yyyy}-${MM}-${dd} ${hh}:${mm}:${ss}`;
-}
-
 function getFallbackLocationFromCity(city = '') {
   const normalized = String(city || '').trim().toLowerCase();
   if (['avilés', 'aviles', 'oviedo', 'gijón', 'gijon', 'asturias'].includes(normalized)) {
@@ -134,11 +122,15 @@ router.post('/admin/matches', requireAuth, requireAdmin, async (req, res) => {
       return res.status(400).json({ ok:false, msg:'Coste EasyPass inválido (1-50)' });
     }
 
-    // Construir starts_at a partir de date + time (interpretado como hora local)
-    const startsAt = toMySQLDateTime(new Date(`${date}T${time}:00`));
+    // El formulario expresa la hora de Madrid; la base de datos conserva UTC.
+    const startsAtDate = req.body?.time_zone === 'Europe/Madrid'
+      ? madridWallTimeToUtc(date, time)
+      : new Date(`${date}T${time}:00Z`);
+    if (!startsAtDate) return res.status(400).json({ ok:false, msg:'Fecha u hora local no válida' });
+    const startsAt = toMysqlUtc(startsAtDate);
 
     // Validar que es futuro
-    if (new Date(`${date}T${time}:00`).getTime() < Date.now() - 60_000) {
+    if (startsAtDate.getTime() < Date.now() - 60_000) {
       return res.status(400).json({ ok:false, msg:'La fecha/hora debe ser futura' });
     }
 

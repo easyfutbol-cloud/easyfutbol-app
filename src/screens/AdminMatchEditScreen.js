@@ -92,9 +92,9 @@ export default function AdminMatchEditScreen({ route, navigation }) {
       setDescription(data?.description || '');
       setCity(data?.city || '');
       setFieldName(data?.field_name || '');
-      setMatchDate(normalizeDateForInput(data?.match_date));
-      setStartTime(normalizeTimeForInput(data?.start_time));
-      setEndTime(normalizeTimeForInput(data?.end_time));
+      setMatchDate(normalizeDateForInput(data?.local_match_date || data?.match_date));
+      setStartTime(normalizeTimeForInput(data?.local_start_time || data?.start_time));
+      setEndTime(normalizeTimeForInput(data?.local_end_time || data?.end_time));
       setTotalSlots(String(data?.total_slots ?? ''));
       setStatus(data?.status || 'open');
       setEasyPassRequired(String(data?.easypass_required ?? 1));
@@ -168,6 +168,7 @@ export default function AdminMatchEditScreen({ route, navigation }) {
           easypass_required: Number(easyPassRequired),
           shirt_color: shirtColor || null,
           has_aftergame: hasAftergame ? 1 : 0,
+          time_zone: 'Europe/Madrid',
         }),
       });
 

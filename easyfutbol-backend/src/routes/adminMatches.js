@@ -1,6 +1,7 @@
 import express from 'express';
 import { pool } from '../config/db.js';
 import { requireAuth, requireAdmin } from '../middlewares/auth.js';
+import { formatMadridAdminDateTime, madridWallTimeToUtc, toMysqlUtc } from '../utils/madridDateTime.js';
 
 const router = express.Router();
 
@@ -55,6 +56,8 @@ router.get('/', requireAuth, requireAdmin, async (req, res) => {
         '' AS description,
         m.city,
         COALESCE(f.name,CAST(m.field_id AS CHAR)) AS field_name,
+        m.starts_at,
+        m.duration_min,
         DATE(m.starts_at) AS match_date,
         TIME(m.starts_at) AS start_time,
         TIME(DATE_ADD(m.starts_at, INTERVAL m.duration_min MINUTE)) AS end_time,
@@ -93,7 +96,15 @@ router.get('/', requireAuth, requireAdmin, async (req, res) => {
     sql += ' ORDER BY m.starts_at DESC';
 
     const [rows] = await pool.query(sql, params);
-    res.json(rows);
+    res.json(rows.map((row) => {
+      const local = formatMadridAdminDateTime(row.starts_at, row.duration_min);
+      return {
+        ...row,
+        local_match_date: local?.match_date,
+        local_start_time: local?.start_time,
+        local_end_time: local?.end_time,
+      };
+    }));
   } catch (error) {
     console.error('Error obteniendo partidos admin:', error);
     res.status(500).json({ error: 'Error interno del servidor' });
@@ -154,6 +165,8 @@ router.get('/:id', requireAuth, requireAdmin, async (req, res) => {
           '' AS description,
           city,
           CAST(field_id AS CHAR) AS field_name,
+          starts_at,
+          duration_min,
           DATE(starts_at) AS match_date,
           TIME(starts_at) AS start_time,
           TIME(DATE_ADD(starts_at, INTERVAL duration_min MINUTE)) AS end_time,
@@ -183,8 +196,12 @@ router.get('/:id', requireAuth, requireAdmin, async (req, res) => {
 
     const confirmedCount = await getConfirmedCount(id);
 
+    const local = formatMadridAdminDateTime(rows[0].starts_at, rows[0].duration_min);
     res.json({
       ...rows[0],
+      local_match_date: local?.match_date,
+      local_start_time: local?.start_time,
+      local_end_time: local?.end_time,
       confirmed_count: confirmedCount,
     });
   } catch (error) {
@@ -208,6 +225,7 @@ router.put('/:id', requireAuth, requireAdmin, async (req, res) => {
       status,
       easypass_required,
       has_aftergame,
+      time_zone,
     } = req.body;
 
     const [existingRows] = await pool.query(
@@ -225,8 +243,12 @@ router.put('/:id', requireAuth, requireAdmin, async (req, res) => {
     const parsedEasyPassRequired = Number(easypass_required);
     const parsedHasAftergame = Number(has_aftergame) === 1 ? 1 : 0;
 
-    const startsAt = new Date(`${match_date}T${start_time}:00`);
-    const endsAt = new Date(`${match_date}T${end_time}:00`);
+    const parseAdminTime = (time) => time_zone === 'Europe/Madrid'
+      ? madridWallTimeToUtc(match_date, time)
+      : new Date(`${match_date}T${time}:00Z`);
+    const startsAt = parseAdminTime(start_time);
+    const endsAt = parseAdminTime(end_time);
+    if (!startsAt || !endsAt) return res.status(400).json({ error: 'La fecha y las horas no son válidas' });
     const durationMin = Math.round((endsAt.getTime() - startsAt.getTime()) / 60000);
 
     if (!title || !city || !field_name || !match_date || !start_time || !end_time) {
@@ -278,7 +300,7 @@ router.put('/:id', requireAuth, requireAdmin, async (req, res) => {
         title,
         parsedFieldId,
         city,
-        `${match_date} ${start_time}:00`,
+        toMysqlUtc(startsAt),
         durationMin,
         parsedTotalSlots,
         confirmedCount,
@@ -296,6 +318,8 @@ router.put('/:id', requireAuth, requireAdmin, async (req, res) => {
           '' AS description,
           city,
           CAST(field_id AS CHAR) AS field_name,
+          starts_at,
+          duration_min,
           DATE(starts_at) AS match_date,
           TIME(starts_at) AS start_time,
           TIME(DATE_ADD(starts_at, INTERVAL duration_min MINUTE)) AS end_time,
@@ -319,10 +343,14 @@ router.put('/:id', requireAuth, requireAdmin, async (req, res) => {
       [id]
     );
 
+    const updatedLocal = formatMadridAdminDateTime(updatedRows[0].starts_at, updatedRows[0].duration_min);
     res.json({
       message: 'Partido actualizado correctamente',
       match: {
         ...updatedRows[0],
+        local_match_date: updatedLocal?.match_date,
+        local_start_time: updatedLocal?.start_time,
+        local_end_time: updatedLocal?.end_time,
         confirmed_count: confirmedCount,
       },
     });
