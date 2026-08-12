@@ -54,11 +54,6 @@ import AdminPanelScreen from './src/screens/AdminPanelScreen';
 import AdminUsersScreen from './src/screens/AdminUsersScreen';
 import EasyPassScreen from './src/screens/EasyPassScreen';
 import PlusScreen from './src/screens/PlusScreen';
-import CompetitiveScreen from './src/screens/CompetitiveScreen';
-import CompetitiveHistoryScreen from './src/screens/CompetitiveHistoryScreen';
-import AdminCompetitiveMatchesScreen from './src/screens/AdminCompetitiveMatchesScreen';
-import AdminCompetitiveEvaluationScreen from './src/screens/AdminCompetitiveEvaluationScreen';
-import AdminCompetitiveSeasonsScreen from './src/screens/AdminCompetitiveSeasonsScreen';
 import AchievementsScreen from './src/screens/AchievementsScreen';
 import HomeTournamentScreen from './src/screens/tournament/hometournamentscreen';
 import TournamentDetailScreen from './src/screens/tournament/tournamentdetailscreen';
@@ -690,11 +685,6 @@ function AppShell({ currentRouteName }) {
         <Stack.Screen name="Achievements" component={AchievementsScreen} />
         <Stack.Screen name="EasyPass" component={EasyPassScreen} />
         <Stack.Screen name="Plus" component={PlusScreen} />
-        <Stack.Screen name="Competitive" component={CompetitiveScreen} />
-        <Stack.Screen name="CompetitiveHistory" component={CompetitiveHistoryScreen} />
-        <Stack.Screen name="AdminCompetitiveMatches" component={AdminCompetitiveMatchesScreen} />
-        <Stack.Screen name="AdminCompetitiveEvaluation" component={AdminCompetitiveEvaluationScreen} />
-        <Stack.Screen name="AdminCompetitiveSeasons" component={AdminCompetitiveSeasonsScreen} />
         <Stack.Screen name="AdminPanel" component={AdminPanelScreen} />
         <Stack.Screen name="AdminDashboard" component={AdminDashboardScreen} />
         <Stack.Screen name="AdminMatches" component={AdminMatchesScreen} />

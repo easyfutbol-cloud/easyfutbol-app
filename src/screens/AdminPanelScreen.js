@@ -16,10 +16,8 @@ const SECTIONS = [
     ],
   },
   {
-    title: 'Competitivo',
+    title: 'Estadísticas',
     items: [
-      { label: 'Valoraciones', description: 'Partidos pendientes', icon: 'clipboard-outline', route: 'AdminCompetitiveMatches' },
-      { label: 'Temporadas', description: 'Semanas y clasificaciones', icon: 'trophy-outline', route: 'AdminCompetitiveSeasons' },
       { label: 'Estadísticas', description: 'Rendimiento de partido', icon: 'stats-chart-outline', route: 'AdminMatchStats' },
       { label: 'Importar datos', description: 'Carga de estadísticas', icon: 'cloud-upload-outline', route: 'AdminMatchStatsImport' },
     ],

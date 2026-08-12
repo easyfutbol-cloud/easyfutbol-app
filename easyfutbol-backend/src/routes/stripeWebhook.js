@@ -2,7 +2,6 @@ import express from 'express';
 import Stripe from 'stripe';
 import { pool } from '../config/db.js';
 import { qualifyReferralFromPurchase } from '../services/referralService.js';
-import { grantPlusTrialForCurrentSeason } from '../services/competitiveService.js';
 import { grantSubscriptionEasyPass } from '../services/subscriptionGrantService.js';
 import { getRenewalAlignmentUpdate } from '../services/subscriptionBillingService.js';
 
@@ -85,7 +84,6 @@ async function handleGenericSubscriptionEvent(event) {
       await conn.beginTransaction();
       await upsertGenericSubscription(conn, { userId, customerId:object.customer, subscription, planCode });
       await grantSubscriptionEasyPass(conn, { userId, planCode, amount, reference:`subscription_checkout:${object.id}` });
-      if (planCode === 'plus') await grantPlusTrialForCurrentSeason(conn, userId, `subscription_checkout:${object.id}`);
       await conn.commit();
     } catch (error) { await conn.rollback(); throw error; } finally { conn.release(); }
     return true;

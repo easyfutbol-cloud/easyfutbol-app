@@ -39,7 +39,6 @@ export default function ProfileScreen({ navigation }) {
   const [collaborationsVisible, setCollaborationsVisible] = useState(false);
   const [activeCollaboration, setActiveCollaboration] = useState('herminia');
   const [referralData, setReferralData] = useState(null);
-  const [competitiveProfile, setCompetitiveProfile] = useState(null);
   const [socialSummary, setSocialSummary] = useState(null);
 
   const BASE = (api?.defaults?.baseURL || '').replace(/\/+$/, '');
@@ -210,25 +209,6 @@ export default function ProfileScreen({ navigation }) {
     }
   };
 
-  const loadCompetitiveProfile = async () => {
-    try {
-      const [meResult,performanceResult,historyResult] = await Promise.all([
-        api.get('/competitive/me'),
-        api.get('/competitive/me/performance'),
-        api.get('/competitive/me/history'),
-      ]);
-      setCompetitiveProfile({
-        access:meResult.data?.data?.access || null,
-        player:meResult.data?.data?.player || null,
-        performance:performanceResult.data?.data || null,
-        history:historyResult.data?.data || { seasons:[],badges:[],rewards:[] },
-      });
-    } catch (error) {
-      console.log('Perfil competitivo no disponible:', error?.message || error);
-      setCompetitiveProfile(null);
-    }
-  };
-
   const loadSocialSummary = async () => {
     try { const response = await api.get('/social/summary'); setSocialSummary(response.data || null); }
     catch (error) { console.log('Error cargando comunidad:', error?.message || error); }
@@ -282,7 +262,6 @@ export default function ProfileScreen({ navigation }) {
       // Cargar créditos (EasyPass)
       await loadEasyPass();
       await loadReferrals();
-      await loadCompetitiveProfile();
       await loadSocialSummary();
     } catch (e) {
       setErrMsg(e?.message?.toString?.() || 'Network Error');
@@ -297,7 +276,6 @@ export default function ProfileScreen({ navigation }) {
     loadProfile();
     loadEasyPass();
     loadReferrals();
-    loadCompetitiveProfile();
     loadSocialSummary();
   }, []));
 
@@ -429,18 +407,9 @@ export default function ProfileScreen({ navigation }) {
   // ------- derivados
   const user = data?.user || null;
   const subscriptionCode = String(user?.subscription_plan || '').toLowerCase();
-  const subscriptionLabel = subscriptionCode === 'pro'
-    ? 'EasyFutbol Pro'
-    : subscriptionCode === 'plus'
-      ? 'EasyFutbol Plus'
-      : 'Plan gratuito';
+  const subscriptionLabel = ['plus', 'pro'].includes(subscriptionCode) ? 'EasyFutbol Plus' : 'Plan gratuito';
   const hasSubscription = subscriptionCode === 'plus' || subscriptionCode === 'pro';
   const hasGoldenName = Boolean(user?.has_golden_name || user?.is_plus || ['plus','pro'].includes(user?.subscription_plan));
-  const competitivePlayer = competitiveProfile?.player;
-  const competitiveStanding = competitiveProfile?.performance?.standing;
-  const competitiveWeeks = competitiveProfile?.performance?.weeks || [];
-  const competitiveBadges = (competitiveProfile?.history?.badges || []).slice(0, 3);
-  const scoredWeeks = competitiveWeeks.filter((week) => week.status === 'scored').length;
   const stats = data?.stats || {};
   const avatarUrl = user?.avatar_url
     ? `${(String(user.avatar_url).startsWith('/') ? PUBLIC_BASE : '')}${user.avatar_url}${String(user.avatar_url).includes('?') ? '&' : '?'}v=${avatarNonce}`
@@ -539,7 +508,7 @@ export default function ProfileScreen({ navigation }) {
             </Text>
             <View style={styles.profileNameRow}>
               <Text style={[styles.profileHeroName, hasGoldenName && styles.plusName]}>{user?.name || 'Jugador EasyFutbol'}</Text>
-              {user?.subscription_plan ? <View style={styles.plusBadge}><Text style={styles.plusBadgeText}>{String(user.subscription_plan).toUpperCase()}</Text></View> : null}
+              {hasSubscription ? <View style={styles.plusBadge}><Text style={styles.plusBadgeText}>PLUS</Text></View> : null}
             </View>
             <Text style={styles.profileHeroMeta}>Jugador #{user?.id || '—'}</Text>
           </View>
@@ -550,7 +519,7 @@ export default function ProfileScreen({ navigation }) {
           >
             <View style={styles.membershipTop}>
               <View style={styles.membershipIcon}>
-                <Ionicons name={subscriptionCode === 'pro' ? 'diamond' : hasSubscription ? 'star' : 'sparkles-outline'} size={24} color="#F4C95D" />
+                <Ionicons name={hasSubscription ? 'star' : 'sparkles-outline'} size={24} color="#F4C95D" />
               </View>
               <View style={styles.membershipCopy}>
                 <Text style={styles.membershipEyebrow}>EASYPASS Y SUSCRIPCIÓN</Text>
@@ -558,7 +527,7 @@ export default function ProfileScreen({ navigation }) {
                 <Text style={styles.membershipDescription}>
                   {hasSubscription
                     ? 'Tu plan está activo. Consulta sus ventajas o gestiona la renovación.'
-                    : 'Activa Plus o Pro para conseguir EasyPass mensuales y ventajas exclusivas.'}
+                    : 'Activa Plus para conseguir EasyPass mensuales y ventajas exclusivas.'}
                 </Text>
               </View>
               <View style={[styles.membershipStatus, hasSubscription && styles.membershipStatusActive]}>
@@ -584,23 +553,13 @@ export default function ProfileScreen({ navigation }) {
             <View style={styles.membershipActions}>
               <TouchableOpacity style={styles.membershipPrimary} onPress={() => navigation.navigate('Plus')} activeOpacity={0.84} accessibilityRole="button">
                 <Ionicons name="card-outline" size={18} color="#171109" />
-                <Text style={styles.membershipPrimaryText}>{hasSubscription ? 'Gestionar plan' : 'Ver Plus y Pro'}</Text>
+                <Text style={styles.membershipPrimaryText}>{hasSubscription ? 'Gestionar plan' : 'Ver EasyFutbol Plus'}</Text>
               </TouchableOpacity>
               <TouchableOpacity style={styles.membershipSecondary} onPress={() => navigation.navigate('EasyPass')} activeOpacity={0.84} accessibilityRole="button">
                 <Ionicons name="ticket-outline" size={18} color={colors.white} />
                 <Text style={styles.membershipSecondaryText}>EasyPass</Text>
               </TouchableOpacity>
             </View>
-          </LinearGradient>
-
-          <LinearGradient colors={competitivePlayer ? ['rgba(31,27,16,.97)','rgba(15,18,23,.97)'] : ['rgba(20,23,28,.96)','rgba(13,15,19,.96)']} style={styles.competitiveCard}>
-            <View style={styles.competitiveTop}>
-              <View style={[styles.competitiveShield,{ borderColor:competitivePlayer?.color_hex || colors.border,backgroundColor:competitivePlayer?.color_hex ? `${competitivePlayer.color_hex}18` : colors.surfaceElevated }]}><Ionicons name={competitivePlayer ? 'shield-checkmark' : 'lock-closed'} size={27} color={competitivePlayer?.color_hex || colors.textSubtle} /></View>
-              <View style={{ flex:1 }}><Text style={styles.competitiveEyebrow}>MODO COMPETITIVO</Text><Text style={[styles.competitiveDivision,{ color:competitivePlayer?.color_hex || colors.white }]}>{competitivePlayer?.division_name || 'Sin división activa'}</Text><Text style={styles.competitiveMeta}>{competitiveProfile?.access?.has_access ? `${competitiveProfile.access.source === 'pro' ? 'Acceso Pro' : 'Prueba Plus'} · Temporada activa` : 'Consulta tu historial o activa el acceso competitivo'}</Text></View>
-            </View>
-            {competitivePlayer ? <><View style={styles.competitiveMetrics}><View><Text style={styles.competitiveValue}>{competitiveStanding?.position ? `#${competitiveStanding.position}` : '—'}</Text><Text style={styles.competitiveLabel}>posición</Text></View><View><Text style={styles.competitiveValue}>{Number(competitiveStanding?.total_score || 0).toFixed(1)}</Text><Text style={styles.competitiveLabel}>puntos</Text></View><View><Text style={styles.competitiveValue}>{scoredWeeks}/4</Text><Text style={styles.competitiveLabel}>semanas</Text></View></View><View style={styles.competitiveTrack}><View style={[styles.competitiveFill,{ width:`${Math.min(scoredWeeks/4*100,100)}%`,backgroundColor:competitivePlayer.color_hex || '#FFD45A' }]} /></View></> : null}
-            {competitiveBadges.length ? <View style={styles.profileBadges}>{competitiveBadges.map((badge)=><View key={badge.id} style={styles.profileBadge}><Ionicons name={badge.icon || 'ribbon'} size={15} color={badge.color_hex} /><Text style={styles.profileBadgeText}>{badge.name}</Text></View>)}</View> : null}
-            <View style={styles.competitiveActions}><TouchableOpacity style={styles.competitivePrimary} onPress={() => navigation.navigate('Competitive')}><Text style={styles.competitivePrimaryText}>{competitivePlayer ? 'Ver rendimiento' : 'Entrar al competitivo'}</Text></TouchableOpacity><TouchableOpacity style={styles.competitiveSecondary} onPress={() => navigation.navigate('CompetitiveHistory')}><Text style={styles.competitiveSecondaryText}>Historial</Text></TouchableOpacity></View>
           </LinearGradient>
 
           <TouchableOpacity
@@ -961,7 +920,6 @@ const styles = StyleSheet.create({
   membershipPrimaryText:{ color:'#171109',fontWeight:'900',fontSize:13 },
   membershipSecondary:{ minWidth:112,minHeight:48,flexDirection:'row',alignItems:'center',justifyContent:'center',gap:6,borderWidth:1,borderColor:colors.border,backgroundColor:'rgba(255,255,255,0.04)',borderRadius:radii.medium },
   membershipSecondaryText:{ color:colors.white,fontWeight:'900',fontSize:13 },
-  competitiveCard:{ borderRadius:radii.xlarge,padding:spacing(2),borderWidth:1,borderColor:'rgba(255,212,90,.24)',marginBottom:spacing(2) },competitiveTop:{ flexDirection:'row',alignItems:'center',gap:spacing(1.25) },competitiveShield:{ width:54,height:54,borderRadius:18,borderWidth:1,alignItems:'center',justifyContent:'center' },competitiveEyebrow:{ color:'#FFD45A',...typography.overline },competitiveDivision:{ ...typography.heading,marginTop:3 },competitiveMeta:{ color:colors.textMuted,...typography.caption,marginTop:3 },competitiveMetrics:{ flexDirection:'row',justifyContent:'space-around',paddingVertical:spacing(1.25),marginTop:spacing(1.25),borderTopWidth:1,borderTopColor:colors.border },competitiveValue:{ color:colors.white,fontSize:20,fontWeight:'900',textAlign:'center' },competitiveLabel:{ color:colors.textSubtle,fontSize:10,textAlign:'center',marginTop:2 },competitiveTrack:{ height:7,borderRadius:99,backgroundColor:colors.surfaceElevated,overflow:'hidden' },competitiveFill:{ height:'100%',borderRadius:99 },profileBadges:{ flexDirection:'row',flexWrap:'wrap',gap:6,marginTop:spacing(1.25) },profileBadge:{ flexDirection:'row',alignItems:'center',gap:5,backgroundColor:'rgba(255,255,255,.05)',borderRadius:99,paddingHorizontal:8,paddingVertical:6 },profileBadgeText:{ color:colors.textMuted,fontSize:10,fontWeight:'700' },competitiveActions:{ flexDirection:'row',gap:9,marginTop:spacing(1.5) },competitivePrimary:{ flex:1,minHeight:46,borderRadius:radii.medium,backgroundColor:'#FFD45A',alignItems:'center',justifyContent:'center' },competitivePrimaryText:{ color:'#171109',fontWeight:'900' },competitiveSecondary:{ minWidth:100,minHeight:46,borderRadius:radii.medium,borderWidth:1,borderColor:colors.border,alignItems:'center',justifyContent:'center' },competitiveSecondaryText:{ color:colors.white,fontWeight:'800' },
 
   panel:{ backgroundColor:'rgba(17,21,27,0.94)', borderRadius:radii.large, padding:spacing(2), borderWidth:1, borderColor:colors.border, marginBottom:spacing(2) },
 

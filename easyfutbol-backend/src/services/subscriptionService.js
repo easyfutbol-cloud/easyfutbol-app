@@ -12,7 +12,7 @@ const parseBenefits = (value) => {
 export async function listSubscriptionPlans(db = pool) {
   const [rows] = await db.query(
     `SELECT code, name, price_cents, currency, billing_interval, stripe_price_id, benefits
-     FROM subscription_plans WHERE is_active=1 ORDER BY display_order ASC, id ASC`
+     FROM subscription_plans WHERE is_active=1 AND code='plus' ORDER BY display_order ASC, id ASC`
   );
   return rows.map((row) => ({
     ...row,
@@ -37,27 +37,14 @@ export async function getUserSubscription(db, userId) {
 export async function getUserEntitlements(db, userId) {
   const subscription = await getUserSubscription(db, userId);
   const fairPlay = await getPlusFairPlayStatus(db, userId);
-  const [grants] = await db.query(
-    `SELECT entitlement_code, source_type, starts_at, ends_at
-     FROM subscription_entitlements
-     WHERE user_id=? AND revoked_at IS NULL AND starts_at<=NOW()
-       AND (ends_at IS NULL OR ends_at>NOW())`,
-    [userId]
-  );
   const plan = subscription?.plan_code || null;
   const benefitsActive = Boolean(subscription) && !fairPlay.suspended;
-  const competitiveGrant = grants.find((grant) => grant.entitlement_code === 'competitive_access');
   return {
     plan,
     subscription_active: Boolean(subscription),
     benefits_active: benefitsActive,
     fair_play_warnings: fairPlay.warningCount,
     benefits: benefitsActive ? subscription.benefits : {},
-    competitive: {
-      has_access: plan === 'pro' || Boolean(competitiveGrant),
-      source: plan === 'pro' ? 'pro' : competitiveGrant?.source_type || null,
-      ends_at: plan === 'pro' ? subscription?.current_period_end || null : competitiveGrant?.ends_at || null,
-    },
   };
 }
 

@@ -28,8 +28,8 @@ router.post('/:planCode/checkout', requireAuth, async (req, res) => {
     const planCode = String(req.params.planCode || '').toLowerCase();
     const [[plan]] = await pool.query('SELECT * FROM subscription_plans WHERE code=? AND is_active=1 LIMIT 1', [planCode]);
     if (!plan) return res.status(404).json({ ok:false, msg:'Plan no encontrado' });
-    if (!['plus','pro'].includes(planCode)) return res.status(400).json({ ok:false,msg:'Plan no válido' });
-    const priceId = planCode === 'pro' ? process.env.STRIPE_PRO_PRICE_ID || plan.stripe_price_id : process.env.STRIPE_PLUS_PRICE_ID || plan.stripe_price_id;
+    if (planCode !== 'plus') return res.status(404).json({ ok:false,msg:'Plan no disponible' });
+    const priceId = process.env.STRIPE_PLUS_PRICE_ID || plan.stripe_price_id;
     const current = await getUserSubscription(pool, req.user.id);
     if (current) return res.status(409).json({
       ok:false,

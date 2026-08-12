@@ -71,10 +71,9 @@ export default function PlusScreen({ navigation }) {
   };
 
   const renewalDate = formatRenewalDate(currentSubscription?.current_period_end || status?.current_period_end);
-  const displayedPlans = plans.length ? plans : [
-    { code:'plus', name:'EasyFutbol Plus', price_cents:999, checkout_available:true, benefits:{ monthly_easypass:1, easypass_discount_percent:10, competitive_access:'first_season_trial' } },
-    { code:'pro', name:'EasyFutbol Pro', price_cents:2999, checkout_available:false, benefits:{ monthly_easypass:4, easypass_discount_percent:15, competitive_access:'active_subscription', early_match_booking:true } },
-  ];
+  const displayedPlans = plans.length
+    ? plans.filter((plan) => plan.code === 'plus')
+    : [{ code:'plus', name:'EasyFutbol Plus', price_cents:999, checkout_available:true, benefits:{ monthly_easypass:1, easypass_discount_percent:10 } }];
 
   return (
     <View style={styles.screen}>
@@ -133,16 +132,15 @@ export default function PlusScreen({ navigation }) {
           </View>
         </View>
 
-        <Text style={styles.sectionEyebrow}>ELIGE TU NIVEL</Text>
-        <Text style={styles.sectionTitle}>Plus o Pro</Text>
+        <Text style={styles.sectionEyebrow}>TU PLAN</Text>
+        <Text style={styles.sectionTitle}>EasyFutbol Plus</Text>
         <View style={styles.planGrid}>
           {displayedPlans.map((plan) => {
-            const isPro = plan.code === 'pro';
             const isCurrent = currentPlan === plan.code || (!currentPlan && plan.code === 'plus' && status?.is_plus);
             return (
-              <LinearGradient key={plan.code} colors={isPro ? ['#4A3305','#17130A'] : ['#352B0C','#12110D']} style={[styles.planCard, isPro && styles.proPlanCard]}>
+              <LinearGradient key={plan.code} colors={['#352B0C','#12110D']} style={styles.planCard}>
                 <View style={styles.planTopRow}>
-                  <Text style={styles.planMedal}>{isPro ? '🥇' : '🥉'}</Text>
+                  <Text style={styles.planMedal}>⭐️</Text>
                   {isCurrent ? <View style={styles.currentPill}><Text style={styles.currentPillText}>TU PLAN</Text></View> : null}
                 </View>
                 <Text style={styles.planName}>{plan.name}</Text>
@@ -150,8 +148,6 @@ export default function PlusScreen({ navigation }) {
                 <Text style={styles.planBenefit}>✓ {Number(plan.benefits?.monthly_easypass || 0)} EasyPass al mes</Text>
                 <Text style={styles.planBenefit}>✓ {Number(plan.benefits?.easypass_discount_percent || 0)}% de descuento</Text>
                 <Text style={styles.planBenefit}>✓ Cancelación hasta 4 horas antes</Text>
-                <Text style={styles.planBenefit}>✓ {isPro ? 'Acceso permanente al competitivo' : 'Primera temporada competitiva gratis'}</Text>
-                {isPro ? <Text style={styles.planBenefit}>✓ Reserva anticipada de partidos</Text> : null}
                 {!isCurrent ? (
                   <View style={styles.planBillingNote}>
                     <Ionicons name="information-circle" size={17} color="#F4C95D" />
@@ -160,11 +156,11 @@ export default function PlusScreen({ navigation }) {
                 ) : null}
                 {!isCurrent ? (
                   <TouchableOpacity
-                    style={[styles.planButton, isPro && styles.proPlanButton, !plan.checkout_available && styles.planButtonDisabled]}
+                    style={[styles.planButton, !plan.checkout_available && styles.planButtonDisabled]}
                     disabled={processing || !plan.checkout_available}
                     onPress={() => openStripeFlow(`/subscriptions/${plan.code}/checkout`, 'checkout_url')}
                   >
-                    <Text style={styles.planButtonText}>{plan.checkout_available ? `Elegir ${isPro ? 'Pro' : 'Plus'}` : 'Próximamente'}</Text>
+                    <Text style={styles.planButtonText}>{plan.checkout_available ? 'Elegir Plus' : 'Próximamente'}</Text>
                   </TouchableOpacity>
                 ) : null}
               </LinearGradient>
