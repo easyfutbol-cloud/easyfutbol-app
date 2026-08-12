@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, ActivityIndicator, Alert, Linking, Image, ImageBackground } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, ActivityIndicator, Alert, Linking, Image, ImageBackground, Modal } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { api } from '../api/client';
 import { colors, layout, radii, spacing, typography } from '../theme';
@@ -7,6 +7,7 @@ import { useFocusEffect, useNavigation, useRoute } from '@react-navigation/nativ
 import easypassLogo from '../../assets/easypass-logo.png';
 import { LinearGradient } from 'expo-linear-gradient';
 import ScreenHeader from '../components/ScreenHeader';
+import { Ionicons } from '@expo/vector-icons';
 
 const ORANGE = '#ff5a00';
 const SCREEN_BACKGROUND = require('../../assets/matches/match-3.jpg');
@@ -27,8 +28,15 @@ export default function EasyPassScreen() {
   const [locations, setLocations] = useState([]);
   const [selectedLocationId, setSelectedLocationId] = useState(1);
   const [easyPassBalance, setEasyPassBalance] = useState(0);
+  const [balances, setBalances] = useState([]);
+  const [history, setHistory] = useState([]);
   const [loading, setLoading] = useState(true);
   const [buyingPackId, setBuyingPackId] = useState(null);
+  const [giftOpen,setGiftOpen]=useState(false);
+  const [giftFriends,setGiftFriends]=useState([]);
+  const [giftRecipient,setGiftRecipient]=useState(null);
+  const [giftAmount,setGiftAmount]=useState(1);
+  const [gifting,setGifting]=useState(false);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const navigation = useNavigation();
   const route = useRoute();
@@ -37,6 +45,7 @@ export default function EasyPassScreen() {
 
   const selectedLocation = locations.find((item) => Number(item.id) === Number(selectedLocationId));
   const selectedLocationName = selectedLocation?.name || 'Valladolid';
+  const selectedBalance = Number(balances.find((item) => Number(item.locationId ?? item.location_id) === Number(selectedLocationId))?.balance || 0);
 
   const displayPacks = packs.map((pack) => ({
     ...pack,
@@ -87,6 +96,8 @@ export default function EasyPassScreen() {
       const nextBalance = Number(j1?.easyPassBalance ?? j1?.credits ?? 0) || 0;
       const previousBalance = previousBalanceRef.current;
       setEasyPassBalance(nextBalance);
+      const nextBalances=j1?.easyPassBalances||j1?.easypass_balances||[];
+      setBalances(Array.isArray(nextBalances)?nextBalances:[]);
 
       if (
         purchaseInProgressRef.current &&
@@ -136,6 +147,10 @@ export default function EasyPassScreen() {
       const r2 = await fetch(`${BASE}/easypass/packs?location_id=${locationIdToUse}`, { method: 'GET', headers });
       const j2 = await r2.json().catch(() => ({}));
       setPacks(Array.isArray(j2?.data) ? j2.data : []);
+
+      const rHistory=await fetch(`${BASE}/me/credits/history`,{method:'GET',headers});
+      const jHistory=await rHistory.json().catch(()=>({}));
+      setHistory(Array.isArray(jHistory?.data)?jHistory.data:[]);
     } catch (e) {
       if (showError) {
         Alert.alert('Error', e?.message || 'No se pudo cargar EasyPass');
@@ -167,6 +182,29 @@ export default function EasyPassScreen() {
     } finally {
       setBuyingPackId(null);
     }
+  };
+
+  const openGift=async()=>{
+    if(selectedBalance<1)return Alert.alert('Sin saldo','No tienes EasyPass disponibles en esta ciudad para regalar.');
+    try {
+      const response=await api.get('/social/friends',{params:{limit:50}});
+      const friends=response.data?.items||[];
+      if(!friends.length)return Alert.alert('Añade amigos','Necesitas tener una amistad aceptada para regalar EasyPass.');
+      setGiftFriends(friends);setGiftRecipient(friends[0]);setGiftAmount(1);setGiftOpen(true);
+    } catch(error){Alert.alert('Regalar EasyPass',error.response?.data?.msg||'No se pudieron cargar tus amigos');}
+  };
+
+  const sendGift=async()=>{
+    if(!giftRecipient)return;
+    if(giftAmount>selectedBalance)return Alert.alert('Saldo insuficiente',`Solo tienes ${selectedBalance} EasyPass en ${selectedLocationName}.`);
+    Alert.alert('Confirmar regalo',`Vas a regalar ${giftAmount} EasyPass de ${selectedLocationName} a ${giftRecipient.name}. Esta acción no se puede deshacer.`,[
+      {text:'Cancelar',style:'cancel'},
+      {text:'Regalar',onPress:async()=>{
+        try{setGifting(true);const requestKey=`gift-${Date.now()}-${Math.random().toString(36).slice(2)}`;const response=await api.post('/easypass/me/credits/gift',{recipient_id:giftRecipient.id,location_id:selectedLocationId,amount:giftAmount,request_key:requestKey});setGiftOpen(false);await load(false);Alert.alert('Regalo enviado',response.data?.msg||`${giftRecipient.name} ya tiene sus EasyPass.`);}
+        catch(error){Alert.alert('No se pudo enviar',error.response?.data?.msg||'Inténtalo de nuevo');}
+        finally{setGifting(false);}
+      }}
+    ]);
   };
 
   if (loading) {
@@ -244,14 +282,20 @@ export default function EasyPassScreen() {
         </View>
 
         <View style={styles.balanceCard}>
-          <Text style={styles.balanceLabel}>Disponibles</Text>
-          <Text style={styles.balanceValue}>{easyPassBalance}</Text>
+          <Text style={styles.balanceLabel}>Disponibles en {selectedLocationName}</Text>
+          <Text style={styles.balanceValue}>{selectedBalance}</Text>
           <Text style={styles.balanceHint}>
             {route?.params?.returnTo === 'Match'
               ? 'Usa 1 EasyPass para apuntarte al partido que estabas viendo.'
               : 'Usa 1 EasyPass para apuntarte a un partido'}
           </Text>
+          <View style={styles.totalBalance}><Text style={styles.totalBalanceText}>Saldo total: {easyPassBalance}</Text></View>
+          <TouchableOpacity style={styles.giftButton} onPress={openGift} activeOpacity={0.86}>
+            <Ionicons name="gift-outline" color={ORANGE} size={18}/><Text style={styles.giftButtonText}>Regalar EasyPass</Text>
+          </TouchableOpacity>
         </View>
+
+        {selectedBalance <= 1 && <View style={styles.lowBalanceCard}><Ionicons name="alert-circle" color="#f4c95d" size={22}/><View style={{flex:1}}><Text style={styles.lowBalanceTitle}>{selectedBalance===0?'No tienes EasyPass en esta ciudad':'Te queda un solo EasyPass'}</Text><Text style={styles.lowBalanceText}>Compra un pack antes de reservar tu próximo partido en {selectedLocationName}.</Text></View></View>}
 
         <Text style={styles.plusSectionLabel}>EASYPASS PLUS</Text>
         <TouchableOpacity style={styles.plusCard} onPress={() => navigation.navigate('Plus')} activeOpacity={0.86} accessibilityRole="button" accessibilityLabel="Abrir EasyFutbol Plus">
@@ -350,7 +394,29 @@ export default function EasyPassScreen() {
             No hay packs disponibles ahora mismo.
           </Text>
         )}
+
+        <View style={styles.historyHeader}><View><Text style={styles.historyEyebrow}>TRANSPARENCIA</Text><Text style={styles.historyTitle}>Historial de movimientos</Text></View><Ionicons name="receipt-outline" color={ORANGE} size={23}/></View>
+        {!history.length&&<View style={styles.historyEmpty}><Text style={styles.historyEmptyText}>Todavía no tienes movimientos de EasyPass.</Text></View>}
+        {history.map((movement)=><View key={movement.id} style={styles.historyCard}>
+          <View style={[styles.historyIcon,movement.direction==='in'?styles.historyIconIn:styles.historyIconOut]}><Ionicons name={movement.direction==='in'?'arrow-down':'arrow-up'} color={movement.direction==='in'?'#4dbb78':'#ff8050'} size={19}/></View>
+          <View style={styles.historyCopy}><Text style={styles.historyItemTitle}>{movement.title}</Text><Text style={styles.historyExplanation}>{movement.explanation}</Text><Text style={styles.historyMeta}>{new Date(movement.created_at).toLocaleDateString('es-ES')} {movement.location_name?`· ${movement.location_name}`:''}</Text></View>
+          <View style={styles.historyRight}><Text style={[styles.historyAmount,movement.direction==='in'?styles.amountIn:styles.amountOut]}>{movement.amount>0?'+':''}{movement.amount}</Text>{movement.can_repeat&&<TouchableOpacity style={styles.repeatBtn} onPress={()=>buyPack({id:movement.pack_id})}><Text style={styles.repeatText}>Repetir</Text></TouchableOpacity>}</View>
+        </View>)}
       </ScrollView>
+      <Modal visible={giftOpen} transparent animationType="slide" onRequestClose={()=>setGiftOpen(false)}>
+        <View style={styles.giftBackdrop}><View style={styles.giftSheet}>
+          <View style={styles.giftHeader}><View><Text style={styles.giftEyebrow}>REGALO ENTRE AMIGOS</Text><Text style={styles.giftTitle}>Regalar EasyPass</Text></View><TouchableOpacity style={styles.giftClose} onPress={()=>setGiftOpen(false)}><Ionicons name="close" color="#fff" size={22}/></TouchableOpacity></View>
+          <Text style={styles.giftDescription}>Se enviarán desde tu saldo de {selectedLocationName}. El destinatario solo podrá usarlos en esa misma sede.</Text>
+          <Text style={styles.giftLabel}>DESTINATARIO</Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.friendChoices}>
+            {giftFriends.map(friend=><TouchableOpacity key={friend.id} style={[styles.friendChoice,giftRecipient?.id===friend.id&&styles.friendChoiceActive]} onPress={()=>setGiftRecipient(friend)}><View style={styles.friendInitial}><Text style={styles.friendInitialText}>{String(friend.name||'?').slice(0,1).toUpperCase()}</Text></View><Text style={styles.friendName} numberOfLines={1}>{friend.name}</Text></TouchableOpacity>)}
+          </ScrollView>
+          <Text style={styles.giftLabel}>CANTIDAD</Text>
+          <View style={styles.amountChoices}>{[1,2,3,5].filter(value=>value<=selectedBalance).map(value=><TouchableOpacity key={value} style={[styles.amountChoice,giftAmount===value&&styles.amountChoiceActive]} onPress={()=>setGiftAmount(value)}><Text style={[styles.amountChoiceText,giftAmount===value&&styles.amountChoiceTextActive]}>{value}</Text></TouchableOpacity>)}</View>
+          <Text style={styles.giftAvailable}>Disponibles en {selectedLocationName}: {selectedBalance}</Text>
+          <TouchableOpacity style={[styles.sendGift,gifting&&{opacity:.55}]} disabled={gifting} onPress={sendGift}><Ionicons name="gift" color="#111" size={19}/><Text style={styles.sendGiftText}>{gifting?'Enviando…':`Regalar ${giftAmount} EasyPass`}</Text></TouchableOpacity>
+        </View></View>
+      </Modal>
     </ScreenBackdrop>
   );
 }
@@ -378,6 +444,9 @@ const styles = StyleSheet.create({
   balanceLabel:{ color:colors.orange, ...typography.overline },
   balanceValue:{ color:colors.white, fontSize:48, lineHeight:56, fontWeight:'900', marginTop:spacing(0.5) },
   balanceHint:{ color:colors.textMuted, marginTop:spacing(0.5), ...typography.body },
+  totalBalance:{alignSelf:'flex-start',backgroundColor:'#26262a',borderRadius:10,paddingHorizontal:10,paddingVertical:6,marginTop:12},totalBalanceText:{color:'#999',fontSize:10,fontWeight:'800'},
+  giftButton:{alignSelf:'flex-start',minHeight:42,flexDirection:'row',alignItems:'center',gap:7,marginTop:14,paddingHorizontal:13,borderRadius:13,backgroundColor:'rgba(255,90,0,.10)',borderWidth:1,borderColor:'rgba(255,90,0,.32)'},giftButtonText:{color:ORANGE,fontSize:11,fontWeight:'900'},
+  lowBalanceCard:{flexDirection:'row',alignItems:'center',gap:11,backgroundColor:'rgba(244,201,93,.09)',borderWidth:1,borderColor:'rgba(244,201,93,.28)',borderRadius:16,padding:14,marginBottom:18},lowBalanceTitle:{color:'#f4c95d',fontWeight:'900'},lowBalanceText:{color:'#a89f82',fontSize:11,lineHeight:16,marginTop:3},
   plusSectionLabel:{ color:'#F4C95D', ...typography.overline, marginBottom:spacing(1) },
   plusCard:{ minHeight:96, flexDirection:'row', alignItems:'center', gap:spacing(1.25), backgroundColor:'rgba(45,35,10,0.96)', borderRadius:radii.large, borderWidth:1, borderColor:'rgba(244,201,93,0.35)', padding:spacing(1.5), marginBottom:spacing(2) },
   plusIcon:{ width:46, height:46, borderRadius:15, alignItems:'center', justifyContent:'center', backgroundColor:'#F4C95D' },
@@ -495,4 +564,6 @@ const styles = StyleSheet.create({
   buyBtn:{ minHeight:layout.minTouchTarget, marginTop:8, backgroundColor:ORANGE, paddingVertical:10, paddingHorizontal:14, borderRadius:radii.medium, justifyContent:'center' },
   buyBtnDisabled:{ opacity:0.7 },
   buyText:{ color:'#000', fontWeight:'900' },
+  historyHeader:{flexDirection:'row',alignItems:'center',justifyContent:'space-between',marginTop:28,marginBottom:12,paddingHorizontal:2},historyEyebrow:{color:ORANGE,fontSize:9,fontWeight:'900',letterSpacing:1.2},historyTitle:{color:'#fff',fontSize:21,fontWeight:'900',marginTop:3},historyEmpty:{backgroundColor:'rgba(17,21,27,.94)',borderRadius:18,padding:22},historyEmptyText:{color:'#777',textAlign:'center',fontSize:12},historyCard:{flexDirection:'row',alignItems:'center',gap:11,backgroundColor:'rgba(17,21,27,.94)',borderRadius:18,padding:14,borderWidth:1,borderColor:colors.border,marginBottom:9},historyIcon:{width:40,height:40,borderRadius:13,alignItems:'center',justifyContent:'center'},historyIconIn:{backgroundColor:'rgba(77,187,120,.12)'},historyIconOut:{backgroundColor:'rgba(255,90,0,.12)'},historyCopy:{flex:1},historyItemTitle:{color:'#fff',fontWeight:'900',fontSize:13},historyExplanation:{color:'#888',fontSize:10,marginTop:3},historyMeta:{color:'#5f5f65',fontSize:9,marginTop:5},historyRight:{alignItems:'flex-end'},historyAmount:{fontSize:18,fontWeight:'900'},amountIn:{color:'#4dbb78'},amountOut:{color:'#ff8050'},repeatBtn:{backgroundColor:'#2a2a2e',borderRadius:9,paddingHorizontal:8,paddingVertical:5,marginTop:6},repeatText:{color:'#ddd',fontSize:9,fontWeight:'900'},
+  giftBackdrop:{flex:1,backgroundColor:'rgba(0,0,0,.72)',justifyContent:'flex-end'},giftSheet:{backgroundColor:'#151517',borderTopLeftRadius:28,borderTopRightRadius:28,borderWidth:1,borderColor:'#303034',padding:20,paddingBottom:38},giftHeader:{flexDirection:'row',alignItems:'center',justifyContent:'space-between'},giftEyebrow:{color:ORANGE,fontSize:9,fontWeight:'900',letterSpacing:1.1},giftTitle:{color:'#fff',fontSize:23,fontWeight:'900',marginTop:4},giftClose:{width:42,height:42,borderRadius:14,backgroundColor:'#27272b',alignItems:'center',justifyContent:'center'},giftDescription:{color:'#85858b',fontSize:12,lineHeight:18,marginTop:12},giftLabel:{color:'#aaa',fontSize:9,fontWeight:'900',letterSpacing:1,marginTop:20,marginBottom:9},friendChoices:{gap:9},friendChoice:{width:94,minHeight:91,borderRadius:16,backgroundColor:'#202023',borderWidth:1,borderColor:'#2d2d31',alignItems:'center',padding:10},friendChoiceActive:{backgroundColor:'#2e211b',borderColor:'#9c451b'},friendInitial:{width:40,height:40,borderRadius:13,backgroundColor:ORANGE,alignItems:'center',justifyContent:'center'},friendInitialText:{color:'#fff',fontWeight:'900'},friendName:{color:'#ddd',fontSize:10,fontWeight:'800',marginTop:7,maxWidth:76},amountChoices:{flexDirection:'row',gap:9},amountChoice:{width:54,height:48,borderRadius:14,backgroundColor:'#242428',borderWidth:1,borderColor:'#303035',alignItems:'center',justifyContent:'center'},amountChoiceActive:{backgroundColor:ORANGE,borderColor:ORANGE},amountChoiceText:{color:'#aaa',fontSize:17,fontWeight:'900'},amountChoiceTextActive:{color:'#111'},giftAvailable:{color:'#727278',fontSize:10,marginTop:10},sendGift:{minHeight:54,marginTop:20,borderRadius:16,backgroundColor:ORANGE,flexDirection:'row',alignItems:'center',justifyContent:'center',gap:8},sendGiftText:{color:'#111',fontWeight:'900',fontSize:14},
 });

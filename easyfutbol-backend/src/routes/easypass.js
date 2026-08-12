@@ -131,28 +131,99 @@ router.get('/me/credits/history', requireAuth, async (req, res) => {
     const userId = req.user.id;
 
     const [rows] = await pool.query(
-      `SELECT id, type, amount, description, event_id, pack_id, payment_reference, created_at
-       FROM easypass_transactions
-       WHERE user_id = ?
-       ORDER BY created_at DESC
+      `SELECT et.id,et.type,et.amount,et.description,et.event_id,et.pack_id,et.payment_reference,et.created_at,
+              ep.name pack_name,ep.credits pack_credits,ep.is_active pack_active,
+              COALESCE(pl.name,ml.name) location_name,COALESCE(ep.location_id,m.location_id) location_id,m.title match_title
+       FROM easypass_transactions et
+       LEFT JOIN easypass_packs ep ON ep.id=et.pack_id LEFT JOIN locations pl ON pl.id=ep.location_id
+       LEFT JOIN matches m ON m.id=et.event_id LEFT JOIN locations ml ON ml.id=m.location_id
+       WHERE et.user_id = ?
+       ORDER BY et.created_at DESC
        LIMIT 100`,
       [userId]
     );
 
     return res.json({
       ok: true,
-      data: rows.map((row) => ({
-        ...row,
-        amount: Number(row.amount || 0),
-        easyPassAmount: Number(row.amount || 0),
-        event_id: row.event_id ? Number(row.event_id) : null,
-        pack_id: row.pack_id ? Number(row.pack_id) : null,
-      })),
+      data: rows.map((row) => {
+        const amount=Number(row.amount||0),type=String(row.type||'');
+        const copy=type==='purchase'?['Compra de EasyPass',row.pack_name||'Pack comprado']
+          :type==='spend'?['Reserva de partido',row.match_title||'EasyPass utilizado para jugar']
+          :type==='refund'?['Devolución',row.match_title?`Cancelación de ${row.match_title}`:'EasyPass devuelto']
+          :type==='gift_sent'?['EasyPass regalado',row.description||'Transferencia enviada a un amigo']
+          :type==='gift_received'?['Regalo recibido',row.description||'EasyPass recibido de un amigo']
+          :type.includes('grant')?['Beneficio de suscripción','EasyPass mensual incluido en tu plan']
+          :amount>0?['Bonificación','EasyPass añadido a tu cuenta']:['Ajuste de saldo','Movimiento de EasyPass'];
+        return {...row,amount,easyPassAmount:amount,event_id:row.event_id?Number(row.event_id):null,pack_id:row.pack_id?Number(row.pack_id):null,
+          location_id:row.location_id?Number(row.location_id):null,title:copy[0],explanation:copy[1],direction:amount>=0?'in':'out',can_repeat:Boolean(row.pack_id&&row.pack_active),
+        };
+      }),
     });
   } catch (e) {
     console.error('[GET /me/credits/history]', e);
     return res.status(500).json({ ok:false, msg:'Error obteniendo movimientos EasyPass' });
   }
+});
+
+/**
+ * Regalar EasyPass de una sede a una amistad aceptada.
+ */
+router.post('/me/credits/gift', requireAuth, async (req,res) => {
+  const senderId=Number(req.user.id);
+  const recipientId=Number(req.body?.recipient_id);
+  const locationId=Number(req.body?.location_id);
+  const amount=Number(req.body?.amount);
+  const requestKey=String(req.body?.request_key||'').trim().slice(0,80);
+  if(!Number.isInteger(recipientId)||recipientId<=0||recipientId===senderId)return res.status(400).json({ok:false,msg:'Destinatario no válido'});
+  if(!Number.isInteger(locationId)||locationId<=0)return res.status(400).json({ok:false,msg:'Sede no válida'});
+  if(!Number.isInteger(amount)||amount<1||amount>20)return res.status(400).json({ok:false,msg:'Puedes regalar entre 1 y 20 EasyPass'});
+  if(requestKey.length<12)return res.status(400).json({ok:false,msg:'Identificador de transferencia no válido'});
+
+  const conn=await pool.getConnection();
+  try {
+    await conn.beginTransaction();
+    const [[existing]]=await conn.query('SELECT id FROM easypass_gifts WHERE request_key=? AND sender_id=?',[requestKey,senderId]);
+    if(existing){await conn.commit();return res.json({ok:true,already_processed:true,gift_id:Number(existing.id)});}
+    const [[friendship]]=await conn.query(
+      `SELECT id FROM friendships WHERE status='accepted' AND user_low_id=LEAST(?,?) AND user_high_id=GREATEST(?,?) LIMIT 1`,
+      [senderId,recipientId,senderId,recipientId]
+    );
+    if(!friendship){await conn.rollback();return res.status(403).json({ok:false,msg:'Solo puedes regalar EasyPass a tus amigos'});}
+    const [[location]]=await conn.query('SELECT id,name FROM locations WHERE id=? AND active=1 LIMIT 1',[locationId]);
+    if(!location){await conn.rollback();return res.status(404).json({ok:false,msg:'Sede no encontrada'});}
+    const [lockedUsers]=await conn.query('SELECT id,name FROM users WHERE id IN (?,?) ORDER BY id FOR UPDATE',[senderId,recipientId]);
+    const sender=lockedUsers.find(user=>Number(user.id)===senderId);
+    const recipient=lockedUsers.find(user=>Number(user.id)===recipientId);
+    if(!recipient){await conn.rollback();return res.status(404).json({ok:false,msg:'Usuario no encontrado'});}
+    const [[balance]]=await conn.query('SELECT balance FROM user_easypass_balances WHERE user_id=? AND location_id=? FOR UPDATE',[senderId,locationId]);
+    const currentBalance=Number(balance?.balance||0);
+    if(currentBalance<amount){await conn.rollback();return res.status(409).json({ok:false,msg:`No tienes ${amount} EasyPass disponibles en ${location.name}`});}
+
+    const [giftResult]=await conn.query(
+      'INSERT INTO easypass_gifts(request_key,sender_id,recipient_id,location_id,amount) VALUES (?,?,?,?,?)',
+      [requestKey,senderId,recipientId,locationId,amount]
+    );
+    await conn.query('UPDATE user_easypass_balances SET balance=balance-? WHERE user_id=? AND location_id=?',[amount,senderId,locationId]);
+    await conn.query(
+      `INSERT INTO user_easypass_balances(user_id,location_id,balance) VALUES (?,?,?)
+       ON DUPLICATE KEY UPDATE balance=balance+VALUES(balance)`,
+      [recipientId,locationId,amount]
+    );
+    await conn.query('UPDATE users SET easypass_balance=GREATEST(COALESCE(easypass_balance,0)-?,0) WHERE id=?',[amount,senderId]);
+    await conn.query('UPDATE users SET easypass_balance=COALESCE(easypass_balance,0)+? WHERE id=?',[amount,recipientId]);
+    await conn.query(
+      `INSERT INTO easypass_transactions(user_id,type,amount,description,payment_reference,created_at)
+       VALUES (?,'gift_sent',?,? ,?,NOW()),(?,'gift_received',?,?,?,NOW())`,
+      [senderId,-amount,`Para ${recipient.name} · ${location.name}`,`gift:${giftResult.insertId}`,recipientId,amount,`De ${sender.name} · ${location.name}`,`gift:${giftResult.insertId}`]
+    );
+    await conn.commit();
+    res.status(201).json({ok:true,gift_id:Number(giftResult.insertId),balance:currentBalance-amount,msg:`Has regalado ${amount} EasyPass a ${recipient.name}`});
+  } catch(error) {
+    await conn.rollback();
+    if(error?.code==='ER_DUP_ENTRY')return res.json({ok:true,already_processed:true});
+    console.error('[EASYPASS GIFT]',error);
+    res.status(500).json({ok:false,msg:'No se pudo completar el regalo'});
+  } finally { conn.release(); }
 });
 
 /**

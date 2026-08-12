@@ -581,6 +581,60 @@ export default function ProfileScreen({ navigation }) {
             </View>
           </TouchableOpacity>
 
+          <TouchableOpacity
+            style={[styles.communityCard, { borderColor:'rgba(86,122,255,.32)', borderWidth:1 }]}
+            onPress={() => navigation.navigate('MatchPreferences')}
+            activeOpacity={0.84}
+            accessibilityRole="button"
+          >
+            <View style={{ flexDirection:'row', alignItems:'center', gap:12 }}>
+              <View style={{ width:46,height:46,borderRadius:15,backgroundColor:'rgba(86,122,255,.14)',alignItems:'center',justifyContent:'center' }}>
+                <Ionicons name="options" size={23} color="#7892ff" />
+              </View>
+              <View style={{ flex:1 }}>
+                <Text style={[styles.section,{color:'#7892ff'}]}>DISPONIBILIDAD</Text>
+                <Text style={[styles.communityText,{marginBottom:0}]}>Elige días, horarios, sedes y posiciones para recibir mejores recomendaciones.</Text>
+              </View>
+              <Ionicons name="chevron-forward" color="#888" size={22}/>
+            </View>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.communityCard, { borderColor:'rgba(77,187,120,.30)', borderWidth:1 }]}
+            onPress={() => navigation.navigate('Reputation')}
+            activeOpacity={0.84}
+            accessibilityRole="button"
+          >
+            <View style={{ flexDirection:'row', alignItems:'center', gap:12 }}>
+              <View style={{ width:46,height:46,borderRadius:15,backgroundColor:'rgba(77,187,120,.13)',alignItems:'center',justifyContent:'center' }}>
+                <Ionicons name="shield-checkmark" size={23} color="#4dbb78" />
+              </View>
+              <View style={{ flex:1 }}>
+                <Text style={[styles.section,{color:'#4dbb78'}]}>MI FIABILIDAD</Text>
+                <Text style={[styles.communityText,{marginBottom:0}]}>Consulta tu asistencia, partidos completados y distintivos positivos.</Text>
+              </View>
+              <Ionicons name="chevron-forward" color="#888" size={22}/>
+            </View>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.communityCard, { borderColor:'rgba(255,90,0,.28)', borderWidth:1 }]}
+            onPress={() => navigation.navigate('SportProfile')}
+            activeOpacity={0.84}
+            accessibilityRole="button"
+          >
+            <View style={{ flexDirection:'row', alignItems:'center', gap:12 }}>
+              <View style={{ width:46,height:46,borderRadius:15,backgroundColor:'rgba(255,90,0,.13)',alignItems:'center',justifyContent:'center' }}>
+                <Ionicons name="shirt" size={23} color={ORANGE} />
+              </View>
+              <View style={{ flex:1 }}>
+                <Text style={styles.section}>PERFIL DEPORTIVO</Text>
+                <Text style={[styles.communityText,{marginBottom:0}]}>Posiciones, pierna dominante, rachas, sedes y evolución mensual.</Text>
+              </View>
+              <Ionicons name="chevron-forward" color="#888" size={22}/>
+            </View>
+          </TouchableOpacity>
+
           <View style={styles.collabCard}>
             <Text style={styles.section}>COLABORACIONES</Text>
             <Text style={styles.collabTitle}>Ventajas por jugar con EasyFutbol</Text>

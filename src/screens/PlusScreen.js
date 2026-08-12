@@ -80,7 +80,7 @@ export default function PlusScreen({ navigation }) {
       <StatusBar barStyle="light-content" />
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
         <LinearGradient colors={['#3D2D07', '#15130D', '#0A0C10']} style={styles.hero}>
-          <TouchableOpacity style={styles.backButton} onPress={() => goBackOrFallback(navigation)} accessibilityRole="button">
+          <TouchableOpacity style={styles.backButton} onPress={() => goBackOrFallback(navigation, 'Profile')} accessibilityRole="button">
             <Ionicons name="arrow-back" size={20} color={colors.white} />
             <Text style={styles.backText}>Volver</Text>
           </TouchableOpacity>

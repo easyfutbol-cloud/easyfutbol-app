@@ -89,7 +89,7 @@ export default function AdminMatchStatsScreen({ route, navigation }) {
         ListHeaderComponent={(
           <>
             <LinearGradient colors={['#241208', '#11151B']} style={styles.hero}>
-              <TouchableOpacity style={styles.backButton} onPress={() => goBackOrFallback(navigation)}>
+              <TouchableOpacity style={styles.backButton} onPress={() => goBackOrFallback(navigation, 'AdminMatches')}>
                 <Ionicons name="arrow-back" size={20} color={colors.white} />
                 <Text style={styles.backText}>Volver</Text>
               </TouchableOpacity>

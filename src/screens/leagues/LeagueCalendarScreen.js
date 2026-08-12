@@ -1,17 +1,19 @@
-import React from 'react';
-import { View, Text, StyleSheet } from 'react-native';
-
-export default function LeagueCalendarScreen() {
-  return (
-    <View style={styles.container}>
-      <Text style={styles.title}>Calendario</Text>
-      <Text style={styles.text}>Aquí aparecerán las jornadas y partidos de tu equipo.</Text>
-    </View>
-  );
+import React, { useState } from 'react';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { LeagueHeader, leagueScreenStyles as base } from '../../components/leagues/LeagueUI';
+import { Ionicons } from '@expo/vector-icons';
+import { leagueMatches, playedLeagueMatches } from '../../data/leaguePreviewData';
+export default function LeagueCalendarScreen({ navigation }) {
+  const [mode, setMode] = useState('upcoming');
+  const [round, setRound] = useState(1);
+  return <View style={base.screen}><ScrollView contentContainerStyle={base.content}>
+    <LeagueHeader title="Calendario" subtitle="Consulta todos los partidos jornada a jornada." />
+    <View style={styles.modeTabs}><Pressable onPress={()=>setMode('upcoming')} style={[styles.modeTab,mode==='upcoming'&&styles.modeActive]}><Text style={[styles.modeText,mode==='upcoming'&&styles.activeText]}>Próximos</Text></Pressable><Pressable onPress={()=>setMode('played')} style={[styles.modeTab,mode==='played'&&styles.modeActive]}><Text style={[styles.modeText,mode==='played'&&styles.activeText]}>Resultados</Text></Pressable></View>
+    {mode === 'upcoming' ? <>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.rounds}>{[1,2,3,4].map(n => <Pressable key={n} onPress={() => setRound(n)} style={[styles.round, round === n && styles.activeRound]}><Text style={[styles.roundText, round === n && styles.activeText]}>Jornada {n}</Text></Pressable>)}</ScrollView>
+      {leagueMatches.filter(m => m.round === round).map(m => <View key={m.id} style={base.card}><Text style={styles.date}>{m.date}</Text><View style={styles.match}><Text style={styles.team}>{m.home}</Text><Text style={styles.vs}>VS</Text><Text style={[styles.team, { textAlign: 'right' }]}>{m.away}</Text></View><Text style={styles.venue}>{m.venue}</Text></View>)}
+      {!leagueMatches.some(m => m.round === round) && <View style={base.card}><Text style={styles.empty}>Jornada pendiente de publicación</Text><Text style={base.muted}>El calendario se completará cuando estén confirmados los equipos.</Text></View>}
+    </> : playedLeagueMatches.map(m => <Pressable key={m.id} onPress={()=>navigation.navigate('LeagueMatchDetail',{matchId:m.id})} style={styles.resultCard}><Text style={styles.date}>JORNADA {m.round} · {m.date}</Text><View style={styles.match}><Text style={styles.team}>{m.home}</Text><View style={styles.score}><Text style={styles.scoreText}>{m.homeScore} - {m.awayScore}</Text></View><Text style={[styles.team,{textAlign:'right'}]}>{m.away}</Text></View><View style={styles.resultFooter}><Text style={styles.venue}>{m.venue}</Text><View style={styles.detailLink}><Text style={styles.detailText}>Ficha del partido</Text><Ionicons name="chevron-forward" size={14} color="#ff6a17"/></View></View></Pressable>)}
+  </ScrollView></View>;
 }
-
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#000', padding: 20 },
-  title: { color: '#fff', fontSize: 26, fontWeight: '700', marginBottom: 10 },
-  text: { color: '#aaa', fontSize: 15 },
-});
+const styles = StyleSheet.create({ modeTabs:{flexDirection:'row',padding:4,borderRadius:14,backgroundColor:'#111319',marginBottom:14},modeTab:{flex:1,alignItems:'center',paddingVertical:9,borderRadius:10},modeActive:{backgroundColor:'#20232b'},modeText:{color:'#747780',fontSize:12,fontWeight:'900'}, rounds: { marginBottom: 16 }, round: { paddingHorizontal: 14, paddingVertical: 9, borderRadius: 12, backgroundColor: '#13151b', marginRight: 8, borderWidth: 1, borderColor: '#252831' }, activeRound: { backgroundColor: 'rgba(255,90,0,.08)', borderColor: 'rgba(255,90,0,.38)' }, roundText: { color: '#8b8b92', fontSize: 12, fontWeight: '800' }, activeText: { color: '#ff6a17' }, date: { color: '#ff6a17', fontSize: 10, fontWeight: '900' }, match: { flexDirection: 'row', alignItems: 'center', marginVertical: 16 }, team: { flex: 1, color: '#fff', fontSize: 14, fontWeight: '900' }, vs: { color: '#65656c', fontSize: 11, fontWeight: '900', marginHorizontal: 10 }, score:{paddingHorizontal:10,paddingVertical:7,borderRadius:10,backgroundColor:'#252832',marginHorizontal:8},scoreText:{color:'#fff',fontSize:17,fontWeight:'900'}, venue: { color: '#77777e', fontSize: 11 }, empty: { color: '#fff', fontSize: 16, fontWeight: '900', marginBottom: 7 },resultCard:{padding:16,marginBottom:10,borderRadius:18,backgroundColor:'#12141a',borderWidth:1,borderColor:'#20232b'},resultFooter:{flexDirection:'row',alignItems:'center',justifyContent:'space-between'},detailLink:{flexDirection:'row',alignItems:'center',gap:3},detailText:{color:'#c6c8ce',fontSize:11,fontWeight:'800'} });

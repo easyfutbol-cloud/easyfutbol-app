@@ -31,6 +31,18 @@ async function getConfirmedCount(matchId) {
   return Number(rows?.[0]?.total || 0);
 }
 
+let assignedUserColumnAvailable;
+async function hasAssignedUserIdColumn() {
+  if (typeof assignedUserColumnAvailable === 'boolean') return assignedUserColumnAvailable;
+  const [rows] = await pool.query(
+    `SELECT 1 FROM information_schema.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'inscriptions'
+       AND COLUMN_NAME = 'assigned_user_id' LIMIT 1`
+  );
+  assignedUserColumnAvailable = rows.length > 0;
+  return assignedUserColumnAvailable;
+}
+
 // Listado admin de partidos
 router.get('/', requireAuth, requireAdmin, async (req, res) => {
   try {
@@ -38,44 +50,47 @@ router.get('/', requireAuth, requireAdmin, async (req, res) => {
 
     let sql = `
       SELECT
-        id,
-        title,
+        m.id,
+        m.title,
         '' AS description,
-        city,
-        CAST(field_id AS CHAR) AS field_name,
-        DATE(starts_at) AS match_date,
-        TIME(starts_at) AS start_time,
-        TIME(DATE_ADD(starts_at, INTERVAL duration_min MINUTE)) AS end_time,
-        capacity AS total_slots,
-        GREATEST(capacity - spots_taken, 0) AS available_slots,
+        m.city,
+        COALESCE(f.name,CAST(m.field_id AS CHAR)) AS field_name,
+        DATE(m.starts_at) AS match_date,
+        TIME(m.starts_at) AS start_time,
+        TIME(DATE_ADD(m.starts_at, INTERVAL m.duration_min MINUTE)) AS end_time,
+        m.capacity AS total_slots,
+        GREATEST(m.capacity-m.spots_taken,0) AS available_slots,
+        (SELECT COUNT(*) FROM inscriptions i WHERE i.match_id=m.id AND i.status IN ('confirmed','paid','active')) confirmed_count,
+        (SELECT COUNT(*) FROM match_waitlist mw WHERE mw.match_id=m.id AND mw.status IN ('waiting','offered')) waitlist_count,
+        CASE WHEN m.starts_at BETWEEN NOW() AND DATE_ADD(NOW(),INTERVAL 48 HOUR) AND (m.capacity-m.spots_taken)>=3 THEN 1 ELSE 0 END risk,
         CASE
-          WHEN status = 'scheduled' THEN 'open'
-          WHEN status = 'full' THEN 'full'
-          WHEN status = 'cancelled' THEN 'cancelled'
+          WHEN m.status = 'scheduled' THEN 'open'
+          WHEN m.status = 'full' THEN 'full'
+          WHEN m.status = 'cancelled' THEN 'cancelled'
           ELSE 'open'
         END AS status,
         1 AS easypass_required,
         NULL AS shirt_color,
-        COALESCE(has_aftergame, 0) AS has_aftergame,
-        created_at,
-        created_at AS updated_at
-      FROM matches
+        COALESCE(m.has_aftergame, 0) AS has_aftergame,
+        m.created_at,
+        m.created_at AS updated_at
+      FROM matches m LEFT JOIN fields f ON f.id=m.field_id
       WHERE 1=1
     `;
 
     const params = [];
 
     if (city) {
-      sql += ' AND city = ?';
+      sql += ' AND m.city = ?';
       params.push(city);
     }
 
     if (status) {
-      sql += ' AND status = ?';
+      sql += ' AND m.status = ?';
       params.push(mapAdminStatusToDbStatus(status));
     }
 
-    sql += ' ORDER BY starts_at DESC';
+    sql += ' ORDER BY m.starts_at DESC';
 
     const [rows] = await pool.query(sql, params);
     res.json(rows);
@@ -83,6 +98,47 @@ router.get('/', requireAuth, requireAdmin, async (req, res) => {
     console.error('Error obteniendo partidos admin:', error);
     res.status(500).json({ error: 'Error interno del servidor' });
   }
+});
+
+router.get('/:id/roster', requireAuth, requireAdmin, async (req,res) => {
+  try {
+    const matchId=Number(req.params.id);
+    const [[match]]=await pool.query(`SELECT m.id,m.title,m.starts_at,m.capacity,m.spots_taken,m.status,f.name field_name FROM matches m LEFT JOIN fields f ON f.id=m.field_id WHERE m.id=?`,[matchId]);
+    if(!match)return res.status(404).json({error:'Partido no encontrado'});
+    const hasAssignedUser = await hasAssignedUserIdColumn();
+    const rosterSql = hasAssignedUser
+      ? `SELECT i.id inscription_id,i.status,i.ticket_type,i.created_at,
+                COALESCE(assigned.id,buyer.id) user_id,COALESCE(assigned.name,buyer.name) name,COALESCE(assigned.avatar_url,buyer.avatar_url) avatar_url
+         FROM inscriptions i JOIN users buyer ON buyer.id=i.user_id LEFT JOIN users assigned ON assigned.id=i.assigned_user_id
+         WHERE i.match_id=? AND i.status IN ('pending','confirmed','paid','active') ORDER BY i.created_at ASC`
+      : `SELECT i.id inscription_id,i.status,i.ticket_type,i.created_at,
+                buyer.id user_id,buyer.name,buyer.avatar_url
+         FROM inscriptions i JOIN users buyer ON buyer.id=i.user_id
+         WHERE i.match_id=? AND i.status IN ('pending','confirmed','paid','active') ORDER BY i.created_at ASC`;
+    const [players]=await pool.query(rosterSql,[matchId]);
+    const [waitlist]=await pool.query(
+      `SELECT mw.id,mw.status,mw.created_at,mw.offer_expires_at,u.id user_id,u.name,u.avatar_url
+       FROM match_waitlist mw JOIN users u ON u.id=mw.user_id WHERE mw.match_id=? AND mw.status IN ('waiting','offered')
+       ORDER BY FIELD(mw.status,'offered','waiting'),mw.is_plus_snapshot DESC,mw.created_at ASC`,[matchId]
+    );
+    const groups={white:[],black:[],pending:[]};
+    players.forEach(player=>{const color=['white','black'].includes(player.ticket_type)?player.ticket_type:'pending';groups[color].push(player);});
+    res.json({ok:true,match:{...match,free_spots:Math.max(Number(match.capacity)-Number(match.spots_taken),0)},...groups,waitlist});
+  }catch(error){console.error('[ADMIN ROSTER]',error);res.status(500).json({error:'No se pudo cargar la plantilla'});}
+});
+
+router.patch('/:id/roster/:inscriptionId/color', requireAuth, requireAdmin, async (req,res) => {
+  try { const color=req.body?.color;if(!['white','black'].includes(color))return res.status(400).json({error:'Color no válido'});const[result]=await pool.query(`UPDATE inscriptions SET ticket_type=? WHERE id=? AND match_id=? AND status IN ('pending','confirmed','paid','active')`,[color,Number(req.params.inscriptionId),Number(req.params.id)]);if(!result.affectedRows)return res.status(404).json({error:'Inscripción no encontrada'});res.json({ok:true,color}); }
+  catch(error){console.error('[ADMIN ROSTER COLOR]',error);res.status(500).json({error:'No se pudo cambiar el color'});}
+});
+
+router.post('/:id/duplicate', requireAuth, requireAdmin, async (req,res) => {
+  try {
+    const [[source]]=await pool.query('SELECT * FROM matches WHERE id=?',[Number(req.params.id)]);if(!source)return res.status(404).json({error:'Partido no encontrado'});
+    const startsAt=req.body?.starts_at?new Date(req.body.starts_at):new Date(new Date(source.starts_at).getTime()+7*86400000);if(Number.isNaN(startsAt.getTime()))return res.status(400).json({error:'Fecha no válida'});
+    const[result]=await pool.query(`INSERT INTO matches(title,field_id,city,location_id,starts_at,duration_min,price_eur,easypass_cost,capacity,spots_taken,status,has_aftergame) VALUES (?,?,?,?,?,?,?,?,?,0,'scheduled',?)`,[source.title,source.field_id,source.city,source.location_id,startsAt,source.duration_min,source.price_eur,source.easypass_cost,source.capacity,source.has_aftergame||0]);
+    res.status(201).json({ok:true,id:result.insertId,starts_at:startsAt});
+  }catch(error){console.error('[ADMIN DUPLICATE MATCH]',error);res.status(500).json({error:'No se pudo duplicar el partido'});}
 });
 
 // Obtener detalle de un partido

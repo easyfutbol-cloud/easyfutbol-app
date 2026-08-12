@@ -28,6 +28,7 @@ const SECTIONS = [
       { label: 'Usuarios', description: 'Perfiles y permisos', icon: 'people-outline', route: 'AdminUsers' },
       { label: 'EasyPass', description: 'Saldos y movimientos', icon: 'ticket-outline', route: 'AdminEasyPass' },
       { label: 'Avisos', description: 'Notificaciones a jugadores', icon: 'notifications-outline', route: 'AdminNotify' },
+      { label: 'Denuncias', description: 'Seguridad de la comunidad', icon: 'flag-outline', route: 'AdminReports' },
     ],
   },
 ];

@@ -83,7 +83,7 @@ export default function AdminScheduledMatchesScreen({ navigation }) {
   return (
     <View style={styles.container}>
       <View style={styles.header}>
-        <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()} accessibilityLabel="Volver">
+        <TouchableOpacity style={styles.backButton} onPress={() => navigation.navigate('AdminPanel')} accessibilityLabel="Volver">
           <Text style={styles.backText}>‹</Text>
         </TouchableOpacity>
         <View style={styles.headerCopy}>

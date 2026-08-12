@@ -1,17 +1,15 @@
 import React from 'react';
-import { View, Text, StyleSheet } from 'react-native';
-
-export default function MyTeamScreen() {
-  return (
-    <View style={styles.container}>
-      <Text style={styles.title}>Mi equipo</Text>
-      <Text style={styles.text}>Aquí aparecerán el escudo, jugadores y datos del equipo.</Text>
-    </View>
-  );
-}
-
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#000', padding: 20 },
-  title: { color: '#fff', fontSize: 26, fontWeight: '700', marginBottom: 10 },
-  text: { color: '#aaa', fontSize: 15 },
-});
+import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+import { LeagueHeader, leagueScreenStyles as base } from '../../components/leagues/LeagueUI';
+import { teamPlayers } from '../../data/leaguePreviewData';
+export default function MyTeamScreen() { return <View style={base.screen}><ScrollView contentContainerStyle={base.content}>
+  <LeagueHeader title="Mi equipo" subtitle="Tu vestuario, tus próximos partidos y toda la plantilla." />
+  <View style={styles.teamCard}><View style={styles.accent}/><View style={styles.shield}><Ionicons name="shield" size={31} color="#ff6a17" /></View><View><Text style={styles.teamName}>Naranja Mecánica</Text><Text style={styles.meta}>Valladolid · Temporada piloto</Text></View></View>
+  <View style={styles.stats}><Stat value="3º" label="Posición"/><Stat value="11" label="Puntos"/><Stat value="+7" label="Diferencia"/></View>
+  <Text style={base.sectionTitle}>Plantilla · {teamPlayers.length}</Text>
+  {teamPlayers.map((name,i)=><View key={name} style={styles.player}><View style={styles.number}><Text style={styles.numberText}>{i+1}</Text></View><Text style={styles.playerName}>{name}</Text>{i===0&&<Text style={styles.captain}>CAPITÁN</Text>}</View>)}
+  <View style={styles.invite}><Ionicons name="lock-open-outline" size={20} color="#ff5a00"/><View style={{flex:1}}><Text style={styles.inviteTitle}>Acceso abierto para pruebas</Text><Text style={base.muted}>Más adelante, esta sección solo estará disponible al aceptar una invitación de equipo.</Text></View></View>
+  </ScrollView></View>; }
+function Stat({value,label}){return <View style={styles.stat}><Text style={styles.statValue}>{value}</Text><Text style={styles.statLabel}>{label}</Text></View>}
+const styles=StyleSheet.create({teamCard:{position:'relative',overflow:'hidden',flexDirection:'row',alignItems:'center',gap:15,padding:18,borderRadius:20,backgroundColor:'#15171d',borderWidth:1,borderColor:'#292c34'},accent:{position:'absolute',left:0,top:16,bottom:16,width:3,borderRadius:3,backgroundColor:'#ff5a00'},shield:{width:58,height:64,alignItems:'center',justifyContent:'center',borderRadius:16,backgroundColor:'rgba(255,90,0,.08)',borderWidth:1,borderColor:'rgba(255,90,0,.16)'},teamName:{color:'#fff',fontSize:21,fontWeight:'900'},meta:{color:'#858993',fontSize:12,marginTop:4},stats:{flexDirection:'row',gap:8,marginTop:10},stat:{flex:1,padding:13,borderRadius:15,backgroundColor:'#12141a',borderWidth:1,borderColor:'#20232b'},statValue:{color:'#fff',fontSize:20,fontWeight:'900'},statLabel:{color:'#77777e',fontSize:10,marginTop:3},player:{flexDirection:'row',alignItems:'center',padding:11,marginBottom:7,borderRadius:14,backgroundColor:'#12141a',borderWidth:1,borderColor:'#1d2027'},number:{width:32,height:32,borderRadius:10,alignItems:'center',justifyContent:'center',backgroundColor:'#20232a'},numberText:{color:'#ff6a17',fontWeight:'900'},playerName:{flex:1,color:'#fff',fontSize:13,fontWeight:'800',marginLeft:11},captain:{color:'#ff6a17',fontSize:8,fontWeight:'900'},invite:{flexDirection:'row',gap:12,padding:15,borderRadius:17,borderWidth:1,borderColor:'#292c34',backgroundColor:'#12141a',marginTop:14},inviteTitle:{color:'#fff',fontSize:13,fontWeight:'900',marginBottom:4}});

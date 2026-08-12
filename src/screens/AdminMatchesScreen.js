@@ -121,6 +121,8 @@ export default function AdminMatchesScreen({ navigation }) {
       matchTitle: match.title,
     });
   };
+  const handleRosterPress = (match) => navigation.navigate('AdminMatchRoster', { matchId:match.id,matchTitle:match.title });
+  const duplicateMatch = (match) => Alert.alert('Duplicar partido',`Se creará una copia de ${match.title} exactamente una semana después.`,[{text:'Cancelar',style:'cancel'},{text:'Duplicar',onPress:async()=>{try{const token=await AsyncStorage.getItem('token');const response=await fetch(`${API_BASE_URL}/api/admin/matches/${match.id}/duplicate`,{method:'POST',headers:{'Content-Type':'application/json',Authorization:`Bearer ${token}`}});const data=await response.json();if(!response.ok)throw new Error(data?.error||'No se pudo duplicar');Alert.alert('Partido duplicado','La copia ya aparece en el listado.');fetchMatches();}catch(error){Alert.alert('Duplicar',error.message);}}}]);
 
   const renderMatchCard = ({ item }) => {
     const statusLabel = STATUS_LABELS[item.status] || item.status || 'Sin estado';
@@ -158,10 +160,14 @@ export default function AdminMatchesScreen({ navigation }) {
           </View>
 
           <View style={styles.statBox}>
-            <Text style={styles.statLabel}>EasyPass</Text>
-            <Text style={styles.statValue}>{item.easypass_required ?? 0}</Text>
+            <Text style={styles.statLabel}>Espera</Text>
+            <Text style={styles.statValue}>{item.waitlist_count ?? 0}</Text>
           </View>
         </View>
+
+        {Number(item.risk)===1&&<View style={styles.riskCard}><Text style={styles.riskTitle}>RIESGO DE NO COMPLETARSE</Text><Text style={styles.riskText}>Faltan {item.available_slots} jugadores y quedan menos de 48 horas.</Text></View>}
+
+        <TouchableOpacity style={styles.rosterButton} onPress={() => handleRosterPress(item)}><Text style={styles.rosterButtonText}>Ver quién viene y colores · {item.confirmed_count||0}</Text></TouchableOpacity>
 
         <View style={styles.buttonRow}>
           <TouchableOpacity style={styles.editButton} onPress={() => handleEditPress(item)}>
@@ -171,6 +177,7 @@ export default function AdminMatchesScreen({ navigation }) {
             <Text style={styles.statsButtonText}>Cargar estadísticas</Text>
           </TouchableOpacity>
         </View>
+        <TouchableOpacity style={styles.duplicateButton} onPress={()=>duplicateMatch(item)}><Text style={styles.duplicateText}>Duplicar una semana después</Text></TouchableOpacity>
       </TouchableOpacity>
     );
   };
@@ -444,4 +451,5 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     textAlign: 'center',
   },
+  rosterButton:{backgroundColor:'#f1f1f1',borderRadius:12,paddingVertical:13,alignItems:'center',marginBottom:10},rosterButtonText:{color:'#111',fontWeight:'900',fontSize:13},duplicateButton:{paddingVertical:12,alignItems:'center',marginTop:4},duplicateText:{color:'#888',fontSize:11,fontWeight:'800'},riskCard:{backgroundColor:'rgba(244,201,93,.09)',borderWidth:1,borderColor:'rgba(244,201,93,.3)',borderRadius:12,padding:11,marginBottom:11},riskTitle:{color:'#f4c95d',fontSize:9,fontWeight:'900',letterSpacing:.8},riskText:{color:'#aaa07f',fontSize:10,marginTop:4},
 });

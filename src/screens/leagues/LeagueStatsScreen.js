@@ -1,17 +1,14 @@
-import React from 'react';
-import { View, Text, StyleSheet } from 'react-native';
-
-export default function LeagueStatsScreen() {
-  return (
-    <View style={styles.container}>
-      <Text style={styles.title}>Estadísticas</Text>
-      <Text style={styles.text}>Aquí aparecerán goleadores, asistentes, MVPs y estadísticas personales.</Text>
-    </View>
-  );
-}
-
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#000', padding: 20 },
-  title: { color: '#fff', fontSize: 26, fontWeight: '700', marginBottom: 10 },
-  text: { color: '#aaa', fontSize: 15 },
-});
+import React, { useState } from 'react';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { LeagueHeader, leagueScreenStyles as base } from '../../components/leagues/LeagueUI';
+import { rankings } from '../../data/leaguePreviewData';
+import LeaguePlayerAvatar from '../../components/leagues/LeaguePlayerAvatar';
+const tabs = [['goals','Goles'],['assists','Asist.'],['wins','Victorias'],['goalkeepers','Porteros']];
+export default function LeagueStatsScreen() { const [tab,setTab]=useState('goals'); return <View style={base.screen}><ScrollView contentContainerStyle={base.content}>
+  <LeagueHeader title="Rankings" subtitle="Los jugadores que están marcando la diferencia." />
+  <View style={styles.tabs}>{tabs.map(([k,l])=><Pressable key={k} onPress={()=>setTab(k)} style={[styles.tab,tab===k&&styles.active]}><Text style={[styles.tabText,tab===k&&styles.activeText]}>{l}</Text></Pressable>)}</View>
+  {tab === 'goalkeepers' && <View style={styles.legend}><Text style={styles.legendText}>Clasificación por porterías a cero</Text><View style={styles.legendMetrics}><Text style={styles.legendMetric}>P0</Text><Text style={styles.legendMetric}>GE/P</Text></View></View>}
+  {rankings[tab].map((p,i)=><View key={p[0]} style={styles.player}><Text style={[styles.position,i===0&&styles.first]}>{i+1}</Text><LeaguePlayerAvatar name={p[0]} photoUrl={null} size={40} featured={i===0}/><View style={{flex:1}}><Text style={styles.name}>{p[0]}</Text><Text style={styles.team}>{p[1]}</Text></View>{tab === 'goalkeepers' ? <View style={styles.keeperMetrics}><View style={styles.metric}><Text style={styles.metricValue}>{p[2]}</Text><Text style={styles.metricLabel}>P0</Text></View><View style={styles.metric}><Text style={styles.metricValue}>{Number(p[3]).toFixed(2)}</Text><Text style={styles.metricLabel}>GE/P</Text></View></View> : <Text style={styles.value}>{p[2]}</Text>}</View>)}
+  {tab === 'goalkeepers' && <Text style={styles.help}>P0: porterías a cero · GE/P: goles encajados por partido.</Text>}
+  </ScrollView></View>; }
+const styles=StyleSheet.create({ tabs:{flexDirection:'row',gap:5,marginBottom:14},tab:{flex:1,alignItems:'center',paddingVertical:10,borderRadius:12,backgroundColor:'#13151b',borderWidth:1,borderColor:'#252831'},active:{backgroundColor:'rgba(255,90,0,.08)',borderColor:'rgba(255,90,0,.38)'},tabText:{color:'#85858c',fontSize:10,fontWeight:'900'},activeText:{color:'#ff6a17'},legend:{flexDirection:'row',alignItems:'center',justifyContent:'space-between',paddingHorizontal:12,marginBottom:8},legendText:{color:'#777b84',fontSize:10,fontWeight:'700'},legendMetrics:{flexDirection:'row',gap:13},legendMetric:{width:39,color:'#666a73',fontSize:8,fontWeight:'900',textAlign:'center'},player:{flexDirection:'row',alignItems:'center',gap:12,padding:13,marginBottom:8,borderRadius:16,backgroundColor:'#12141a',borderWidth:1,borderColor:'#20232b'},position:{width:20,color:'#6f6f76',fontSize:16,fontWeight:'900',textAlign:'center'},first:{color:'#ff9b44'},avatar:{width:40,height:40,borderRadius:20,backgroundColor:'#211b19',alignItems:'center',justifyContent:'center'},keeperAvatar:{backgroundColor:'#171f24',borderWidth:1,borderColor:'#263641'},initial:{color:'#ff6a17',fontSize:16,fontWeight:'900'},name:{color:'#fff',fontSize:14,fontWeight:'900'},team:{color:'#77777e',fontSize:11,marginTop:2},value:{color:'#fff',fontSize:24,fontWeight:'900'},keeperMetrics:{flexDirection:'row',gap:9},metric:{width:43,alignItems:'center'},metricValue:{color:'#fff',fontSize:17,fontWeight:'900'},metricLabel:{color:'#696d75',fontSize:7,fontWeight:'900',marginTop:2},help:{color:'#60646c',fontSize:10,lineHeight:15,marginTop:5,textAlign:'center'} });

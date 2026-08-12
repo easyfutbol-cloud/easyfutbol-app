@@ -76,6 +76,7 @@ router.get('/me/inscriptions', requireAuth, async (req, res) => {
               COALESCE(own_stats.goals, i.goals, 0) AS goals,
               COALESCE(own_stats.assists, i.assists, 0) AS assists,
               COALESCE(own_stats.is_mvp, i.is_mvp, 0) AS is_mvp,
+              own_stats.result,
               mvp_user.name AS mvp_name,
               EXISTS(
                 SELECT 1 FROM user_plus_subscriptions ups
@@ -115,6 +116,66 @@ router.get('/me/inscriptions', requireAuth, async (req, res) => {
   } catch (e) {
     console.error(e);
     res.status(500).json({ ok: false, msg: 'Error listando inscripciones' });
+  }
+});
+
+// Ficha posterior al partido para cualquier jugador que haya participado.
+router.get('/matches/:id/post-match', requireAuth, async (req, res) => {
+  try {
+    const matchId = Number(req.params.id);
+    if (!Number.isInteger(matchId) || matchId <= 0) {
+      return res.status(400).json({ ok: false, msg: 'Partido inválido' });
+    }
+
+    const [[access]] = await pool.query(
+      `SELECT 1
+       FROM inscriptions i
+       WHERE i.match_id=? AND i.user_id=? AND i.status IN ('confirmed','paid','active')
+       UNION
+       SELECT 1 FROM match_player_stats WHERE match_id=? AND user_id=? LIMIT 1`,
+      [matchId, req.user.id, matchId, req.user.id]
+    );
+    if (!access) return res.status(403).json({ ok: false, msg: 'No participaste en este partido' });
+
+    const [[match]] = await pool.query(
+      `SELECT m.id,m.title,m.city,m.starts_at,m.duration_min,f.name field_name
+       FROM matches m LEFT JOIN fields f ON f.id=m.field_id WHERE m.id=? LIMIT 1`,
+      [matchId]
+    );
+    if (!match) return res.status(404).json({ ok: false, msg: 'Partido no encontrado' });
+
+    const [players] = await pool.query(
+      `SELECT mps.user_id,u.name,u.avatar_url,mps.goals,mps.assists,mps.is_mvp,mps.result,
+              COALESCE((SELECT i.ticket_type FROM inscriptions i
+                        WHERE i.match_id=mps.match_id AND i.user_id=mps.user_id
+                          AND i.status IN ('confirmed','paid','active')
+                        ORDER BY i.id LIMIT 1),'pending') team
+       FROM match_player_stats mps JOIN users u ON u.id=mps.user_id
+       WHERE mps.match_id=?
+       ORDER BY FIELD(team,'white','black','pending'),mps.is_mvp DESC,mps.goals DESC,u.name`,
+      [matchId]
+    );
+
+    const normalized = players.map((player) => ({
+      ...player,
+      goals: Number(player.goals || 0),
+      assists: Number(player.assists || 0),
+      is_mvp: Boolean(Number(player.is_mvp || 0)),
+    }));
+    const white = normalized.filter((player) => player.team === 'white');
+    const black = normalized.filter((player) => player.team === 'black');
+    const pending = normalized.filter((player) => !['white', 'black'].includes(player.team));
+    const score = {
+      white: white.reduce((total, player) => total + player.goals, 0),
+      black: black.reduce((total, player) => total + player.goals, 0),
+    };
+    const personal = normalized.find((player) => Number(player.user_id) === Number(req.user.id)) || null;
+    const mvp = normalized.find((player) => player.is_mvp) || null;
+
+    return res.json({ ok: true, data: { match, score, mvp, personal, teams: { white, black, pending } } });
+  } catch (error) {
+    console.error('[POST MATCH SUMMARY]', error);
+    return res.status(500).json({ ok: false, msg: 'No se pudo cargar el resumen' });
   }
 });
 

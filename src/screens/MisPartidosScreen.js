@@ -6,6 +6,7 @@ import {
   Alert,
   ImageBackground,
   Linking,
+  Share,
   ScrollView,
   StyleSheet,
   Text,
@@ -616,6 +617,26 @@ export default function MisPartidosScreen({ navigation }) {
     const assists = getPersonalStatValue(firstInscription, ['assists', 'asistencias']);
     const saves = getPersonalStatValue(firstInscription, ['saves', 'paradas']);
     const personalMvp = Boolean(firstInscription.is_mvp || firstInscription.mvp || firstInscription.es_mvp);
+    const rawResult = selectedMatch.result || selectedMatch.resultado || '';
+    const resultLabels = { win: 'Victoria', loss: 'Derrota', draw: 'Empate' };
+    const resultLabel = resultLabels[String(rawResult).toLowerCase()] || rawResult || 'Pendiente';
+    const hasPostMatchData = resultLabel !== 'Pendiente' || personalMvp || goals > 0 || assists > 0 || saves > 0;
+    const recapHeadline = personalMvp
+      ? 'Una actuación para recordar'
+      : goals > 0
+      ? `${goals} ${goals === 1 ? 'gol' : 'goles'} en tu último partido`
+      : saves > 0
+      ? `${saves} ${saves === 1 ? 'parada' : 'paradas'} bajo palos`
+      : 'Partido completado';
+    const sharePostMatchRecap = async () => {
+      const matchTitle = selectedMatch.title || selectedMatch.nombre || selectedMatch.name || 'Partido EasyFutbol';
+      const performance = [`${goals} goles`, `${assists} asistencias`, saves > 0 ? `${saves} paradas` : null, personalMvp ? 'MVP' : null].filter(Boolean).join(' · ');
+      try {
+        await Share.share({ title: `Mi partido en EasyFutbol`, message: [`⚽ ${matchTitle}`, `Resultado: ${resultLabel}`, performance, 'Juega tu próximo partido con EasyFutbol.'].filter(Boolean).join('\n') });
+      } catch (error) {
+        console.log('Error compartiendo resumen del partido', error?.message || error);
+      }
+    };
 
     return (
       <ScrollView style={styles.container} contentContainerStyle={styles.content}>
@@ -743,6 +764,28 @@ export default function MisPartidosScreen({ navigation }) {
               </View>
             </View>
           </View>
+        )}
+
+        {isPastMatch && hasPostMatchData && (
+          <LinearGradient colors={['#211A16', '#14171C']} style={styles.recapCard}>
+            <View style={styles.recapTop}>
+              <View style={styles.recapIcon}><Ionicons name="sparkles" size={20} color={ORANGE}/></View>
+              <View style={{flex:1}}><Text style={styles.recapEyebrow}>TU PARTIDO</Text><Text style={styles.recapTitle}>{recapHeadline}</Text></View>
+            </View>
+            <Text style={styles.recapText}>
+              {resultLabel}. Terminaste el encuentro con {goals} {goals === 1 ? 'gol' : 'goles'}, {assists} {assists === 1 ? 'asistencia' : 'asistencias'}{saves > 0 ? ` y ${saves} ${saves === 1 ? 'parada' : 'paradas'}` : ''}{personalMvp ? ', además de ser elegido MVP' : ''}.
+            </Text>
+            <TouchableOpacity style={styles.shareRecapButton} onPress={sharePostMatchRecap}>
+              <Ionicons name="share-social-outline" size={18} color={TEXT}/><Text style={styles.shareRecapText}>Compartir mi partido</Text>
+            </TouchableOpacity>
+          </LinearGradient>
+        )}
+
+        {isPastMatch && (
+          <TouchableOpacity style={styles.fullSummaryButton} onPress={() => navigation.navigate('PostMatchSummary', { matchId: selectedMatch.id })}>
+            <View><Text style={styles.fullSummaryEyebrow}>ACTA COMPLETA</Text><Text style={styles.fullSummaryText}>Ver marcador, MVP y alineaciones</Text></View>
+            <Ionicons name="chevron-forward" size={22} color={TEXT}/>
+          </TouchableOpacity>
         )}
 
         <TouchableOpacity style={styles.locationButton} onPress={() => openLocation(selectedField.mapsUrl)}>
@@ -969,6 +1012,17 @@ const styles = StyleSheet.create({
     padding: layout.screenPadding,
     paddingBottom: spacing(5),
   },
+  recapCard:{ padding:spacing(2),borderRadius:radii.large,borderWidth:1,borderColor:'rgba(255,90,0,.22)',marginBottom:spacing(1.5) },
+  recapTop:{ flexDirection:'row',alignItems:'center',gap:spacing(1) },
+  recapIcon:{ width:42,height:42,borderRadius:14,alignItems:'center',justifyContent:'center',backgroundColor:'rgba(255,90,0,.12)' },
+  recapEyebrow:{ color:ORANGE,fontSize:9,fontWeight:'900',letterSpacing:1 },
+  recapTitle:{ color:TEXT,fontSize:17,fontWeight:'900',marginTop:3 },
+  recapText:{ color:MUTED,fontSize:13,lineHeight:20,marginTop:spacing(1.25) },
+  shareRecapButton:{ minHeight:46,marginTop:spacing(1.5),borderRadius:radii.medium,backgroundColor:ORANGE,flexDirection:'row',gap:8,alignItems:'center',justifyContent:'center' },
+  shareRecapText:{ color:TEXT,fontSize:13,fontWeight:'900' },
+  fullSummaryButton:{ minHeight:66,marginBottom:spacing(1.5),paddingHorizontal:spacing(1.75),borderRadius:radii.large,backgroundColor:'#191c22',borderWidth:1,borderColor:'#343840',flexDirection:'row',alignItems:'center',justifyContent:'space-between' },
+  fullSummaryEyebrow:{ color:ORANGE,fontSize:9,fontWeight:'900',letterSpacing:1 },
+  fullSummaryText:{ color:TEXT,fontSize:14,fontWeight:'900',marginTop:4 },
   centerContainer: {
     flex: 1,
     backgroundColor: DARK,

@@ -15,7 +15,9 @@ const ROUTE_TAB = {
   Match: 'matches',
   MyMatches: 'myMatches',
   MisPartidos: 'myMatches',
+  PostMatchSummary: 'myMatches',
   Social: 'friends',
+  SocialPrivacy: 'friends',
   PlayerSocialProfile: 'friends',
   FriendGroupDetail: 'friends',
   Profile: 'profile',
@@ -40,6 +42,7 @@ const ROUTES_WITHOUT_PRIMARY_NAV = new Set([
   'AdminMatchStatsImport',
   'AdminUsers',
   'AdminNotify',
+  'AdminReports',
   'AdminEasyPass',
 ]);
 

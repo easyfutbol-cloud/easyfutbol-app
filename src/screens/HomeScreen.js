@@ -219,17 +219,6 @@ export default function HomeScreen({ navigation }) {
       >
         <View style={styles.contentBoundary}>
           <View style={styles.topBar}>
-            <TouchableOpacity
-              onPress={() => navigation.canGoBack() && navigation.goBack()}
-              disabled={!navigation.canGoBack()}
-              style={[styles.backButton, !navigation.canGoBack() && styles.backButtonDisabled]}
-              accessibilityRole="button"
-              accessibilityLabel="Volver atrás"
-              accessibilityState={{ disabled: !navigation.canGoBack() }}
-            >
-              <Text style={styles.backButtonText}>‹</Text>
-            </TouchableOpacity>
-
             <View style={styles.brand}>
               <Image source={APP_LOGO} style={styles.logo} resizeMode="cover" />
               <View style={styles.brandCopy}>

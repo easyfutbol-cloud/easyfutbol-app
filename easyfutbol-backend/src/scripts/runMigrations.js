@@ -18,6 +18,10 @@ const migrationOrder = [
   '20260804_competitive_evaluations.sql',
   '20260804_competitive_weekly_scoring.sql',
   '20260804_competitive_season_completion.sql',
+  '20260812_easypass_gifts.sql',
+  '20260812_player_match_preferences.sql',
+  '20260812_player_sport_profile.sql',
+  '20260812_social_safety.sql',
 ];
 
 const currentFile = fileURLToPath(import.meta.url);

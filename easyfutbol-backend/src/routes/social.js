@@ -1,8 +1,9 @@
 import { Router } from 'express';
 import { pool } from '../config/db.js';
-import { requireAuth } from '../middlewares/auth.js';
+import { requireAuth, requireAdmin } from '../middlewares/auth.js';
 import { areFriends, createSocialNotification, expireMatchInvitations, getFriendshipStatus, positiveId } from '../services/socialService.js';
-import { getBestTeammates, getFrequentPlayers } from '../services/socialStatsService.js';
+import { getBestTeammates, getFrequentPlayers, getPairStats } from '../services/socialStatsService.js';
+import { getPlayerReputation, publicReputation } from '../services/playerReputationService.js';
 
 const router = Router();
 router.use(requireAuth);
@@ -12,6 +13,40 @@ const pageArgs = (query) => {
   return { limit, offset:(page - 1) * limit, page };
 };
 const fail = (res, code, msg) => res.status(code).json({ ok:false, msg });
+const isBlocked = async (db,userId,otherId) => {
+  const [[row]]=await db.query('SELECT 1 FROM user_blocks WHERE (blocker_id=? AND blocked_id=?) OR (blocker_id=? AND blocked_id=?) LIMIT 1',[userId,otherId,otherId,userId]);
+  return Boolean(row);
+};
+
+router.get('/privacy/me', async (req,res) => {
+  try {
+    await pool.query('INSERT IGNORE INTO user_social_privacy(user_id) VALUES (?)',[req.user.id]);
+    const [[privacy]]=await pool.query('SELECT show_upcoming_to_friends,show_stats_to_friends FROM user_social_privacy WHERE user_id=?',[req.user.id]);
+    const [blocked]=await pool.query('SELECT u.id,u.name,u.avatar_url,b.created_at FROM user_blocks b JOIN users u ON u.id=b.blocked_id WHERE b.blocker_id=? ORDER BY b.created_at DESC',[req.user.id]);
+    res.json({ok:true,privacy:{show_upcoming_to_friends:Boolean(privacy.show_upcoming_to_friends),show_stats_to_friends:Boolean(privacy.show_stats_to_friends)},blocked});
+  } catch(error){console.error('[SOCIAL privacy]',error);fail(res,500,'No se pudo cargar la privacidad');}
+});
+router.patch('/privacy/me', async (req,res) => {
+  try { const upcoming=req.body?.show_upcoming_to_friends?1:0,stats=req.body?.show_stats_to_friends?1:0; await pool.query(`INSERT INTO user_social_privacy(user_id,show_upcoming_to_friends,show_stats_to_friends) VALUES (?,?,?) ON DUPLICATE KEY UPDATE show_upcoming_to_friends=VALUES(show_upcoming_to_friends),show_stats_to_friends=VALUES(show_stats_to_friends)`,[req.user.id,upcoming,stats]);res.json({ok:true}); }
+  catch(error){console.error('[SOCIAL privacy update]',error);fail(res,500,'No se pudo guardar la privacidad');}
+});
+router.post('/blocks/:userId', async (req,res) => {
+  const otherId=positiveId(req.params.userId);if(!otherId||otherId===Number(req.user.id))return fail(res,400,'Usuario no válido');
+  const conn=await pool.getConnection();try{await conn.beginTransaction();await conn.query('INSERT IGNORE INTO user_blocks(blocker_id,blocked_id) VALUES (?,?)',[req.user.id,otherId]);await conn.query(`UPDATE friendships SET status='cancelled' WHERE user_low_id=LEAST(?,?) AND user_high_id=GREATEST(?,?)`,[req.user.id,otherId,req.user.id,otherId]);await conn.query(`UPDATE match_invitations SET status='declined' WHERE status IN ('pending','viewed') AND ((sender_id=? AND receiver_id=?) OR (sender_id=? AND receiver_id=?))`,[req.user.id,otherId,otherId,req.user.id]);await conn.commit();res.json({ok:true});}catch(error){await conn.rollback();console.error('[SOCIAL block]',error);fail(res,500,'No se pudo bloquear');}finally{conn.release();}
+});
+router.delete('/blocks/:userId', async (req,res) => { try{await pool.query('DELETE FROM user_blocks WHERE blocker_id=? AND blocked_id=?',[req.user.id,positiveId(req.params.userId)]);res.json({ok:true});}catch(error){fail(res,500,'No se pudo desbloquear');} });
+router.post('/reports', async (req,res) => {
+  const otherId=positiveId(req.body?.user_id),reason=req.body?.reason,details=String(req.body?.details||'').trim().slice(0,500);if(!otherId||otherId===Number(req.user.id)||!['conduct','harassment','spam','identity','other'].includes(reason))return fail(res,400,'Denuncia no válida');
+  try{const[r]=await pool.query('INSERT INTO user_reports(reporter_id,reported_id,reason,details) VALUES (?,?,?,?)',[req.user.id,otherId,reason,details||null]);res.status(201).json({ok:true,id:r.insertId,msg:'Denuncia enviada de forma privada'});}catch(error){console.error('[SOCIAL report]',error);fail(res,500,'No se pudo enviar la denuncia');}
+});
+router.get('/admin/reports', requireAdmin, async (req,res) => {
+  try { const status=String(req.query.status||'open');const allowed=['open','reviewing','resolved','dismissed'];const filter=allowed.includes(status)?status:'open';const [rows]=await pool.query(`SELECT r.id,r.reason,r.details,r.status,r.created_at,r.reviewed_at,reporter.id reporter_id,reporter.name reporter_name,reporter.avatar_url reporter_avatar,reported.id reported_id,reported.name reported_name,reported.avatar_url reported_avatar,reviewer.name reviewer_name FROM user_reports r JOIN users reporter ON reporter.id=r.reporter_id JOIN users reported ON reported.id=r.reported_id LEFT JOIN users reviewer ON reviewer.id=r.reviewed_by WHERE r.status=? ORDER BY r.created_at DESC LIMIT 200`,[filter]);res.json({ok:true,items:rows}); }
+  catch(error){console.error('[ADMIN SOCIAL REPORTS]',error);fail(res,500,'No se pudieron cargar las denuncias');}
+});
+router.patch('/admin/reports/:id/status', requireAdmin, async (req,res) => {
+  const status=req.body?.status;if(!['reviewing','resolved','dismissed'].includes(status))return fail(res,400,'Estado no válido');
+  try{const[r]=await pool.query(`UPDATE user_reports SET status=?,reviewed_by=?,reviewed_at=IF(? IN ('resolved','dismissed'),NOW(),NULL) WHERE id=?`,[status,req.user.id,status,positiveId(req.params.id)]);if(!r.affectedRows)return fail(res,404,'Denuncia no encontrada');res.json({ok:true,status});}catch(error){console.error('[ADMIN REPORT STATUS]',error);fail(res,500,'No se pudo actualizar');}
+});
 
 router.get('/summary', async (req,res) => {
   try {
@@ -49,12 +84,15 @@ router.get('/friends/matches', async (req,res) => {
               u.id friend_id,u.name friend_name,u.avatar_url friend_avatar,i.ticket_type
        FROM friendships f
        JOIN users u ON u.id=IF(f.requester_id=?,f.addressee_id,f.requester_id)
+       LEFT JOIN user_social_privacy usp ON usp.user_id=u.id
        JOIN inscriptions i ON i.user_id=u.id AND i.status IN ('pending','confirmed')
        JOIN matches m ON m.id=i.match_id
        WHERE f.status='accepted' AND (f.requester_id=? OR f.addressee_id=?)
          AND m.starts_at>NOW() AND m.status<>'cancelled'
+         AND COALESCE(usp.show_upcoming_to_friends,1)=1
+         AND NOT EXISTS(SELECT 1 FROM user_blocks b WHERE (b.blocker_id=? AND b.blocked_id=u.id) OR (b.blocker_id=u.id AND b.blocked_id=?))
        ORDER BY m.starts_at ASC,u.name ASC`,
-      [userId,userId,userId]
+      [userId,userId,userId,userId,userId]
     );
     res.json({ok:true,items:rows});
   } catch(error) { console.error('[SOCIAL friend matches]',error); fail(res,500,'No se pudieron cargar los partidos de tus amigos'); }
@@ -70,11 +108,14 @@ router.get('/friends/stats', async (req,res) => {
               COALESCE(SUM(mps.result='win'),0) wins
        FROM friendships f
        JOIN users u ON u.id=IF(f.requester_id=?,f.addressee_id,f.requester_id)
+       LEFT JOIN user_social_privacy usp ON usp.user_id=u.id
        LEFT JOIN match_player_stats mps ON mps.user_id=u.id
        WHERE f.status='accepted' AND (f.requester_id=? OR f.addressee_id=?)
+         AND COALESCE(usp.show_stats_to_friends,1)=1
+         AND NOT EXISTS(SELECT 1 FROM user_blocks b WHERE (b.blocker_id=? AND b.blocked_id=u.id) OR (b.blocker_id=u.id AND b.blocked_id=?))
        GROUP BY u.id,u.name,u.avatar_url,u.preferred_location
        ORDER BY wins DESC,goals DESC,assists DESC,u.name ASC`,
-      [userId,userId,userId]
+      [userId,userId,userId,userId,userId]
     );
     res.json({ok:true,items:rows.map((row)=>({...row,goals:Number(row.goals),assists:Number(row.assists),wins:Number(row.wins)}))});
   } catch(error) { console.error('[SOCIAL friend stats]',error); fail(res,500,'No se pudieron cargar las estadísticas de tus amigos'); }
@@ -103,8 +144,9 @@ router.get('/users/search', async (req,res) => {
              WHEN f.status='pending' THEN 'received' ELSE 'none' END friendship_status,f.id friendship_id
        FROM users u LEFT JOIN friendships f ON f.user_low_id=LEAST(?,u.id) AND f.user_high_id=GREATEST(?,u.id)
        WHERE u.id<>? AND (u.name LIKE ? ESCAPE '\\\\' OR u.email LIKE ? ESCAPE '\\\\' OR u.id=?)
+         AND NOT EXISTS(SELECT 1 FROM user_blocks b WHERE (b.blocker_id=? AND b.blocked_id=u.id) OR (b.blocker_id=u.id AND b.blocked_id=?))
        ORDER BY CASE WHEN u.name LIKE ? THEN 0 ELSE 1 END,u.name LIMIT ? OFFSET ?`,
-      [userId,userId,userId,userId,like,like,positiveId(q)||0,`${q}%`,limit,offset]
+      [userId,userId,userId,userId,like,like,positiveId(q)||0,userId,userId,`${q}%`,limit,offset]
     );
     res.json({ok:true,items:rows,page,has_more:rows.length===limit});
   } catch(error) { console.error('[SOCIAL search]',error); fail(res,500,'No se pudo completar la búsqueda'); }
@@ -121,6 +163,7 @@ router.post('/requests', async (req,res) => {
   const conn=await pool.getConnection();
   try {
     await conn.beginTransaction();
+    if(await isBlocked(conn,req.user.id,otherId)){await conn.rollback();return fail(res,403,'No se puede enviar esta solicitud');}
     const [[user]]=await conn.query('SELECT id,name FROM users WHERE id=? LIMIT 1',[otherId]);
     if (!user) { await conn.rollback(); return fail(res,404,'Usuario no encontrado'); }
     const [[existing]]=await conn.query('SELECT * FROM friendships WHERE user_low_id=LEAST(?,?) AND user_high_id=GREATEST(?,?) FOR UPDATE',[req.user.id,otherId,req.user.id,otherId]);
@@ -174,13 +217,37 @@ router.delete('/friends/:userId', async (req,res) => {
 router.get('/users/:userId/stats', async (req,res) => {
   const otherId=positiveId(req.params.userId); if (!otherId) return fail(res,400,'Usuario no válido');
   try {
-    const [[user]]=await pool.query('SELECT id,name,avatar_url,preferred_location FROM users WHERE id=?',[otherId]); if (!user) return fail(res,404,'Usuario no encontrado');
+    if(await isBlocked(pool,req.user.id,otherId))return fail(res,403,'Este perfil no está disponible');
+    const [[user]]=await pool.query('SELECT id,name,avatar_url,preferred_location,primary_position,secondary_position,dominant_foot FROM users WHERE id=?',[otherId]); if (!user) return fail(res,404,'Usuario no encontrado');
+    const friendship=await getFriendshipStatus(pool,req.user.id,otherId);
     const [[stats]]=await pool.query(
       `SELECT COALESCE(SUM(goals),0) goals,COALESCE(SUM(assists),0) assists,
               COALESCE(SUM(result='win'),0) wins
        FROM match_player_stats WHERE user_id=?`,[otherId]
     );
-    res.json({ok:true,user,friendship:await getFriendshipStatus(pool,req.user.id,otherId),stats:{goals:Number(stats.goals),assists:Number(stats.assists),wins:Number(stats.wins)}});
+    const [[privacy]]=await pool.query('SELECT show_upcoming_to_friends,show_stats_to_friends FROM user_social_privacy WHERE user_id=?',[otherId]);
+    const canSeeStats=friendship.status==='friends'&&Number(privacy?.show_stats_to_friends??1)===1;
+    const response={ok:true,user,friendship,stats:canSeeStats?{goals:Number(stats.goals),assists:Number(stats.assists),wins:Number(stats.wins)}:null,stats_private:!canSeeStats,reputation:publicReputation(await getPlayerReputation(pool,otherId))};
+    if (friendship.status==='friends') {
+      const [[myStats]]=await pool.query(
+        `SELECT COALESCE(SUM(goals),0) goals,COALESCE(SUM(assists),0) assists,
+                COALESCE(SUM(result='win'),0) wins
+         FROM match_player_stats WHERE user_id=?`,[req.user.id]
+      );
+      const [[friendshipRow]]=await pool.query('SELECT created_at FROM friendships WHERE id=? AND status=\'accepted\' LIMIT 1',[friendship.friendship_id]);
+      const [upcomingMatches]=Number(privacy?.show_upcoming_to_friends??1)===1?await pool.query(
+        `SELECT DISTINCT m.id match_id,m.title,m.starts_at,m.capacity,m.spots_taken,i.ticket_type,
+                GREATEST(m.capacity-m.spots_taken,0) spots_remaining
+         FROM inscriptions i JOIN matches m ON m.id=i.match_id
+         WHERE i.user_id=? AND i.status IN ('pending','confirmed')
+           AND m.starts_at>NOW() AND m.status<>'cancelled'
+         ORDER BY m.starts_at ASC LIMIT 5`,[otherId]
+      ):[[]];
+      response.my_stats={goals:Number(myStats.goals),assists:Number(myStats.assists),wins:Number(myStats.wins)};
+      response.together=await getPairStats(pool,req.user.id,otherId,friendshipRow?.created_at || null);
+      response.upcoming_matches=upcomingMatches.map((match)=>({...match,spots_remaining:Number(match.spots_remaining)}));
+    }
+    res.json(response);
   } catch(error) { console.error('[SOCIAL pair stats]',error); fail(res,500,'No se pudieron calcular las estadísticas'); }
 });
 
@@ -210,7 +277,25 @@ router.get('/groups/:id', async (req,res) => {
     const id=positiveId(req.params.id); const [[membership]]=await pool.query(`SELECT role FROM friend_group_members WHERE group_id=? AND user_id=?`,[id,req.user.id]); if (!membership) return fail(res,403,'No perteneces a este grupo');
     const [[group]]=await pool.query('SELECT id,name,image_url,owner_id,created_at FROM friend_groups WHERE id=?',[id]);
     const [members]=await pool.query(`SELECT gm.user_id id,gm.role,gm.joined_at,u.name,u.avatar_url,u.preferred_location FROM friend_group_members gm JOIN users u ON u.id=gm.user_id WHERE gm.group_id=? ORDER BY FIELD(gm.role,'owner','admin','member'),u.name`,[id]);
-    res.json({ok:true,group:{...group,role:membership.role},members});
+    const [[stats]]=await pool.query(
+      `SELECT COUNT(DISTINCT mps.match_id) matches_played,COALESCE(SUM(mps.goals),0) goals,
+              COALESCE(SUM(mps.assists),0) assists,COALESCE(SUM(mps.result='win'),0) wins
+       FROM friend_group_members gm LEFT JOIN match_player_stats mps ON mps.user_id=gm.user_id
+       WHERE gm.group_id=?`,[id]
+    );
+    const [recentMatches]=await pool.query(
+      `SELECT m.id match_id,m.title,m.starts_at,COUNT(DISTINCT mps.user_id) members_played,
+              COALESCE(SUM(mps.goals),0) goals,COALESCE(SUM(mps.assists),0) assists
+       FROM friend_group_members gm JOIN match_player_stats mps ON mps.user_id=gm.user_id
+       JOIN matches m ON m.id=mps.match_id WHERE gm.group_id=? AND m.starts_at<NOW()
+       GROUP BY m.id,m.title,m.starts_at HAVING COUNT(DISTINCT mps.user_id)>=2
+       ORDER BY m.starts_at DESC LIMIT 5`,[id]
+    );
+    res.json({
+      ok:true,group:{...group,role:membership.role},members,
+      stats:{matches_played:Number(stats.matches_played),goals:Number(stats.goals),assists:Number(stats.assists),wins:Number(stats.wins)},
+      recent_matches:recentMatches.map((match)=>({...match,members_played:Number(match.members_played),goals:Number(match.goals),assists:Number(match.assists)})),
+    });
   } catch(error) { console.error('[SOCIAL group]',error); fail(res,500,'No se pudo cargar el grupo'); }
 });
 router.patch('/groups/:id', async (req,res) => {

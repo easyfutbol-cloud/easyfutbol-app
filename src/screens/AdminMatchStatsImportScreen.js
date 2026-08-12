@@ -202,7 +202,7 @@ export default function AdminMatchStatsImportScreen({ route, navigation }) {
       <StatusBar barStyle="light-content" />
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
         <LinearGradient colors={['#2B1508', '#11151B']} style={styles.hero}>
-          <TouchableOpacity style={styles.backButton} onPress={() => goBackOrFallback(navigation)} accessibilityRole="button">
+          <TouchableOpacity style={styles.backButton} onPress={() => goBackOrFallback(navigation, 'AdminMatches')} accessibilityRole="button">
             <Ionicons name="arrow-back" size={20} color={colors.white} />
             <Text style={styles.backText}>Volver</Text>
           </TouchableOpacity>

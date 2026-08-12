@@ -133,7 +133,7 @@ const HomeTournamentScreen = ({ navigation }) => {
         <LinearGradient colors={['#2B1609', '#11151B']} style={styles.hero}>
           <TouchableOpacity
             style={styles.backButton}
-            onPress={() => goBackOrFallback(navigation)}
+            onPress={() => goBackOrFallback(navigation, 'Home')}
             accessibilityRole="button"
             accessibilityLabel="Volver"
           >

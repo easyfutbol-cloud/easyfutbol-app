@@ -19,7 +19,7 @@ const WARNING_BG = '#1F1308';
 const BORDER = '#263244';
 
 const rulesPdfUrl = 'https://easyfutbol.es/wp-content/uploads/2026/07/Reglamento_Torneo_EasyFutbol_MAYORES_18.pdf';
-export default function TournamentRulesScreen({ navigation }) {
+export default function TournamentRulesScreen({ navigation, route }) {
   const openFullRules = async () => {
     if (!rulesPdfUrl) {
       return;
@@ -41,7 +41,7 @@ export default function TournamentRulesScreen({ navigation }) {
   return (
     <SafeAreaView style={styles.safeArea}>
       <View style={styles.header}>
-        <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
+        <TouchableOpacity style={styles.backButton} onPress={() => navigation.navigate('TournamentDetail', { tournamentId: route?.params?.tournamentId })}>
           <Ionicons name="chevron-back" size={24} color={DARK} />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Reglamento</Text>

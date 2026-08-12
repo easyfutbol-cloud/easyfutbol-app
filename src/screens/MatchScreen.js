@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { View, Text, StyleSheet, StatusBar, TouchableOpacity, ActivityIndicator, Alert, ImageBackground, Image, ScrollView, Linking, Platform } from 'react-native';
+import { View, Text, StyleSheet, StatusBar, TouchableOpacity, ActivityIndicator, Alert, ImageBackground, Image, ScrollView, Linking, Platform, Share } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { colors, layout, radii, spacing, typography } from '../theme';
 import { goBackOrFallback } from '../utils/navigation';
 import { api } from '../api/client';
@@ -280,6 +281,7 @@ export default function MatchScreen({ route, navigation }) {
 
   useFocusEffect(useCallback(() => { loadWaitlist(); }, [loadWaitlist]));
 
+
   useEffect(() => {
     if (waitlist?.status !== 'offered') return undefined;
     setQuantity(1);
@@ -444,6 +446,32 @@ export default function MatchScreen({ route, navigation }) {
 
   const handleGoToRegister = () => {
     navigation?.navigate('Access');
+  };
+
+  const handleShareMatch = async () => {
+    if (!match) return;
+    const when = match.starts_at ? new Date(match.starts_at).toLocaleString('es-ES', { weekday: 'long', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' }) : '';
+    const place = [fieldName, city].filter(Boolean).join(', ');
+    try {
+      await Share.share({
+        title: match.title || 'Partido EasyFutbol',
+        message: [`⚽ ${match.title || 'Partido EasyFutbol'}`, when, place, 'Reserva tu plaza en la app de EasyFutbol.'].filter(Boolean).join('\n'),
+      });
+    } catch (error) {
+      console.log('Error compartiendo partido', error?.message || error);
+    }
+  };
+
+  const handleOpenDirections = async () => {
+    const destination = [fieldName, city].filter(Boolean).join(', ');
+    if (!destination) return;
+    const query = encodeURIComponent(destination);
+    const url = Platform.OS === 'ios' ? `http://maps.apple.com/?q=${query}` : `https://www.google.com/maps/search/?api=1&query=${query}`;
+    try {
+      await Linking.openURL(url);
+    } catch {
+      Alert.alert('Ubicación', 'No se ha podido abrir la aplicación de mapas.');
+    }
   };
 
 
@@ -665,6 +693,21 @@ export default function MatchScreen({ route, navigation }) {
           <Text style={styles.summaryLabel}>OCUPACIÓN</Text>
           <Text style={styles.summaryValue}>{spotsTaken}</Text>
           <Text style={styles.summaryUnit}>de {capacity ?? '—'}</Text>
+        </View>
+      </View>
+      <View style={styles.practicalCard}>
+        <View style={styles.practicalHeader}>
+          <View style={styles.practicalIcon}><Ionicons name="location-outline" size={21} color={colors.orange} /></View>
+          <View style={styles.practicalCopy}>
+            <Text style={styles.practicalEyebrow}>INFORMACIÓN PRÁCTICA</Text>
+            <Text style={styles.practicalTitle}>{fieldName || 'Ubicación del partido'}</Text>
+            {!!city && <Text style={styles.practicalCity}>{city}</Text>}
+          </View>
+        </View>
+        <Text style={styles.practicalText}>{fieldConfig?.arrivalInstructions || 'Recomendamos llegar 10 minutos antes para encontrar el campo y organizar el partido con tranquilidad.'}</Text>
+        <View style={styles.practicalActions}>
+          {!!(fieldName || city) && <TouchableOpacity onPress={handleOpenDirections} style={styles.practicalPrimary}><Ionicons name="navigate-outline" size={16} color="#0d0d0f"/><Text style={styles.practicalPrimaryText}>Cómo llegar</Text></TouchableOpacity>}
+          <TouchableOpacity onPress={handleShareMatch} style={styles.practicalSecondary}><Ionicons name="share-social-outline" size={16} color={colors.white}/><Text style={styles.practicalSecondaryText}>Compartir</Text></TouchableOpacity>
         </View>
       </View>
       {hasAftergame && (
@@ -1239,6 +1282,19 @@ const styles = StyleSheet.create({
   waitlistPrimaryText:{ color:colors.black, ...typography.bodyStrong, fontWeight:'900', textAlign:'center' },
   waitlistSecondaryButton:{ minHeight:layout.minTouchTarget, alignItems:'center', justifyContent:'center', borderWidth:1, borderColor:colors.border, borderRadius:radii.medium, paddingHorizontal:spacing(1.5), marginTop:spacing(1.5) },
   waitlistSecondaryText:{ color:colors.white, ...typography.bodyStrong },
+  practicalCard:{ marginTop:spacing(2),padding:spacing(2),borderRadius:radii.large,backgroundColor:'#14171C',borderWidth:1,borderColor:colors.border },
+  practicalHeader:{ flexDirection:'row',alignItems:'center',gap:spacing(1) },
+  practicalIcon:{ width:42,height:42,borderRadius:14,alignItems:'center',justifyContent:'center',backgroundColor:'rgba(255,90,0,.11)' },
+  practicalCopy:{ flex:1 },
+  practicalEyebrow:{ color:colors.orange,...typography.overline,fontSize:9 },
+  practicalTitle:{ color:colors.white,...typography.bodyStrong,marginTop:2 },
+  practicalCity:{ color:colors.textSubtle,...typography.caption,marginTop:2 },
+  practicalText:{ color:colors.textMuted,...typography.caption,lineHeight:19,marginTop:spacing(1.25) },
+  practicalActions:{ flexDirection:'row',gap:spacing(1),marginTop:spacing(1.5) },
+  practicalPrimary:{ flex:1,minHeight:44,flexDirection:'row',gap:7,alignItems:'center',justifyContent:'center',borderRadius:radii.medium,backgroundColor:colors.orange },
+  practicalPrimaryText:{ color:'#0d0d0f',fontSize:12,fontWeight:'900' },
+  practicalSecondary:{ flex:1,minHeight:44,flexDirection:'row',gap:7,alignItems:'center',justifyContent:'center',borderRadius:radii.medium,borderWidth:1,borderColor:colors.border,backgroundColor:'#1B1E24' },
+  practicalSecondaryText:{ color:colors.white,fontSize:12,fontWeight:'900' },
   easyPassHeader: {
     flexDirection: 'row',
     alignItems: 'center',

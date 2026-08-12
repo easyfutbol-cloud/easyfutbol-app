@@ -101,7 +101,7 @@ export default function AdminDashboardScreen({ navigation }) {
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => load(true)} tintColor={colors.orange} />}
       >
         <LinearGradient colors={['#261307', '#11151B']} style={styles.hero}>
-          <TouchableOpacity style={styles.backButton} onPress={() => goBackOrFallback(navigation)}>
+          <TouchableOpacity style={styles.backButton} onPress={() => goBackOrFallback(navigation, 'AdminPanel')}>
             <Ionicons name="arrow-back" size={20} color={colors.white} /><Text style={styles.backText}>Volver</Text>
           </TouchableOpacity>
           <View style={styles.heroTopline}>

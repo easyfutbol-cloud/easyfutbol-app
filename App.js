@@ -31,6 +31,8 @@ import Constants from 'expo-constants';
 import { api, setUnauthorizedHandler } from './src/api/client';
 import { menuController } from './src/navigation/menuController';
 import AppBottomNavigation from './src/components/AppBottomNavigation';
+import LeagueBottomNavigation from './src/components/LeagueBottomNavigation';
+import { isLeagueRoute } from './src/navigation/leagueNavigation';
 
 // Screens
 import HomeScreen from './src/screens/HomeScreen';
@@ -39,11 +41,16 @@ import MatchScreen from './src/screens/MatchScreen';
 import MatchsScreen from './src/screens/MatchsScreen';
 import MyMatchesScreen from './src/screens/MyMatchesScreen';
 import MisPartidosScreen from './src/screens/MisPartidosScreen';
+import PostMatchSummaryScreen from './src/screens/PostMatchSummaryScreen';
 import StatsScreen from './src/screens/StatsScreen';
 import ProfileScreen from './src/screens/ProfileScreen';
+import MatchPreferencesScreen from './src/screens/MatchPreferencesScreen';
+import ReputationScreen from './src/screens/ReputationScreen';
+import SportProfileScreen from './src/screens/SportProfileScreen';
 import AdminCreateMatchScreen from './src/screens/AdminCreateMatchScreen';
 import AdminMatchStatsScreen from './src/screens/AdminMatchStatsScreen';
 import AdminMatchStatsImportScreen from './src/screens/AdminMatchStatsImportScreen';
+import AdminMatchRosterScreen from './src/screens/AdminMatchRosterScreen';
 import AdminMatchesScreen from './src/screens/AdminMatchesScreen';
 import AdminScheduledMatchesScreen from './src/screens/AdminScheduledMatchesScreen';
 import AdminMatchEditScreen from './src/screens/AdminMatchEditScreen';
@@ -52,6 +59,7 @@ import AdminEasyPassScreen from './src/screens/admineasypassscreen';
 import AdminDashboardScreen from './src/screens/AdminDashboardScreen';
 import AdminPanelScreen from './src/screens/AdminPanelScreen';
 import AdminUsersScreen from './src/screens/AdminUsersScreen';
+import AdminReportsScreen from './src/screens/AdminReportsScreen';
 import EasyPassScreen from './src/screens/EasyPassScreen';
 import PlusScreen from './src/screens/PlusScreen';
 import AchievementsScreen from './src/screens/AchievementsScreen';
@@ -60,8 +68,15 @@ import TournamentDetailScreen from './src/screens/tournament/tournamentdetailscr
 import TournamentRulesScreen from './src/screens/tournament/TournamentRulesScreen';
 import FaqScreen from './src/screens/FaqScreen';
 import SocialScreen from './src/screens/SocialScreen';
+import SocialPrivacyScreen from './src/screens/SocialPrivacyScreen';
 import PlayerSocialProfileScreen from './src/screens/PlayerSocialProfileScreen';
 import FriendGroupDetailScreen from './src/screens/FriendGroupDetailScreen';
+import LeaguesHomeScreen from './src/screens/leagues/LeaguesHomeScreen';
+import LeagueCalendarScreen from './src/screens/leagues/LeagueCalendarScreen';
+import LeagueStandingsScreen from './src/screens/leagues/LeagueStandingsScreen';
+import LeagueStatsScreen from './src/screens/leagues/LeagueStatsScreen';
+import MyTeamScreen from './src/screens/leagues/MyTeamScreen';
+import LeagueMatchDetailScreen from './src/screens/leagues/LeagueMatchDetailScreen';
 
 // Notificaciones (opcional)
 let Notifications = null;
@@ -674,11 +689,22 @@ function AppShell({ currentRouteName }) {
         <Stack.Screen name="Matchs" component={MatchsScreen} />
         <Stack.Screen name="MyMatches" component={MyMatchesScreen} />
         <Stack.Screen name="MisPartidos" component={MisPartidosScreen} />
+        <Stack.Screen name="PostMatchSummary" component={PostMatchSummaryScreen} />
         <Stack.Screen name="Stats" component={StatsScreen} />
         <Stack.Screen name="Profile" component={ProfileScreen} />
+        <Stack.Screen name="MatchPreferences" component={MatchPreferencesScreen} />
+        <Stack.Screen name="Reputation" component={ReputationScreen} />
+        <Stack.Screen name="SportProfile" component={SportProfileScreen} />
         <Stack.Screen name="Social" component={SocialScreen} />
+        <Stack.Screen name="SocialPrivacy" component={SocialPrivacyScreen} />
         <Stack.Screen name="PlayerSocialProfile" component={PlayerSocialProfileScreen} />
         <Stack.Screen name="FriendGroupDetail" component={FriendGroupDetailScreen} />
+        <Stack.Screen name="LeagueHome" component={LeaguesHomeScreen} />
+        <Stack.Screen name="LeagueCalendar" component={LeagueCalendarScreen} />
+        <Stack.Screen name="LeagueStandings" component={LeagueStandingsScreen} />
+        <Stack.Screen name="LeagueRankings" component={LeagueStatsScreen} />
+        <Stack.Screen name="LeagueMyTeam" component={MyTeamScreen} />
+        <Stack.Screen name="LeagueMatchDetail" component={LeagueMatchDetailScreen} />
         <Stack.Screen name="HomeTournament" component={HomeTournamentScreen} />
         <Stack.Screen name="TournamentDetail" component={TournamentDetailScreen} />
         <Stack.Screen name="TournamentRules" component={TournamentRulesScreen} />
@@ -693,17 +719,28 @@ function AppShell({ currentRouteName }) {
         <Stack.Screen name="AdminScheduledMatches" component={AdminScheduledMatchesScreen} />
         <Stack.Screen name="AdminMatchStats" component={AdminMatchStatsScreen} />
         <Stack.Screen name="AdminMatchStatsImport" component={AdminMatchStatsImportScreen} />
+        <Stack.Screen name="AdminMatchRoster" component={AdminMatchRosterScreen} />
         <Stack.Screen name="AdminUsers" component={AdminUsersScreen} />
+        <Stack.Screen name="AdminReports" component={AdminReportsScreen} />
         <Stack.Screen name="AdminNotify" component={AdminNotifyScreen} />
         <Stack.Screen name="AdminEasyPass" component={AdminEasyPassScreen} />
       </Stack.Navigator>
 
-      <AppBottomNavigation
-        currentRouteName={currentRouteName}
-        onNavigate={(routeName) => {
-          if (navigationRef.isReady() && routeName !== currentRouteName) navigationRef.navigate(routeName);
-        }}
-      />
+      {isLeagueRoute(currentRouteName) ? (
+        <LeagueBottomNavigation
+          currentRouteName={currentRouteName}
+          onNavigate={(routeName) => {
+            if (navigationRef.isReady() && routeName !== currentRouteName) navigationRef.navigate(routeName);
+          }}
+        />
+      ) : (
+        <AppBottomNavigation
+          currentRouteName={currentRouteName}
+          onNavigate={(routeName) => {
+            if (navigationRef.isReady() && routeName !== currentRouteName) navigationRef.navigate(routeName);
+          }}
+        />
+      )}
       <AppMenu currentRouteName={currentRouteName} />
     </View>
   );

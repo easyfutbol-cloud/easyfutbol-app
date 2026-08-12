@@ -14,6 +14,7 @@ import {
 import api from '../api/client';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { LinearGradient } from 'expo-linear-gradient';
+import { Ionicons } from '@expo/vector-icons';
 import ScreenHeader from '../components/ScreenHeader';
 import { colors, layout, radii, spacing, typography } from '../theme';
 
@@ -115,6 +116,8 @@ function ScreenBackdrop({ children }) {
 
 export default function MatchsScreen({ navigation }) {
   const [matches, setMatches] = useState([]);
+  const [recommendations, setRecommendations] = useState([]);
+  const [recommendationsConfigured, setRecommendationsConfigured] = useState(false);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
@@ -129,6 +132,18 @@ export default function MatchsScreen({ navigation }) {
     return matches.filter((m) => (m.city || '').trim() === selectedCity);
   }, [matches, selectedCity]);
 
+  const cityRecommendations = useMemo(() => {
+    const items = selectedCity
+      ? recommendations.filter((match) => (match.city || '').trim() === selectedCity)
+      : recommendations;
+    return items.slice(0, 3);
+  }, [recommendations, selectedCity]);
+
+  const recommendationById = useMemo(
+    () => new Map(recommendations.map((match) => [String(match.id), match])),
+    [recommendations]
+  );
+
   const loadMatches = async (isRefresh = false) => {
     if (isRefresh) {
       setRefreshing(true);
@@ -137,7 +152,10 @@ export default function MatchsScreen({ navigation }) {
     }
 
     try {
-      const res = await api.get('/matches', { params: { only_open: 1 } });
+      const [res, recommendationRes] = await Promise.all([
+        api.get('/matches', { params: { only_open: 1 } }),
+        api.get('/me/match-recommendations').catch(() => null),
+      ]);
       const payload = res.data;
       const data = Array.isArray(payload?.data)
         ? payload.data
@@ -153,6 +171,8 @@ export default function MatchsScreen({ navigation }) {
       });
 
       setMatches(upcoming);
+      setRecommendations(Array.isArray(recommendationRes?.data?.data) ? recommendationRes.data.data : []);
+      setRecommendationsConfigured(Boolean(recommendationRes?.data?.configured));
       console.log('PARTIDOS API (futuros):', upcoming.length, upcoming.map((m) => m.id));
     } catch (e) {
       console.log('Error cargando partidos desde API:', e.message);
@@ -225,6 +245,7 @@ export default function MatchsScreen({ navigation }) {
       ? Math.max(0, capacity - spotsTaken)
       : null;
     const isFull = item.is_full === true || Number(item.is_full) === 1 || remainingSpots === 0;
+    const recommendation = recommendationById.get(String(item.id));
 
     const handlePress = () => {
       navigation.navigate('Match', { matchId: item.id });
@@ -253,6 +274,12 @@ export default function MatchsScreen({ navigation }) {
           >
             <View style={styles.cardTopRow}>
               <View style={styles.cardBadges}>
+                {recommendation ? (
+                  <View style={styles.recommendedBadge}>
+                    <Ionicons name="sparkles" color={colors.orange} size={12} />
+                    <Text style={styles.recommendedBadgeText}>PARA TI · {recommendation.score}%</Text>
+                  </View>
+                ) : null}
                 <View style={styles.timeBadge}>
                   <Text style={styles.timeBadgeText}>{timeLabel || 'HORA PENDIENTE'}</Text>
                 </View>
@@ -303,6 +330,78 @@ export default function MatchsScreen({ navigation }) {
       </View>
     );
   };
+
+  const renderRecommendations = () => (
+    <View style={styles.recommendationsBlock}>
+      <View style={styles.recommendationsHeading}>
+        <View style={styles.recommendationsTitleWrap}>
+          <View style={styles.recommendationsIcon}>
+            <Ionicons name="sparkles" color={colors.orange} size={18} />
+          </View>
+          <View style={styles.recommendationsTitleText}>
+            <Text style={styles.recommendationsEyebrow}>SELECCIÓN PERSONALIZADA</Text>
+            <Text style={styles.recommendationsTitle}>Partidos para ti</Text>
+          </View>
+        </View>
+        <TouchableOpacity
+          onPress={() => navigation.navigate('MatchPreferences')}
+          style={styles.preferencesButton}
+          accessibilityRole="button"
+          accessibilityLabel="Configurar disponibilidad"
+        >
+          <Ionicons name="options-outline" color={colors.textMuted} size={17} />
+        </TouchableOpacity>
+      </View>
+
+      {!recommendationsConfigured ? (
+        <TouchableOpacity
+          style={styles.recommendationsSetup}
+          onPress={() => navigation.navigate('MatchPreferences')}
+          activeOpacity={0.86}
+        >
+          <View style={styles.recommendationsSetupCopy}>
+            <Text style={styles.recommendationsSetupTitle}>Dinos cuándo y dónde juegas</Text>
+            <Text style={styles.recommendationsSetupText}>Te mostraremos primero los partidos que mejor encajen contigo.</Text>
+          </View>
+          <Ionicons name="arrow-forward" color={colors.orange} size={20} />
+        </TouchableOpacity>
+      ) : cityRecommendations.length ? (
+        cityRecommendations.map((match) => {
+          const date = new Date(match.starts_at);
+          const dateLabel = Number.isNaN(date.getTime())
+            ? ''
+            : date.toLocaleDateString('es-ES', { weekday: 'short', day: 'numeric', month: 'short' });
+          const timeLabel = Number.isNaN(date.getTime())
+            ? ''
+            : date.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
+          return (
+            <TouchableOpacity
+              key={match.id}
+              style={styles.recommendationRow}
+              onPress={() => navigation.navigate('Match', { matchId: match.id })}
+              activeOpacity={0.86}
+            >
+              <View style={styles.recommendationScore}>
+                <Text style={styles.recommendationScoreValue}>{match.score}</Text>
+                <Text style={styles.recommendationScoreLabel}>MATCH</Text>
+              </View>
+              <View style={styles.recommendationCopy}>
+                <Text style={styles.recommendationName} numberOfLines={1}>{match.title}</Text>
+                <Text style={styles.recommendationMeta}>{dateLabel} · {timeLabel}</Text>
+                <Text style={styles.recommendationReasons} numberOfLines={1}>{(match.reasons || []).join(' · ')}</Text>
+              </View>
+              <Ionicons name="chevron-forward" color={colors.textSubtle} size={20} />
+            </TouchableOpacity>
+          );
+        })
+      ) : (
+        <View style={styles.recommendationsEmpty}>
+          <Text style={styles.recommendationsEmptyTitle}>Sin coincidencias en {selectedCity}</Text>
+          <Text style={styles.recommendationsEmptyText}>Puedes ampliar tus días, horarios o sedes desde el botón de ajustes.</Text>
+        </View>
+      )}
+    </View>
+  );
 
   if (loading) {
     return (
@@ -407,6 +506,7 @@ export default function MatchsScreen({ navigation }) {
         renderItem={renderItem}
         renderSectionHeader={renderSectionHeader}
         stickySectionHeadersEnabled={false}
+        ListHeaderComponent={renderRecommendations}
         contentContainerStyle={styles.listContent}
         refreshControl={
           <RefreshControl
@@ -660,6 +760,21 @@ const styles = StyleSheet.create({
     color: colors.white,
     ...typography.overline,
   },
+  recommendedBadge: {
+    paddingHorizontal: spacing(1),
+    paddingVertical: spacing(0.65),
+    borderRadius: radii.pill,
+    backgroundColor: 'rgba(8,10,14,0.82)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,90,0,0.55)',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+  },
+  recommendedBadgeText: {
+    color: colors.white,
+    ...typography.overline,
+  },
   cardArrow: {
     width: layout.minTouchTarget,
     height: layout.minTouchTarget,
@@ -707,4 +822,79 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     fontSize: 14,
   },
+  recommendationsBlock: {
+    marginTop: spacing(0.5),
+    marginBottom: spacing(1.25),
+    padding: spacing(1.5),
+    borderRadius: radii.large,
+    backgroundColor: 'rgba(17,21,27,0.94)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.09)',
+  },
+  recommendationsHeading: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: spacing(1.2),
+  },
+  recommendationsTitleWrap: { flex: 1, flexDirection: 'row', alignItems: 'center' },
+  recommendationsIcon: {
+    width: 38,
+    height: 38,
+    borderRadius: 13,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255,90,0,0.12)',
+    marginRight: spacing(1),
+  },
+  recommendationsTitleText: { flex: 1 },
+  recommendationsEyebrow: { color: colors.orange, fontSize: 9, fontWeight: '900', letterSpacing: 1 },
+  recommendationsTitle: { color: colors.white, fontSize: 18, fontWeight: '900', marginTop: 2 },
+  preferencesButton: {
+    width: layout.minTouchTarget,
+    height: layout.minTouchTarget,
+    borderRadius: radii.pill,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255,255,255,0.06)',
+  },
+  recommendationsSetup: {
+    minHeight: 78,
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: spacing(1.25),
+    borderRadius: radii.medium,
+    backgroundColor: 'rgba(255,90,0,0.08)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,90,0,0.24)',
+  },
+  recommendationsSetupCopy: { flex: 1, paddingRight: spacing(1) },
+  recommendationsSetupTitle: { color: colors.white, fontSize: 14, fontWeight: '900' },
+  recommendationsSetupText: { color: colors.textMuted, fontSize: 11, lineHeight: 16, marginTop: 4 },
+  recommendationRow: {
+    minHeight: 76,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: spacing(0.9),
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(255,255,255,0.07)',
+  },
+  recommendationScore: {
+    width: 48,
+    height: 48,
+    borderRadius: 15,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255,90,0,0.12)',
+    marginRight: spacing(1),
+  },
+  recommendationScoreValue: { color: colors.orange, fontSize: 17, fontWeight: '900' },
+  recommendationScoreLabel: { color: '#8f6955', fontSize: 7, fontWeight: '900' },
+  recommendationCopy: { flex: 1, paddingRight: spacing(0.5) },
+  recommendationName: { color: colors.white, fontSize: 13, fontWeight: '900' },
+  recommendationMeta: { color: colors.textMuted, fontSize: 10, fontWeight: '700', marginTop: 4, textTransform: 'capitalize' },
+  recommendationReasons: { color: '#c47a51', fontSize: 9, marginTop: 4 },
+  recommendationsEmpty: { paddingVertical: spacing(1), paddingHorizontal: spacing(0.25) },
+  recommendationsEmptyTitle: { color: colors.white, fontSize: 13, fontWeight: '800' },
+  recommendationsEmptyText: { color: colors.textMuted, fontSize: 11, lineHeight: 16, marginTop: 4 },
 });
