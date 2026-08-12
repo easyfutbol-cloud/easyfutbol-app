@@ -88,9 +88,10 @@ export async function getFrequentPlayers(db,userId,limit=20) {
      LEFT JOIN friendships f ON f.user_low_id=LEAST(?,u.id) AND f.user_high_id=GREATEST(?,u.id)
      JOIN matches m ON m.id=a.match_id
      WHERE a.user_id=? AND m.starts_at<NOW()
+       AND NOT EXISTS(SELECT 1 FROM user_blocks ub WHERE (ub.blocker_id=? AND ub.blocked_id=u.id) OR (ub.blocker_id=u.id AND ub.blocked_id=?))
      GROUP BY u.id,u.name,u.avatar_url,u.preferred_location,f.status,f.requester_id
      ORDER BY matches_together DESC,u.name ASC LIMIT ?`,
-    [userId,userId,userId,userId,limit]
+    [userId,userId,userId,userId,userId,userId,limit]
   );
   return rows.map((row)=>({...row,matches_together:Number(row.matches_together)}));
 }

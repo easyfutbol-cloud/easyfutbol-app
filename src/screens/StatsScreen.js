@@ -1,6 +1,7 @@
 // src/screens/StatsScreen.js
 import React, { useEffect, useMemo, useState, useCallback } from 'react';
-import { View, Text, StyleSheet, StatusBar, FlatList, TouchableOpacity, ImageBackground, ActivityIndicator, Image } from 'react-native';
+import { View, Text, StyleSheet, StatusBar, FlatList, TouchableOpacity, ImageBackground, ActivityIndicator, Image, ScrollView } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { colors, layout, radii, spacing, typography } from '../theme';
 import { api } from '../api/client';
@@ -45,6 +46,7 @@ const LOCATIONS = [
 export default function StatsScreen() {
   const [period, setPeriod] = useState('monthly');
   const [location, setLocation] = useState('national');
+  const [referenceDate, setReferenceDate] = useState(() => new Date());
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -54,16 +56,33 @@ export default function StatsScreen() {
     [location]
   );
 
-  const title = useMemo(() => {
-    const p = PERIODS.find(p => p.key === period)?.label || '';
-    return `Goleadores ${p} · ${selectedLocation.label}`;
-  }, [period, selectedLocation]);
+  const periodCaption = useMemo(() => {
+    const month = referenceDate.toLocaleDateString('es-ES', { month: 'long', year: 'numeric' });
+    if (period === 'monthly') return month.charAt(0).toUpperCase() + month.slice(1);
+    if (period === 'quarterly') return `${Math.floor(referenceDate.getMonth() / 3) + 1}.º trimestre · ${referenceDate.getFullYear()}`;
+    return String(referenceDate.getFullYear());
+  }, [period, referenceDate]);
+
+  const referenceParam = useMemo(() => {
+    const year = referenceDate.getFullYear();
+    const month = String(referenceDate.getMonth() + 1).padStart(2, '0');
+    return `${year}-${month}-15`;
+  }, [referenceDate]);
+
+  const movePeriod = direction => {
+    setReferenceDate(current => {
+      const next = new Date(current.getFullYear(), current.getMonth(), 15);
+      next.setMonth(next.getMonth() + direction * (period === 'quarterly' ? 3 : period === 'yearly' ? 12 : 1));
+      return next;
+    });
+  };
 
   const fetchStats = useCallback(async () => {
     setLoading(true);
+    setItems([]);
     setError('');
     try {
-      const params = { period };
+      const params = { period, reference_date: referenceParam };
 
       if (selectedLocation.key !== 'national') {
         params.location_id = selectedLocation.location_id;
@@ -79,7 +98,7 @@ export default function StatsScreen() {
     } finally {
       setLoading(false);
     }
-  }, [period, selectedLocation]);
+  }, [period, referenceParam, selectedLocation]);
 
   useEffect(() => {
     fetchStats();
@@ -135,20 +154,13 @@ export default function StatsScreen() {
             description="Compara el rendimiento de los jugadores por periodo y ciudad."
           />
 
-          {/* Controles */}
+          {/* Filtros compactos */}
           <View style={styles.controlsCard}>
-            <View style={styles.segmentBlock}>
-              <Text style={styles.segmentLabel}>Periodo</Text>
-              <View style={styles.segmentRow}>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.segmentRow}>
                 {PERIODS.map(p => (
                   <Pill key={p.key} label={p.label} active={period === p.key} onPress={() => setPeriod(p.key)} />
                 ))}
-              </View>
-            </View>
-
-            <View style={styles.segmentBlock}>
-              <Text style={styles.segmentLabel}>Ciudad</Text>
-              <View style={styles.segmentRow}>
+              <View style={styles.filterDivider} />
                 {LOCATIONS.map(item => (
                   <Pill
                     key={item.key}
@@ -157,15 +169,19 @@ export default function StatsScreen() {
                     onPress={() => setLocation(item.key)}
                   />
                 ))}
-              </View>
-              <Text style={styles.cityHelp}>
-                Nacional mezcla todas las sedes. Valladolid y Asturias cuentan solo partidos de esa localización.
-              </Text>
+            </ScrollView>
+            <View style={styles.dateNavigator}>
+              <TouchableOpacity style={styles.arrowButton} onPress={() => movePeriod(-1)} accessibilityLabel="Periodo anterior">
+                <Ionicons name="chevron-back" size={20} color="#fff" />
+              </TouchableOpacity>
+              <Text style={styles.dateLabel}>{periodCaption}</Text>
+              <TouchableOpacity style={styles.arrowButton} onPress={() => movePeriod(1)} accessibilityLabel="Periodo siguiente">
+                <Ionicons name="chevron-forward" size={20} color="#fff" />
+              </TouchableOpacity>
             </View>
           </View>
 
-          {/* Título dinámico */}
-          <Text style={styles.dynamicTitle}>{title}</Text>
+          <Text style={styles.dynamicTitle}>Ranking · {selectedLocation.label}</Text>
 
           {/* Lista */}
           <View style={styles.listCard}>
@@ -206,21 +222,20 @@ const styles = StyleSheet.create({
   controlsCard: {
     backgroundColor: 'rgba(17,21,27,0.92)',
     borderRadius: radii.large,
-    padding: spacing(2),
+    paddingHorizontal: spacing(1),
+    paddingVertical: spacing(0.8),
     borderWidth: 1,
     borderColor: colors.border,
-    marginBottom: spacing(2),
+    marginBottom: spacing(1),
   },
-  segmentBlock: { marginBottom: spacing(1.5) },
-  segmentLabel: { color: colors.white, marginBottom: spacing(1), ...typography.caption },
-  cityHelp: { color: colors.textSubtle, fontSize: 12, fontWeight: '600', marginTop: 8, lineHeight: 17 },
-  segmentRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  segmentRow: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 2 },
+  filterDivider: { width: 1, height: 25, backgroundColor: 'rgba(255,255,255,0.18)', marginHorizontal: 2 },
 
   pill: {
-    minHeight: layout.minTouchTarget,
+    minHeight: 34,
     justifyContent: 'center',
-    paddingVertical: 8,
-    paddingHorizontal: 14,
+    paddingVertical: 5,
+    paddingHorizontal: 11,
     borderRadius: radii.pill,
     backgroundColor: 'rgba(255,255,255,0.08)',
     borderWidth: 1,
@@ -230,13 +245,18 @@ const styles = StyleSheet.create({
     backgroundColor: ORANGE,
     borderColor: ORANGE,
   },
-  pillText: { color: '#eaeaea', fontWeight: '600' },
+  pillText: { color: '#eaeaea', fontWeight: '700', fontSize: 12 },
   pillTextActive: { color: '#000', fontWeight: '800' },
+
+  dateNavigator: { height: 38, marginTop: 6, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: 'rgba(255,255,255,0.05)', borderRadius: 12 },
+  arrowButton: { width: 42, height: 38, alignItems: 'center', justifyContent: 'center' },
+  dateLabel: { color: colors.white, fontSize: 13, fontWeight: '800', textTransform: 'capitalize' },
 
   dynamicTitle: {
     color: colors.white,
-    ...typography.heading,
-    marginBottom: spacing(1),
+    fontSize: 15,
+    fontWeight: '900',
+    marginBottom: spacing(0.7),
   },
 
   listCard: {

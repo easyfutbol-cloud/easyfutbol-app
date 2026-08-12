@@ -1,9 +1,49 @@
 import { Router } from 'express';
 import { pool } from '../config/db.js';
+import { madridWallTimeToUtc, toMysqlUtc } from '../utils/madridDateTime.js';
 
 const router = Router();
 
 const normalizeLocationSlug = (value = '') => String(value || '').trim().toLowerCase();
+
+const madridCalendarDate = () => {
+  const parts = Object.fromEntries(new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Europe/Madrid', year: 'numeric', month: '2-digit', day: '2-digit',
+  }).formatToParts(new Date()).filter(part => part.type !== 'literal').map(part => [part.type, part.value]));
+  return `${parts.year}-${parts.month}-${parts.day}`;
+};
+
+const calendarDate = (year, monthIndex, day = 1) => {
+  const value = new Date(Date.UTC(year, monthIndex, day));
+  return value.toISOString().slice(0, 10);
+};
+
+const getPeriodBounds = (period, rawReferenceDate) => {
+  const candidate = String(rawReferenceDate || '');
+  const candidateDate = /^\d{4}-\d{2}-\d{2}$/.test(candidate) ? new Date(`${candidate}T12:00:00Z`) : null;
+  const referenceDate = candidateDate && !Number.isNaN(candidateDate.getTime())
+    && candidateDate.toISOString().slice(0, 10) === candidate ? candidate : madridCalendarDate();
+  const [year, month] = referenceDate.split('-').map(Number);
+  let startDate;
+  let endDate;
+
+  if (period === 'quarterly') {
+    const quarterMonth = Math.floor((month - 1) / 3) * 3;
+    startDate = calendarDate(year, quarterMonth);
+    endDate = calendarDate(year, quarterMonth + 3);
+  } else if (period === 'yearly') {
+    startDate = calendarDate(year, 0);
+    endDate = calendarDate(year + 1, 0);
+  } else {
+    startDate = calendarDate(year, month - 1);
+    endDate = calendarDate(year, month);
+  }
+
+  return {
+    start: toMysqlUtc(madridWallTimeToUtc(startDate, '00:00')),
+    end: toMysqlUtc(madridWallTimeToUtc(endDate, '00:00')),
+  };
+};
 
 const getLocationFilter = (query = {}) => {
   const params = [];
@@ -45,23 +85,8 @@ router.get('/stats/top-players', async (req, res) => {
     const { period = 'monthly' } = req.query;
     const locationFilter = getLocationFilter(req.query);
 
-    let dateWhere = '';
-
-    if (period === 'monthly') {
-      dateWhere = `
-        AND m.starts_at >= DATE_FORMAT(NOW(), '%Y-%m-01')
-        AND m.starts_at < DATE_FORMAT(DATE_ADD(NOW(), INTERVAL 1 MONTH), '%Y-%m-01')
-      `;
-    } else if (period === 'quarterly') {
-      dateWhere = `
-        AND m.starts_at >= MAKEDATE(YEAR(NOW()), 1) + INTERVAL (QUARTER(NOW()) - 1) QUARTER
-        AND m.starts_at < MAKEDATE(YEAR(NOW()), 1) + INTERVAL QUARTER(NOW()) QUARTER
-      `;
-    } else if (period === 'yearly') {
-      dateWhere = `
-        AND YEAR(m.starts_at) = YEAR(NOW())
-      `;
-    }
+    const bounds = getPeriodBounds(period, req.query.reference_date || req.query.referenceDate);
+    const dateWhere = 'AND m.starts_at >= ? AND m.starts_at < ?';
 
     const sql = `
       SELECT
@@ -98,10 +123,15 @@ router.get('/stats/top-players', async (req, res) => {
       LIMIT 50
     `;
 
-    const [rows] = await pool.query(sql, locationFilter.params);
+    const [rows] = await pool.query(sql, [bounds.start, bounds.end, ...locationFilter.params]);
 
     res.json({
       ok: true,
+      period: {
+        type: period,
+        start: bounds.start,
+        end: bounds.end,
+      },
       data: rows.map((row) => ({
         ...row,
         is_plus: Boolean(row.is_plus),
