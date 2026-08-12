@@ -2,8 +2,19 @@ import express from 'express';
 import { pool } from '../config/db.js';
 import { requireAuth, requireAdmin } from '../middlewares/auth.js';
 import { formatMadridAdminDateTime, madridWallTimeToUtc, toMysqlUtc } from '../utils/madridDateTime.js';
+import { getMatchPushTokens, sendExpoPush } from '../services/push.js';
 
 const router = express.Router();
+
+async function notifyMatchPlayers(matchId, title, body, type) {
+  try {
+    const tokens = await getMatchPushTokens(matchId);
+    if (!tokens.length) return;
+    await sendExpoPush(tokens, title, body, { type, screen: 'Match', matchId: Number(matchId) });
+  } catch (error) {
+    console.error('[ADMIN MATCH NOTIFICATION]', { matchId, type, error: error?.message || error });
+  }
+}
 
 function mapDbStatusToAdminStatus(status) {
   if (status === 'scheduled') return 'open';
@@ -229,7 +240,7 @@ router.put('/:id', requireAuth, requireAdmin, async (req, res) => {
     } = req.body;
 
     const [existingRows] = await pool.query(
-      'SELECT id, capacity, spots_taken, starts_at, duration_min, status FROM matches WHERE id = ? LIMIT 1',
+      'SELECT id, title, field_id, capacity, spots_taken, starts_at, duration_min, status FROM matches WHERE id = ? LIMIT 1',
       [id]
     );
 
@@ -344,6 +355,16 @@ router.put('/:id', requireAuth, requireAdmin, async (req, res) => {
     );
 
     const updatedLocal = formatMadridAdminDateTime(updatedRows[0].starts_at, updatedRows[0].duration_min);
+    const previous = existingRows[0];
+    if (autoStatus === 'cancelled' && previous.status !== 'cancelled') {
+      await notifyMatchPlayers(id, 'Partido cancelado', `${title} ha sido cancelado. Abre la app para consultar los detalles.`, 'match_cancelled');
+    } else if (
+      new Date(previous.starts_at).getTime() !== startsAt.getTime() ||
+      Number(previous.field_id) !== parsedFieldId
+    ) {
+      const when = `${updatedLocal?.match_date || match_date} a las ${String(updatedLocal?.start_time || start_time).slice(0, 5)}`;
+      await notifyMatchPlayers(id, 'Cambio en tu partido', `${title} se jugará el ${when}. Revisa el campo y los detalles en la app.`, 'match_updated');
+    }
     res.json({
       message: 'Partido actualizado correctamente',
       match: {
@@ -373,6 +394,9 @@ router.patch('/:id/status', requireAuth, requireAdmin, async (req, res) => {
       return res.status(400).json({ error: 'Estado no válido' });
     }
 
+    const [[match]] = await pool.query('SELECT id,title,status FROM matches WHERE id=? LIMIT 1', [id]);
+    if (!match) return res.status(404).json({ error: 'Partido no encontrado' });
+
     const [result] = await pool.query(
       `
         UPDATE matches
@@ -382,8 +406,8 @@ router.patch('/:id/status', requireAuth, requireAdmin, async (req, res) => {
       [dbStatus, id]
     );
 
-    if (result.affectedRows === 0) {
-      return res.status(404).json({ error: 'Partido no encontrado' });
+    if (dbStatus === 'cancelled' && match.status !== 'cancelled') {
+      await notifyMatchPlayers(id, 'Partido cancelado', `${match.title} ha sido cancelado. Abre la app para consultar los detalles.`, 'match_cancelled');
     }
 
     res.json({ message: 'Estado actualizado correctamente' });

@@ -40,8 +40,11 @@ export async function createSocialNotification(db, {
   );
   if (!result.affectedRows) return false;
   const [tokenRows] = await db.query(
-    `SELECT expo_push_token AS token FROM push_tokens WHERE user_id=? AND is_active=1
-     UNION SELECT push_token AS token FROM users WHERE id=? AND push_token IS NOT NULL`,
+    `SELECT CONVERT(expo_push_token USING utf8mb4) COLLATE utf8mb4_unicode_ci AS token
+       FROM push_tokens WHERE user_id=? AND is_active=1
+     UNION
+     SELECT CONVERT(push_token USING utf8mb4) COLLATE utf8mb4_unicode_ci AS token
+       FROM users WHERE id=? AND push_token IS NOT NULL`,
     [userId,userId]
   );
   const tokens=[...new Set(tokenRows.map((row)=>row.token).filter(Boolean))];

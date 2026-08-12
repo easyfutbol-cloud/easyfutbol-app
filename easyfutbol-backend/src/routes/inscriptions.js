@@ -330,7 +330,7 @@ router.post('/matches/:id/join-with-easypass', requireAuth, async (req, res) => 
           body,
           data: {
             type: 'match_confirmed',
-            screen: 'EventDetails',
+            screen: 'Match',
             matchId,
             quantity,
           },

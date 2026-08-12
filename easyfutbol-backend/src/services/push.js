@@ -66,11 +66,13 @@ export async function getMatchPushTokens(matchId) {
     `SELECT DISTINCT token_data.push_token
      FROM inscriptions i
      JOIN (
-       SELECT id AS user_id, push_token
+       SELECT id AS user_id,
+              CONVERT(push_token USING utf8mb4) COLLATE utf8mb4_unicode_ci AS push_token
        FROM users
        WHERE push_token IS NOT NULL AND push_token <> ''
        UNION
-       SELECT user_id, expo_push_token AS push_token
+       SELECT user_id,
+              CONVERT(expo_push_token USING utf8mb4) COLLATE utf8mb4_unicode_ci AS push_token
        FROM push_tokens
        WHERE is_active = 1 AND expo_push_token IS NOT NULL AND expo_push_token <> ''
      ) token_data ON token_data.user_id = ${hasAssignedUser ? 'COALESCE(i.assigned_user_id, i.user_id)' : 'i.user_id'}
@@ -86,11 +88,13 @@ export async function getCityPushTokens(locationSlug) {
     `SELECT DISTINCT token_data.push_token
      FROM users u
      JOIN (
-       SELECT id AS user_id, push_token
+       SELECT id AS user_id,
+              CONVERT(push_token USING utf8mb4) COLLATE utf8mb4_unicode_ci AS push_token
        FROM users
        WHERE push_token IS NOT NULL AND push_token <> ''
        UNION
-       SELECT user_id, expo_push_token AS push_token
+       SELECT user_id,
+              CONVERT(expo_push_token USING utf8mb4) COLLATE utf8mb4_unicode_ci AS push_token
        FROM push_tokens
        WHERE is_active = 1 AND expo_push_token IS NOT NULL AND expo_push_token <> ''
      ) token_data ON token_data.user_id = u.id

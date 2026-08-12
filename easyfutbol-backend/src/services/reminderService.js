@@ -92,11 +92,11 @@ export async function sendMatchReminders({ hoursAhead = 4, windowMinutes = 10 } 
   for (const candidate of candidates) {
     try {
       const [tokenRows] = await pool.query(
-        `SELECT push_token
+        `SELECT CONVERT(push_token USING utf8mb4) COLLATE utf8mb4_unicode_ci AS push_token
          FROM users
          WHERE id = ? AND push_token IS NOT NULL AND push_token <> ''
          UNION
-         SELECT expo_push_token AS push_token
+         SELECT CONVERT(expo_push_token USING utf8mb4) COLLATE utf8mb4_unicode_ci AS push_token
          FROM push_tokens
          WHERE user_id = ? AND is_active = 1`,
         [candidate.user_id, candidate.user_id]

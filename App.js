@@ -819,10 +819,12 @@ export default function App() {
     const subReceived = Notifications.addNotificationReceivedListener(() => {});
     const subResponse = Notifications.addNotificationResponseReceivedListener((response) => {
       const data = response?.notification?.request?.content?.data || {};
-      if (data.screen === 'Match' && data.matchId && navigationRef.isReady()) {
-        navigationRef.navigate('Match', { matchId: Number(data.matchId) });
-      } else if (data.screen && navigationRef.isReady()) {
-        navigationRef.navigate(data.screen, data.matchId ? { matchId: Number(data.matchId) } : undefined);
+      if (data.screen && navigationRef.isReady()) {
+        const { screen, ...rawParams } = data;
+        const params = { ...rawParams };
+        if (params.matchId) params.matchId = Number(params.matchId);
+        if (params.userId) params.userId = Number(params.userId);
+        navigationRef.navigate(screen, params);
       }
     });
     return () => {

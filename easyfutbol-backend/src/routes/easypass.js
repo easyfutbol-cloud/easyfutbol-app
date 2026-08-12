@@ -4,6 +4,7 @@ import { pool } from '../config/db.js';
 import * as authMiddleware from '../middlewares/auth.js';
 import { getPlusFairPlayStatus } from '../services/plusFairPlayService.js';
 import { getUserEntitlements } from '../services/subscriptionService.js';
+import { createSocialNotification } from '../services/socialService.js';
 
 const requireAuth =
   authMiddleware.default ||
@@ -217,6 +218,21 @@ router.post('/me/credits/gift', requireAuth, async (req,res) => {
       [senderId,-amount,`Para ${recipient.name} · ${location.name}`,`gift:${giftResult.insertId}`,recipientId,amount,`De ${sender.name} · ${location.name}`,`gift:${giftResult.insertId}`]
     );
     await conn.commit();
+    try {
+      await createSocialNotification(pool, {
+        userId: recipientId,
+        actorId: senderId,
+        type: 'easypass_gift',
+        entityType: 'easypass_gift',
+        entityId: Number(giftResult.insertId),
+        title: 'Has recibido EasyPass',
+        body: `${sender.name} te ha regalado ${amount} EasyPass de ${location.name}.`,
+        data: { screen: 'EasyPass', locationId, giftId: Number(giftResult.insertId) },
+        dedupeKey: `easypass-gift:${giftResult.insertId}`,
+      });
+    } catch (notificationError) {
+      console.error('[EASYPASS GIFT NOTIFICATION]', notificationError?.message || notificationError);
+    }
     res.status(201).json({ok:true,gift_id:Number(giftResult.insertId),balance:currentBalance-amount,msg:`Has regalado ${amount} EasyPass a ${recipient.name}`});
   } catch(error) {
     await conn.rollback();
