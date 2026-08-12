@@ -92,7 +92,7 @@ const Stack = createNativeStackNavigator();
 const ORANGE = '#ff5a00';
 const APP_LOGO = require('./assets/Logo.png');
 // Prueba temporal del bloqueo obligatorio. Cambiar a false después de comprobarlo.
-const FORCE_UPDATE_TEST = true;
+const FORCE_UPDATE_TEST = false;
 const TEST_MIN_VERSION = '2.0.1';
 const STORE_URLS = {
   android: 'https://play.google.com/store/apps/details?id=es.easyfutbol.app',
