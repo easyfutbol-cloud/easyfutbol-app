@@ -10,7 +10,7 @@ import { buildReferralCode } from '../services/referralService.js';
 const router = Router();
 
 const JWT_SECRET = process.env.JWT_SECRET || 'dev_secret';
-const JWT_EXPIRES = process.env.JWT_EXPIRES || '30d';
+const JWT_EXPIRES = process.env.JWT_EXPIRES || '365d';
 
 const GOOGLE_CLIENT_ID =
   process.env.GOOGLE_CLIENT_ID ||

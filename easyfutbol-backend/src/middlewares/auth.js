@@ -37,6 +37,7 @@ export function requireAuth(req, res, next) {
 
     return next();
   } catch (error) {
+    const sessionExpired = error?.name === 'TokenExpiredError';
     console.log('AUTH ERROR 401 - Token inválido', {
       path: req.originalUrl,
       method: req.method,
@@ -44,7 +45,11 @@ export function requireAuth(req, res, next) {
       name: error?.name,
       tokenStart: token ? token.slice(0, 12) : null,
     });
-    return res.status(401).json({ ok: false, msg: 'Token inválido' });
+    return res.status(401).json({
+      ok: false,
+      code: sessionExpired ? 'SESSION_EXPIRED' : 'INVALID_TOKEN',
+      msg: sessionExpired ? 'La sesión ha caducado' : 'Token inválido',
+    });
   }
 }
 

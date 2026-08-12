@@ -33,7 +33,11 @@ api.interceptors.request.use(async (config) => {
 api.interceptors.response.use(
   (response) => response,
   async (error) => {
-    if (error.response?.status === 401 && !handlingExpiredSession) {
+    const sessionExpired =
+      error.response?.status === 401 &&
+      error.response?.data?.code === 'SESSION_EXPIRED';
+
+    if (sessionExpired && !handlingExpiredSession) {
       handlingExpiredSession = true;
 
       await AsyncStorage.multiRemove([
