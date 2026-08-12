@@ -1,4 +1,4 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
   Alert,
   Image,
@@ -14,11 +14,14 @@ import {
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useFocusEffect } from '@react-navigation/native';
 import { LinearGradient } from 'expo-linear-gradient';
+import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { api } from '../api/client';
 import SportsFeatureCard from '../components/SportsFeatureCard';
 import { menuController } from '../navigation/menuController';
+import { publishUnreadNotifications, subscribeUnreadNotifications } from '../utils/notificationEvents';
+import { syncNotificationBadge } from '../utils/notifications';
 import {
   colors,
   gradients,
@@ -54,6 +57,7 @@ export default function HomeScreen({ navigation }) {
   const [easyPassBalance, setEasyPassBalance] = useState(0);
   const [easyPassLoading, setEasyPassLoading] = useState(false);
   const [upcomingTournament, setUpcomingTournament] = useState(null);
+  const [unreadNotifications, setUnreadNotifications] = useState(0);
 
   const requireAuth = useCallback((targetScreen) => {
     if (isLogged) {
@@ -89,6 +93,14 @@ export default function HomeScreen({ navigation }) {
       setDisplayName(user?.username || user?.name || '');
 
       if (token) {
+        api.get('/social/notifications')
+          .then(({ data }) => {
+            const count = Math.max(0, Number(data?.unread_count) || 0);
+            setUnreadNotifications(count);
+            publishUnreadNotifications(count);
+            syncNotificationBadge(count);
+          })
+          .catch(() => setUnreadNotifications(0));
         setEasyPassLoading(true);
         try {
           const response = await api.get('/me/credits');
@@ -101,6 +113,7 @@ export default function HomeScreen({ navigation }) {
           setEasyPassLoading(false);
         }
       } else {
+        setUnreadNotifications(0);
         setEasyPassBalance(0);
         setEasyPassLoading(false);
       }
@@ -111,9 +124,12 @@ export default function HomeScreen({ navigation }) {
       setAvatar(null);
       setDisplayName('');
       setEasyPassBalance(0);
+      setUnreadNotifications(0);
       setEasyPassLoading(false);
     }
   }, []);
+
+  useEffect(() => subscribeUnreadNotifications(setUnreadNotifications), []);
 
   useFocusEffect(
     useCallback(() => {
@@ -230,6 +246,22 @@ export default function HomeScreen({ navigation }) {
             </View>
 
             <View style={styles.headerActions}>
+              {isLogged ? (
+                <TouchableOpacity
+                  onPress={() => navigation.navigate('Notifications')}
+                  style={styles.notificationButton}
+                  accessibilityRole="button"
+                  accessibilityLabel={`${unreadNotifications} notificaciones sin leer`}
+                >
+                  <Ionicons name={unreadNotifications ? 'notifications' : 'notifications-outline'} size={22} color={colors.white} />
+                  {unreadNotifications > 0 ? (
+                    <View style={[styles.notificationBadge, unreadNotifications > 10 && styles.notificationBadgeWide]}>
+                      <Text style={styles.notificationBadgeText}>{unreadNotifications > 10 ? '+10' : unreadNotifications}</Text>
+                    </View>
+                  ) : null}
+                </TouchableOpacity>
+              ) : null}
+
               <TouchableOpacity
                 onPress={() => requireAuth('EasyPass')}
                 style={styles.balanceButton}
@@ -379,6 +411,32 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: spacing(1),
   },
+  notificationButton: {
+    width: layout.minTouchTarget,
+    height: layout.minTouchTarget,
+    borderRadius: radii.pill,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255,255,255,0.09)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.14)',
+  },
+  notificationBadge: {
+    position: 'absolute',
+    top: -3,
+    right: -3,
+    minWidth: 19,
+    height: 19,
+    paddingHorizontal: 4,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#ff5a00',
+    borderWidth: 2,
+    borderColor: '#0b0b0d',
+  },
+  notificationBadgeWide: { minWidth: 27 },
+  notificationBadgeText: { color: '#fff', fontSize: 9, lineHeight: 11, fontWeight: '900' },
   balanceButton: {
     minWidth: 62,
     height: layout.minTouchTarget,

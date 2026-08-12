@@ -91,6 +91,13 @@ try {
 const Stack = createNativeStackNavigator();
 const ORANGE = '#ff5a00';
 const APP_LOGO = require('./assets/Logo.png');
+// Prueba temporal del bloqueo obligatorio. Cambiar a false después de comprobarlo.
+const FORCE_UPDATE_TEST = true;
+const TEST_MIN_VERSION = '2.0.1';
+const STORE_URLS = {
+  android: 'https://play.google.com/store/apps/details?id=es.easyfutbol.app',
+  ios: 'https://apps.apple.com/es/search?term=EasyFutbol',
+};
 
 // Tema oscuro sin barra superior por defecto
 const navTheme = {
@@ -124,12 +131,23 @@ function isVersionLower(currentVersion, minVersion) {
 }
 
 async function checkMinimumAppVersion() {
+  const currentVersion =
+    Constants?.expoConfig?.version ||
+    Constants?.manifest?.version ||
+    Application?.nativeApplicationVersion ||
+    '0.0.0';
+
+  if (FORCE_UPDATE_TEST) {
+    return {
+      needsUpdate: true,
+      currentVersion,
+      minVersion: TEST_MIN_VERSION,
+      message: 'Prueba de actualización obligatoria. Debes actualizar EasyFutbol para continuar.',
+      storeUrl: Platform.OS === 'ios' ? STORE_URLS.ios : STORE_URLS.android,
+    };
+  }
+
   try {
-    const currentVersion =
-      Constants?.expoConfig?.version ||
-      Constants?.manifest?.version ||
-      Application?.nativeApplicationVersion ||
-      '0.0.0';
     const versionUrl = 'https://api.easyfutbol.es/api/app-config/version';
 
     console.log('APP VERSION REQUEST:', versionUrl);
