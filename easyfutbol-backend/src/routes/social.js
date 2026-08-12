@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { pool } from '../config/db.js';
 import { requireAuth } from '../middlewares/auth.js';
 import { areFriends, createSocialNotification, expireMatchInvitations, getFriendshipStatus, positiveId } from '../services/socialService.js';
-import { getBestTeammates, getFrequentPlayers, getPairStats } from '../services/socialStatsService.js';
+import { getBestTeammates, getFrequentPlayers } from '../services/socialStatsService.js';
 
 const router = Router();
 router.use(requireAuth);
@@ -39,6 +39,45 @@ router.get('/friends', async (req,res) => {
     );
     res.json({ok:true,items:rows,page,has_more:rows.length===limit});
   } catch(error) { console.error('[SOCIAL friends]',error); fail(res,500,'No se pudieron cargar tus amigos'); }
+});
+
+router.get('/friends/matches', async (req,res) => {
+  try {
+    const userId=req.user.id;
+    const [rows]=await pool.query(
+      `SELECT m.id match_id,m.title,m.starts_at,m.capacity,m.spots_taken,
+              u.id friend_id,u.name friend_name,u.avatar_url friend_avatar,i.ticket_type
+       FROM friendships f
+       JOIN users u ON u.id=IF(f.requester_id=?,f.addressee_id,f.requester_id)
+       JOIN inscriptions i ON i.user_id=u.id AND i.status IN ('pending','confirmed')
+       JOIN matches m ON m.id=i.match_id
+       WHERE f.status='accepted' AND (f.requester_id=? OR f.addressee_id=?)
+         AND m.starts_at>NOW() AND m.status<>'cancelled'
+       ORDER BY m.starts_at ASC,u.name ASC`,
+      [userId,userId,userId]
+    );
+    res.json({ok:true,items:rows});
+  } catch(error) { console.error('[SOCIAL friend matches]',error); fail(res,500,'No se pudieron cargar los partidos de tus amigos'); }
+});
+
+router.get('/friends/stats', async (req,res) => {
+  try {
+    const userId=req.user.id;
+    const [rows]=await pool.query(
+      `SELECT u.id,u.name,u.avatar_url,u.preferred_location,
+              COALESCE(SUM(mps.goals),0) goals,
+              COALESCE(SUM(mps.assists),0) assists,
+              COALESCE(SUM(mps.result='win'),0) wins
+       FROM friendships f
+       JOIN users u ON u.id=IF(f.requester_id=?,f.addressee_id,f.requester_id)
+       LEFT JOIN match_player_stats mps ON mps.user_id=u.id
+       WHERE f.status='accepted' AND (f.requester_id=? OR f.addressee_id=?)
+       GROUP BY u.id,u.name,u.avatar_url,u.preferred_location
+       ORDER BY wins DESC,goals DESC,assists DESC,u.name ASC`,
+      [userId,userId,userId]
+    );
+    res.json({ok:true,items:rows.map((row)=>({...row,goals:Number(row.goals),assists:Number(row.assists),wins:Number(row.wins)}))});
+  } catch(error) { console.error('[SOCIAL friend stats]',error); fail(res,500,'No se pudieron cargar las estadísticas de tus amigos'); }
 });
 
 router.get('/requests/:direction(received|sent)', async (req,res) => {
@@ -136,8 +175,12 @@ router.get('/users/:userId/stats', async (req,res) => {
   const otherId=positiveId(req.params.userId); if (!otherId) return fail(res,400,'Usuario no válido');
   try {
     const [[user]]=await pool.query('SELECT id,name,avatar_url,preferred_location FROM users WHERE id=?',[otherId]); if (!user) return fail(res,404,'Usuario no encontrado');
-    const [[friendship]]=await pool.query(`SELECT created_at FROM friendships WHERE status='accepted' AND user_low_id=LEAST(?,?) AND user_high_id=GREATEST(?,?)`,[req.user.id,otherId,req.user.id,otherId]);
-    res.json({ok:true,user,friendship:await getFriendshipStatus(pool,req.user.id,otherId),stats:await getPairStats(pool,req.user.id,otherId,friendship?.created_at)});
+    const [[stats]]=await pool.query(
+      `SELECT COALESCE(SUM(goals),0) goals,COALESCE(SUM(assists),0) assists,
+              COALESCE(SUM(result='win'),0) wins
+       FROM match_player_stats WHERE user_id=?`,[otherId]
+    );
+    res.json({ok:true,user,friendship:await getFriendshipStatus(pool,req.user.id,otherId),stats:{goals:Number(stats.goals),assists:Number(stats.assists),wins:Number(stats.wins)}});
   } catch(error) { console.error('[SOCIAL pair stats]',error); fail(res,500,'No se pudieron calcular las estadísticas'); }
 });
 

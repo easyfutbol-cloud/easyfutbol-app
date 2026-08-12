@@ -2,6 +2,7 @@ export const PRIMARY_TABS = [
   { key: 'home', label: 'Inicio', route: 'Home', icon: 'home-outline', activeIcon: 'home' },
   { key: 'matches', label: 'Partidos', route: 'Matchs', icon: 'football-outline', activeIcon: 'football' },
   { key: 'myMatches', label: 'Mis partidos', route: 'MisPartidos', icon: 'calendar-outline', activeIcon: 'calendar' },
+  { key: 'friends', label: 'Amigos', route: 'Social', icon: 'people-outline', activeIcon: 'people' },
   { key: 'profile', label: 'Perfil', route: 'Profile', icon: 'person-circle-outline', activeIcon: 'person-circle' },
 ];
 
@@ -14,6 +15,9 @@ const ROUTE_TAB = {
   Match: 'matches',
   MyMatches: 'myMatches',
   MisPartidos: 'myMatches',
+  Social: 'friends',
+  PlayerSocialProfile: 'friends',
+  FriendGroupDetail: 'friends',
   Profile: 'profile',
   Stats: 'profile',
   Achievements: 'profile',
