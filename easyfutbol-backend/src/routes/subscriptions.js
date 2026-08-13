@@ -15,7 +15,7 @@ async function getReusableStripeCustomerId(customerId) {
     const customer = await stripe.customers.retrieve(customerId);
     return customer && !customer.deleted ? customer.id : null;
   } catch (error) {
-    if (error?.code === 'resource_missing' && error?.param === 'customer') {
+    if (error?.code === 'resource_missing') {
       console.warn('[STRIPE customer unavailable]', { customerId });
       return null;
     }
