@@ -9,6 +9,20 @@ const router = express.Router();
 const stripe = process.env.STRIPE_SECRET_KEY ? new Stripe(process.env.STRIPE_SECRET_KEY) : null;
 const APP_BASE_URL = String(process.env.APP_BASE_URL || process.env.FRONTEND_URL || 'https://easyfutbol.es').replace(/\/$/, '');
 
+async function getReusableStripeCustomerId(customerId) {
+  if (!customerId) return null;
+  try {
+    const customer = await stripe.customers.retrieve(customerId);
+    return customer && !customer.deleted ? customer.id : null;
+  } catch (error) {
+    if (error?.code === 'resource_missing' && error?.param === 'customer') {
+      console.warn('[STRIPE customer unavailable]', { customerId });
+      return null;
+    }
+    throw error;
+  }
+}
+
 router.get('/plans', async (_req, res) => {
   try { return res.json({ ok: true, data: await listSubscriptionPlans() }); }
   catch (error) { console.error('[GET subscription plans]', error); return res.status(500).json({ ok:false, msg:'No se pudieron cargar los planes' }); }
@@ -37,6 +51,7 @@ router.post('/:planCode/checkout', requireAuth, async (req, res) => {
     });
     const [[user]] = await pool.query('SELECT id,email FROM users WHERE id=? LIMIT 1', [req.user.id]);
     const [[previous]] = await pool.query('SELECT stripe_customer_id FROM user_subscriptions WHERE user_id=? AND stripe_customer_id IS NOT NULL ORDER BY id DESC LIMIT 1',[req.user.id]);
+    const reusableCustomerId = await getReusableStripeCustomerId(previous?.stripe_customer_id);
     const billingConfig=getFirstDayBillingConfig();
     const metadata = {
       kind:'easyfutbol_subscription', subscriptionPlan:planCode, userId:String(req.user.id),
@@ -44,8 +59,8 @@ router.post('/:planCode/checkout', requireAuth, async (req, res) => {
     };
     const lineItem=priceId ? { price:priceId,quantity:1 } : { price_data:{ currency:String(plan.currency || 'EUR').toLowerCase(),unit_amount:Number(plan.price_cents),recurring:{ interval:plan.billing_interval || 'month' },product_data:{ name:plan.name,description:`Suscripción mensual ${plan.name}` } },quantity:1 };
     const session = await stripe.checkout.sessions.create({
-      mode:'subscription', customer:previous?.stripe_customer_id || undefined,
-      customer_email:previous?.stripe_customer_id ? undefined : user?.email, client_reference_id:String(req.user.id),
+      mode:'subscription', customer:reusableCustomerId || undefined,
+      customer_email:reusableCustomerId ? undefined : user?.email, client_reference_id:String(req.user.id),
       line_items:[lineItem], metadata, subscription_data:{ metadata },
       success_url:`${APP_BASE_URL}/pago-ok/?subscription=${planCode}&session_id={CHECKOUT_SESSION_ID}`,
       cancel_url:`${APP_BASE_URL}/pago-cancelado/?subscription=${planCode}`,
