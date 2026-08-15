@@ -20,6 +20,15 @@ test('normaliza acentos, separadores y sustituciones por números', () => {
   assert.equal(validatePublicName('h.i.j.o.d.e.p.u.t.a').code, 'OFFENSIVE_PUBLIC_NAME');
 });
 
+test('bloquea contenido sexual y ofensivo en varios idiomas', () => {
+  assert.equal(validatePublicName('tight pussy').code, 'OFFENSIVE_PUBLIC_NAME');
+  assert.equal(validatePublicName('tightpussy69').code, 'OFFENSIVE_PUBLIC_NAME');
+  assert.equal(validatePublicName('pussу').code, 'OFFENSIVE_PUBLIC_NAME');
+  assert.equal(validatePublicName('puttana').code, 'OFFENSIVE_PUBLIC_NAME');
+  assert.equal(validatePublicName('caralho').code, 'OFFENSIVE_PUBLIC_NAME');
+  assert.equal(validatePublicName('arschloch').code, 'OFFENSIVE_PUBLIC_NAME');
+});
+
 test('limita la longitud de los nombres públicos', () => {
   assert.equal(validatePublicName('a').code, 'INVALID_PUBLIC_NAME');
   assert.equal(validatePublicName('a'.repeat(41)).code, 'INVALID_PUBLIC_NAME');
