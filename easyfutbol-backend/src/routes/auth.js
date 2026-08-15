@@ -6,6 +6,7 @@ import { OAuth2Client } from 'google-auth-library';
 import crypto from 'crypto';
 import nodemailer from 'nodemailer';
 import { buildReferralCode } from '../services/referralService.js';
+import { validatePublicName } from '../services/publicNameModerationService.js';
 
 const router = Router();
 
@@ -153,6 +154,11 @@ router.post('/auth/register', async (req, res) => {
       return res.status(400).json({ ok: false, msg: 'Faltan datos' });
     }
 
+    const nameValidation = validatePublicName(name);
+    if (!nameValidation.ok) {
+      return res.status(422).json(nameValidation);
+    }
+
 
     // validación email básica
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) {
@@ -165,21 +171,19 @@ router.post('/auth/register', async (req, res) => {
       return res.status(400).json({ ok: false, msg: 'Teléfono no válido' });
     }
 
-    const [existingUsers] = await pool.query(
-      'SELECT id, name, email FROM users WHERE email=? OR LOWER(name)=LOWER(?)',
-      [email, name]
+    const [[existingUsername]] = await pool.query(
+      'SELECT id FROM users WHERE LOWER(TRIM(name))=LOWER(?) LIMIT 1',
+      [nameValidation.name]
     );
-    const usernameTaken = existingUsers.some(
-      (user) => String(user.name || '').trim().toLowerCase() === name.toLowerCase()
-    );
-    if (usernameTaken) {
+    if (existingUsername) {
       return res.status(409).json({ ok: false, code: 'USERNAME_TAKEN', msg: 'Este nombre de usuario ya está en uso' });
     }
-    const emailTaken = existingUsers.some(
-      (user) => normalizeEmail(user.email) === email
+    const [[existingEmail]] = await pool.query(
+      'SELECT id FROM users WHERE LOWER(TRIM(email))=? LIMIT 1',
+      [email]
     );
-    if (emailTaken) {
-      return res.status(409).json({ ok: false, msg: 'Email ya registrado' });
+    if (existingEmail) {
+      return res.status(409).json({ ok: false, code: 'EMAIL_TAKEN', msg: 'Este correo electrónico ya está registrado' });
     }
 
     let referrer = null;
@@ -205,7 +209,7 @@ router.post('/auth/register', async (req, res) => {
     try {
       const [r] = await pool.query(
         'INSERT INTO users (name, email, password_hash, role, phone, preferred_location, email_verified, email_verify_code_hash, email_verify_expires_at) VALUES (?,?,?,?,?,?,?,?,?)',
-        [name, email, hash, 'player', phoneDigits, preferredLocation, 0, codeHash, expires]
+        [nameValidation.name, email, hash, 'player', phoneDigits, preferredLocation, 0, codeHash, expires]
       );
       result = r;
     } catch (e) {
@@ -213,7 +217,7 @@ router.post('/auth/register', async (req, res) => {
       if (e && e.code === 'ER_BAD_FIELD_ERROR') {
         const [r] = await pool.query(
           'INSERT INTO users (name, email, password_hash, role, preferred_location, email_verified, email_verify_code_hash, email_verify_expires_at) VALUES (?,?,?,?,?,?,?,?)',
-          [name, email, hash, 'player', preferredLocation, 0, codeHash, expires]
+          [nameValidation.name, email, hash, 'player', preferredLocation, 0, codeHash, expires]
         );
         result = r;
       } else {
@@ -243,11 +247,21 @@ router.post('/auth/register', async (req, res) => {
   } catch (e) {
     console.error(e);
     if (e?.code === 'ER_DUP_ENTRY') {
-      const duplicateDetail = String(e?.sqlMessage || e?.message || '').toLowerCase();
-      if (duplicateDetail.includes('name')) {
+      // Otra petición puede crear la cuenta entre la comprobación anterior y
+      // el INSERT. Consultamos los valores en vez de depender del nombre interno
+      // del índice que MySQL incluya en el mensaje de error.
+      const name = String(req.body?.username || req.body?.user || req.body?.name || req.body?.nombre || '').trim();
+      const email = normalizeEmail(req.body?.email || req.body?.correo);
+      const [[usernameConflict]] = name
+        ? await pool.query('SELECT id FROM users WHERE LOWER(TRIM(name))=LOWER(?) LIMIT 1', [name])
+        : [[]];
+      if (usernameConflict) {
         return res.status(409).json({ ok: false, code: 'USERNAME_TAKEN', msg: 'Este nombre de usuario ya está en uso' });
       }
-      if (duplicateDetail.includes('email')) {
+      const [[emailConflict]] = email
+        ? await pool.query('SELECT id FROM users WHERE LOWER(TRIM(email))=? LIMIT 1', [email])
+        : [[]];
+      if (emailConflict) {
         return res.status(409).json({ ok: false, code: 'EMAIL_TAKEN', msg: 'Este correo electrónico ya está registrado' });
       }
       return res.status(409).json({ ok: false, code: 'ACCOUNT_EXISTS', msg: 'Ya existe una cuenta con esos datos' });

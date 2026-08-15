@@ -363,14 +363,32 @@ export default function AccessScreen({ navigation, route }) {
         }
       );
 
+      if (!res.ok) {
+        if (json?.code === 'USERNAME_TAKEN') {
+          Alert.alert(
+            'Nombre no disponible',
+            'Este nombre de usuario ya está en uso. Prueba con otro diferente.'
+          );
+          return;
+        }
+        if (json?.code === 'EMAIL_TAKEN') {
+          Alert.alert(
+            'Correo ya registrado',
+            'Ya existe una cuenta con este correo electrónico. Puedes iniciar sesión o recuperar tu contraseña.'
+          );
+          return;
+        }
+        if (json?.code === 'OFFENSIVE_PUBLIC_NAME' || json?.code === 'INVALID_PUBLIC_NAME') {
+          Alert.alert('Nombre no permitido', json?.msg || 'Elige un nombre respetuoso para la comunidad.');
+          return;
+        }
+        throw new Error(json?.msg || json?.message || `Error API: ${res.status}`);
+      }
+
       // En el nuevo flujo, el backend puede pedir verificación de email (no devuelve token todavía)
       if (json?.needsEmailVerification) {
         navigation.navigate('VerifyEmail', { email: em });
         return;
-      }
-
-      if (!res.ok) {
-        throw new Error(json?.msg || json?.message || `Error API: ${res.status}`);
       }
 
       const { token, user } = pickAuthData(json);

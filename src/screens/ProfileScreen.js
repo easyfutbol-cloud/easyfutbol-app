@@ -344,8 +344,16 @@ export default function ProfileScreen({ navigation }) {
 
       if (res.status === 401) { setErrMsg('Sesión expirada. Vuelve a iniciar sesión.'); return; }
       if (!res.ok) {
-        const txt = await res.text().catch(()=> '');
-        throw new Error(txt || `Error ${res.status}`);
+        const json = await res.json().catch(()=> ({}));
+        if (json?.code === 'OFFENSIVE_PUBLIC_NAME' || json?.code === 'INVALID_PUBLIC_NAME') {
+          Alert.alert('Nombre no permitido', json?.msg || 'Elige un nombre respetuoso para la comunidad.');
+          return;
+        }
+        if (json?.code === 'USERNAME_TAKEN') {
+          Alert.alert('Nombre no disponible', 'Este nombre de usuario ya está en uso. Prueba con otro diferente.');
+          return;
+        }
+        throw new Error(json?.msg || `Error ${res.status}`);
       }
       Alert.alert('Perfil actualizado');
       setPassword(''); setEditing(false);

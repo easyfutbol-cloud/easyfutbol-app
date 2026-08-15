@@ -9,6 +9,7 @@ import { Expo } from 'expo-server-sdk';
 import { getUserEntitlements } from '../services/subscriptionService.js';
 import { getPlayerReputation } from '../services/playerReputationService.js';
 import { getBestTeammates } from '../services/socialStatsService.js';
+import { validatePublicName } from '../services/publicNameModerationService.js';
 
 const router = Router();
 const expo = new Expo();
@@ -239,8 +240,17 @@ router.patch('/me/profile', requireAuth, async (req, res) => {
     const values = [];
 
     if (name) {
+      const nameValidation = validatePublicName(name);
+      if (!nameValidation.ok) return res.status(422).json(nameValidation);
+      const [[nameOwner]] = await pool.query(
+        'SELECT id FROM users WHERE LOWER(TRIM(name))=LOWER(?) AND id<>? LIMIT 1',
+        [nameValidation.name, userId]
+      );
+      if (nameOwner) {
+        return res.status(409).json({ ok:false, code:'USERNAME_TAKEN', msg:'Este nombre de usuario ya está en uso' });
+      }
       fields.push('name=?');
-      values.push(name);
+      values.push(nameValidation.name);
     }
     if (email) {
       fields.push('email=?');
