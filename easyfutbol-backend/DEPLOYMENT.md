@@ -34,18 +34,17 @@ Conserva el stash hasta verificar visualmente varios avatares en la aplicación.
 
 ### Promoción de Asturias
 
-Desde el 23/08/2026 los packs de la sede cuyo `slug` sea `asturias` tienen un
-10% de descuento automático. Antes de desplegar, crea en Stripe un cupón del
-10% y configura su identificador en el entorno de producción:
+Desde el 23/08/2026, el Checkout de los packs de la sede cuyo `slug` sea
+`asturias` permite introducir códigos promocionales. Los precios del catálogo
+no cambian y el campo de código promocional no se habilita en otras sedes:
 
 ```env
-STRIPE_ASTURIAS_COUPON_ID=coupon_xxxxxxxxxxxxx
 ASTURIAS_DISCOUNT_START_DATE=2026-08-23
 ASTURIAS_DISCOUNT_PERCENT=10
 ```
 
-El checkout se bloquea temporalmente para los packs de Asturias si la campaña
-está activa pero falta el cupón, evitando cobrar el precio completo por error.
+El cupón y su código promocional se administran en Stripe. Los suscriptores que
+ya tienen descuento no reciben el campo promocional, evitando acumulaciones.
 
 ```bash
 cd /home/ubuntu/easyfutbol-app/easyfutbol-backend

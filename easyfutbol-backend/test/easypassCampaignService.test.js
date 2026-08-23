@@ -3,7 +3,6 @@ import assert from 'node:assert/strict';
 import { getAsturiasPackCampaign } from '../src/services/easypassCampaignService.js';
 
 const env = {
-  STRIPE_ASTURIAS_COUPON_ID: 'coupon_asturias_10',
   ASTURIAS_DISCOUNT_START_DATE: '2026-08-23',
   ASTURIAS_DISCOUNT_PERCENT: '10',
 };
@@ -16,7 +15,6 @@ test('activa el descuento para Asturias desde el 23 de agosto en hora de Madrid'
   );
 
   assert.equal(campaign.active, true);
-  assert.equal(campaign.stripeReady, true);
   assert.equal(campaign.percent, 10);
 });
 
@@ -40,14 +38,12 @@ test('no activa el descuento en otras sedes', () => {
   assert.equal(campaign.active, false);
 });
 
-test('permite mostrar la campaña aunque falte configurar el cupón', () => {
+test('la disponibilidad depende de la sede y la fecha, no del ID del cupón', () => {
   const campaign = getAsturiasPackCampaign(
     { locationSlug: 'asturias' },
     new Date('2026-08-23T10:00:00.000Z'),
-    { ...env, STRIPE_ASTURIAS_COUPON_ID: '' }
+    env
   );
 
   assert.equal(campaign.active, true);
-  assert.equal(campaign.stripeReady, false);
 });
-

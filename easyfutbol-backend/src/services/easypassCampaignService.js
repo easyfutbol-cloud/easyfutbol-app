@@ -12,7 +12,6 @@ function madridDate(date = new Date()) {
 }
 
 export function getAsturiasPackCampaign(pack, date = new Date(), env = process.env) {
-  const couponId = String(env.STRIPE_ASTURIAS_COUPON_ID || '').trim();
   const startDate = String(env.ASTURIAS_DISCOUNT_START_DATE || DEFAULT_START_DATE).trim();
   const percent = Number(env.ASTURIAS_DISCOUNT_PERCENT || DEFAULT_DISCOUNT_PERCENT);
   const isAsturias = String(pack?.locationSlug || pack?.location_slug || '').toLowerCase() === ASTURIAS_SLUG;
@@ -21,10 +20,7 @@ export function getAsturiasPackCampaign(pack, date = new Date(), env = process.e
 
   return {
     active: isAsturias && isStarted && isValidPercent,
-    stripeReady: Boolean(couponId),
-    couponId,
     percent: isValidPercent ? percent : 0,
     startDate,
   };
 }
-

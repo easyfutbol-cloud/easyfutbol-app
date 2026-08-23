@@ -110,7 +110,6 @@ router.get('/packs', requireAuth, async (req, res) => {
       discount_percent:discount.percent,
       data: rows.map((row) => {
         const campaign = getAsturiasPackCampaign(row);
-        const appliedPercent = Math.max(discount.percent, campaign.active ? campaign.percent : 0);
         const originalPrice = Number(row.price_cents || 0);
         return {
           ...row,
@@ -120,10 +119,11 @@ router.get('/packs', requireAuth, async (req, res) => {
           easyPassAmount: Number(row.easyPassAmount || 0),
           credits: Number(row.easyPassAmount || 0),
           original_price_cents: originalPrice,
-          price_cents: appliedPercent ? Math.round(originalPrice * (1 - appliedPercent / 100)) : originalPrice,
-          plus_discount_applied: discount.isActive && discount.percent >= (campaign.active ? campaign.percent : 0),
-          campaign_discount_applied: campaign.active && campaign.percent >= discount.percent,
-          discount_percent: appliedPercent,
+          price_cents: discount.percent ? Math.round(originalPrice * (1 - discount.percent / 100)) : originalPrice,
+          plus_discount_applied: discount.isActive,
+          campaign_discount_applied: false,
+          promotion_code_available: campaign.active && !discount.isActive,
+          discount_percent: discount.percent,
           subscription_discount_percent: discount.percent,
         };
       }),
@@ -284,22 +284,10 @@ router.post('/packs/:id/checkout', requireAuth, async (req, res) => {
 
     const discount = await getSubscriptionDiscount(userId);
     const campaign = getAsturiasPackCampaign(pack);
-    const useCampaignCoupon = campaign.active && campaign.percent >= discount.percent;
-
-    if (useCampaignCoupon && !campaign.stripeReady) {
-      return res.status(503).json({
-        ok: false,
-        msg: 'La promoción de Asturias está pendiente de configuración. Inténtalo de nuevo en unos minutos.',
-      });
-    }
-
-    const appliedPercent = useCampaignCoupon ? campaign.percent : discount.percent;
-    const displayedPriceCents = appliedPercent
-      ? Math.round(Number(pack.price_cents || 0) * (1 - appliedPercent / 100))
+    const allowAsturiasPromotionCode = campaign.active && !discount.isActive;
+    const displayedPriceCents = discount.percent
+      ? Math.round(Number(pack.price_cents || 0) * (1 - discount.percent / 100))
       : Number(pack.price_cents || 0);
-    const finalPriceCents = useCampaignCoupon
-      ? Number(pack.price_cents || 0)
-      : displayedPriceCents;
 
     const baseUrl = String(APP_BASE_URL || 'https://easyfutbol.es').replace(/\/$/, '');
     const successUrl = `${baseUrl}/pago-ok/?session_id={CHECKOUT_SESSION_ID}`;
@@ -308,9 +296,7 @@ router.post('/packs/:id/checkout', requireAuth, async (req, res) => {
     const session = await stripe.checkout.sessions.create({
       mode: 'payment',
       payment_method_types: ['card'],
-      ...(useCampaignCoupon
-        ? { discounts: [{ coupon: campaign.couponId }] }
-        : {}),
+      ...(allowAsturiasPromotionCode ? { allow_promotion_codes: true } : {}),
       line_items: [
         {
           price_data: {
@@ -319,7 +305,7 @@ router.post('/packs/:id/checkout', requireAuth, async (req, res) => {
               name: pack.name || `${Number(pack.easyPassAmount || 0)} EasyPass`,
               description: `Pack de ${Number(pack.easyPassAmount || 0)} EasyPass - ${pack.locationName || 'EasyFutbol'}`,
             },
-            unit_amount: finalPriceCents,
+            unit_amount: displayedPriceCents,
           },
           quantity: 1,
         },
@@ -334,8 +320,8 @@ router.post('/packs/:id/checkout', requireAuth, async (req, res) => {
         subscriptionPlan:discount.plan || '',
         subscriptionDiscountPercent:String(discount.percent),
         plusDiscountPercent:String(discount.percent),
-        campaign: useCampaignCoupon ? 'asturias_10' : '',
-        campaignDiscountPercent: useCampaignCoupon ? String(campaign.percent) : '0',
+        campaign: allowAsturiasPromotionCode ? 'asturias_promotion_code' : '',
+        campaignDiscountPercent: allowAsturiasPromotionCode ? String(campaign.percent) : '0',
       },
       success_url: successUrl,
       cancel_url: cancelUrl,
@@ -356,11 +342,12 @@ router.post('/packs/:id/checkout', requireAuth, async (req, res) => {
         credits: Number(pack.easyPassAmount || 0),
         original_price_cents: Number(pack.price_cents || 0),
         price_cents: displayedPriceCents,
-        plus_discount_applied:discount.isActive && !useCampaignCoupon,
-        campaign_discount_applied:useCampaignCoupon,
+        plus_discount_applied:discount.isActive,
+        campaign_discount_applied:false,
+        promotion_code_available:allowAsturiasPromotionCode,
         subscription_plan:discount.plan,
         subscription_discount_percent:discount.percent,
-        discount_percent:appliedPercent,
+        discount_percent:discount.percent,
       },
     });
   } catch (e) {
