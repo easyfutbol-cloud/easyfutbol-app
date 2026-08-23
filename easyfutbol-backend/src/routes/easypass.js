@@ -310,7 +310,7 @@ router.post('/packs/:id/checkout', requireAuth, async (req, res) => {
       payment_method_types: ['card'],
       ...(useCampaignCoupon
         ? { discounts: [{ coupon: campaign.couponId }] }
-        : { allow_promotion_codes: true }),
+        : {}),
       line_items: [
         {
           price_data: {
