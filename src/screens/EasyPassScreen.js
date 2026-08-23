@@ -371,7 +371,7 @@ export default function EasyPassScreen() {
 
             <View style={{ alignItems:'flex-end' }}>
               {p.plus_discount_applied ? <Text style={styles.plusDiscount}>PLUS · −10%</Text> : null}
-              {p.plus_discount_applied ? <Text style={styles.packOriginalPrice}>{formatEuro(p.displayOriginalPriceCents)}</Text> : null}
+              {(p.plus_discount_applied || p.campaign_discount_applied) ? <Text style={styles.packOriginalPrice}>{formatEuro(p.displayOriginalPriceCents)}</Text> : null}
               <Text style={styles.packPrice}>{formatEuro(p.displayPriceCents)}</Text>
               <TouchableOpacity
                 style={[styles.buyBtn, buyingPackId === p.id && styles.buyBtnDisabled]}
