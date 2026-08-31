@@ -8,6 +8,7 @@ import easypassLogo from '../../assets/easypass-logo.png';
 import { LinearGradient } from 'expo-linear-gradient';
 import ScreenHeader from '../components/ScreenHeader';
 import { Ionicons } from '@expo/vector-icons';
+import { getPackSavings } from '../utils/easypassPackSavings';
 
 const ORANGE = '#ff5a00';
 const SCREEN_BACKGROUND = require('../../assets/matches/match-3.jpg');
@@ -49,6 +50,7 @@ export default function EasyPassScreen() {
 
   const displayPacks = packs.map((pack) => ({
     ...pack,
+    savings: getPackSavings(pack, packs),
     displayAmount: Number(pack?.easyPassAmount ?? pack?.credits ?? 0),
     displayName: `${Number(pack?.easyPassAmount ?? pack?.credits ?? 0)} EasyPass`,
     displayPriceCents: Number(pack?.price_cents || pack?.priceCents || 0),
@@ -360,6 +362,7 @@ export default function EasyPassScreen() {
 
         {displayPacks.map((p) => (
           <View key={p.id} style={styles.packCard}>
+            <View style={styles.packMain}>
             <View style={styles.packAmountBadge}>
               <Text style={styles.packAmount}>{p.displayAmount}</Text>
               <Text style={styles.packAmountLabel}>EASYPASS</Text>
@@ -367,6 +370,9 @@ export default function EasyPassScreen() {
             <View style={styles.packCopy}>
               <Text style={styles.packName}>{p.displayName}</Text>
               <Text style={styles.packMeta}>Válido solo para {selectedLocationName}</Text>
+              {p.savings && p.displayAmount > 1 ? (
+                <Text style={styles.packUnitPrice}>{formatEuro(p.savings.unitPriceCents)} / EasyPass</Text>
+              ) : null}
             </View>
 
             <View style={{ alignItems:'flex-end' }}>
@@ -386,6 +392,15 @@ export default function EasyPassScreen() {
                 </Text>
               </TouchableOpacity>
             </View>
+            </View>
+            {p.savings?.savingsCents > 0 ? (
+              <View style={styles.packSavings}>
+                <Text style={styles.packSavingsAmount}>Ahorras {formatEuro(p.savings.savingsCents)}</Text>
+                <Text style={styles.packSavingsReference}>
+                  Por separado: {formatEuro(p.savings.separatePriceCents)}
+                </Text>
+              </View>
+            ) : null}
           </View>
         ))}
 
@@ -543,9 +558,6 @@ const styles = StyleSheet.create({
   warningText:{ color:'#f1f1f1', fontSize:12, fontWeight:'700', lineHeight:18 },
 
   packCard:{
-    flexDirection:'row',
-    alignItems:'center',
-    gap: 12,
     backgroundColor:'rgba(17,21,27,0.94)',
     borderRadius:radii.large,
     padding: 16,
@@ -553,6 +565,11 @@ const styles = StyleSheet.create({
     borderColor:colors.border,
     marginBottom: 12
   },
+  packMain:{flexDirection:'row',alignItems:'center',gap:12},
+  packUnitPrice:{color:'#ddd',fontSize:12,fontWeight:'700',marginTop:6},
+  packSavings:{flexDirection:'row',flexWrap:'wrap',alignItems:'center',justifyContent:'space-between',gap:6,marginTop:14,paddingTop:12,borderTopWidth:1,borderTopColor:'rgba(77,187,120,.25)'},
+  packSavingsAmount:{color:'#75dc9b',fontSize:14,fontWeight:'900'},
+  packSavingsReference:{color:'#bdbdbd',fontSize:12},
   packAmountBadge:{ width:58, height:58, borderRadius:radii.medium, backgroundColor:'rgba(255,90,0,0.14)', borderWidth:1, borderColor:'rgba(255,90,0,0.42)', alignItems:'center', justifyContent:'center' },
   packAmount:{ color:colors.white, fontSize:22, fontWeight:'900', lineHeight:26 },
   packAmountLabel:{ color:colors.orange, fontSize:7, fontWeight:'900', letterSpacing:0.5 },

@@ -28,6 +28,7 @@ const migrationOrder = [
   '20260812_scheduled_notifications.sql',
   '20260812_notification_segments.sql',
   '20260823_asturias_easypass_prices.sql',
+  '20260901_valladolid_easypass_prices.sql',
 ];
 
 const currentFile = fileURLToPath(import.meta.url);
