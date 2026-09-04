@@ -32,15 +32,15 @@ Conserva el stash hasta verificar visualmente varios avatares en la aplicación.
 
 ## Desplegar
 
-### Promoción de Asturias
+### Promoción de Valladolid
 
-Desde el 23/08/2026, el Checkout de los packs de la sede cuyo `slug` sea
-`asturias` permite introducir códigos promocionales. Los precios del catálogo
+Desde el 04/09/2026, el Checkout de los packs de la sede cuyo `slug` sea
+`valladolid` permite introducir códigos promocionales. Los precios del catálogo
 no cambian y el campo de código promocional no se habilita en otras sedes:
 
 ```env
-ASTURIAS_DISCOUNT_START_DATE=2026-08-23
-ASTURIAS_DISCOUNT_PERCENT=10
+EASYPASS_PROMOTION_START_DATE=2026-09-04
+EASYPASS_PROMOTION_PERCENT=10
 ```
 
 El cupón y su código promocional se administran en Stripe. Los suscriptores que
