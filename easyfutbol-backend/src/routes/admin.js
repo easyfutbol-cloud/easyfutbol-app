@@ -38,26 +38,9 @@ router.get('/admin/cities', requireAuth, requireAdmin, (_req, res) => {
   res.json({ ok: true, data: ALLOWED_CITIES });
 });
 
-/** 2) Campos por ciudad (para poblar el selector de la app) */
-router.get('/admin/fields', requireAuth, requireAdmin, async (req, res) => {
-  try {
-    const { city } = req.query;
-    if (!city || !isValidCity(city)) {
-      return res.status(400).json({ ok:false, msg:'Ciudad inválida o ausente' });
-    }
-    const [rows] = await pool.query(
-      `SELECT id, name, city, address
-       FROM fields
-       WHERE city = ?
-       ORDER BY name ASC`,
-      [city]
-    );
-    res.json({ ok:true, data: rows });
-  } catch (e) {
-    console.error(e);
-    res.status(500).json({ ok:false, msg:'Error listando campos' });
-  }
-});
+/** 2) Campos por ciudad: ahora vive en routes/adminFields.js (GET /api/admin/fields).
+ *  Se movió allí para poder crear y editar campos (ubicación, foto e indicaciones)
+ *  desde la propia app. La ruta y la respuesta siguen siendo compatibles. */
 
 /**
  * 3) Crear partido (ADMIN)

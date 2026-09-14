@@ -75,7 +75,11 @@ router.get('/matches', async (req, res) => {
               COALESCE(m.has_aftergame, 0) AS has_aftergame,
               (m.capacity - m.spots_taken - (SELECT COUNT(*) FROM match_waitlist mw WHERE mw.match_id=m.id AND mw.status='offered' AND mw.offer_expires_at > NOW())) AS spots_remaining,
               CASE WHEN m.spots_taken + (SELECT COUNT(*) FROM match_waitlist mw WHERE mw.match_id=m.id AND mw.status='offered' AND mw.offer_expires_at > NOW()) >= m.capacity THEN 1 ELSE 0 END AS is_full,
-              f.name AS field_name
+              f.name AS field_name,
+              f.address AS field_address,
+              f.maps_url AS field_maps_url,
+              f.image_url AS field_image_url,
+              f.arrival_instructions AS field_arrival_instructions
        FROM matches m
        JOIN fields f ON f.id = m.field_id
        LEFT JOIN locations l ON l.id = m.location_id
@@ -182,7 +186,11 @@ router.get('/matches/:id', async (req, res) => {
               COALESCE(m.has_aftergame, 0) AS has_aftergame,
               (m.capacity - m.spots_taken - (SELECT COUNT(*) FROM match_waitlist mw WHERE mw.match_id=m.id AND mw.status='offered' AND mw.offer_expires_at > NOW())) AS spots_remaining,
               CASE WHEN m.spots_taken + (SELECT COUNT(*) FROM match_waitlist mw WHERE mw.match_id=m.id AND mw.status='offered' AND mw.offer_expires_at > NOW()) >= m.capacity THEN 1 ELSE 0 END AS is_full,
-              f.name AS field_name
+              f.name AS field_name,
+              f.address AS field_address,
+              f.maps_url AS field_maps_url,
+              f.image_url AS field_image_url,
+              f.arrival_instructions AS field_arrival_instructions
        FROM matches m
        JOIN fields f ON f.id = m.field_id
        LEFT JOIN locations l ON l.id = m.location_id
