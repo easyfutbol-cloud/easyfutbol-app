@@ -2,7 +2,7 @@
 import express from 'express';
 import { pool } from '../config/db.js';
 import { requireAuth } from '../middlewares/auth.js';
-import { POSITIONS, getPollWithCandidates, getPollWinners } from '../services/weeklyLineupService.js';
+import { POSITIONS, POSITION_SLOTS, getPollWithCandidates, getPollWinners } from '../services/weeklyLineupService.js';
 
 const router = express.Router();
 
@@ -18,11 +18,16 @@ router.get('/current', requireAuth, async (req, res) => {
       [poll.id, req.user.id]
     );
 
+    const myVotesByPosition = {};
+    for (const position of POSITIONS) myVotesByPosition[position] = [];
+    for (const v of myVotes) myVotesByPosition[v.position]?.push(v.candidate_id);
+
     res.json({
       ok: true,
       poll: data.poll,
       candidates: data.candidates,
-      my_votes: Object.fromEntries(myVotes.map((v) => [v.position, v.candidate_id])),
+      position_limits: POSITION_SLOTS,
+      my_votes: myVotesByPosition,
     });
   } catch (e) {
     console.error('[GET /weekly-lineup/current]', e);
@@ -31,10 +36,13 @@ router.get('/current', requireAuth, async (req, res) => {
 });
 
 /**
- * POST /api/weekly-lineup/vote
+ * POST /api/weekly-lineup/vote/toggle
  * Body: { position, candidate_id }
+ * Si el candidato ya estaba elegido en esa posición, se quita. Si no,
+ * se añade — siempre que no se haya llegado ya al máximo de esa posición
+ * (p.ej. 3 en defensa). Nunca se puede elegir dos veces al mismo candidato.
  */
-router.post('/vote', requireAuth, async (req, res) => {
+router.post('/vote/toggle', requireAuth, async (req, res) => {
   try {
     const position = req.body?.position;
     const candidateId = Number(req.body?.candidate_id);
@@ -51,16 +59,32 @@ router.post('/vote', requireAuth, async (req, res) => {
     );
     if (!candidate) return res.status(404).json({ ok: false, msg: 'Ese candidato no está en esta votación' });
 
-    await pool.query(
-      `INSERT INTO weekly_lineup_votes (poll_id, position, candidate_id, user_id)
-       VALUES (?,?,?,?)
-       ON DUPLICATE KEY UPDATE candidate_id=VALUES(candidate_id)`,
-      [poll.id, position, candidateId, req.user.id]
+    const [[existingVote]] = await pool.query(
+      'SELECT id FROM weekly_lineup_votes WHERE poll_id=? AND position=? AND user_id=? AND candidate_id=?',
+      [poll.id, position, req.user.id, candidateId]
     );
 
-    res.json({ ok: true, msg: 'Voto registrado' });
+    if (existingVote) {
+      await pool.query('DELETE FROM weekly_lineup_votes WHERE id=?', [existingVote.id]);
+      return res.json({ ok: true, msg: 'Voto quitado', selected: false });
+    }
+
+    const [[{ total }]] = await pool.query(
+      'SELECT COUNT(*) AS total FROM weekly_lineup_votes WHERE poll_id=? AND position=? AND user_id=?',
+      [poll.id, position, req.user.id]
+    );
+    const limit = POSITION_SLOTS[position];
+    if (Number(total) >= limit) {
+      return res.status(409).json({ ok: false, msg: `Ya has elegido ${limit} en esta posición` });
+    }
+
+    await pool.query(
+      'INSERT INTO weekly_lineup_votes (poll_id, position, candidate_id, user_id) VALUES (?,?,?,?)',
+      [poll.id, position, candidateId, req.user.id]
+    );
+    res.json({ ok: true, msg: 'Voto registrado', selected: true });
   } catch (e) {
-    console.error('[POST /weekly-lineup/vote]', e);
+    console.error('[POST /weekly-lineup/vote/toggle]', e);
     res.status(500).json({ ok: false, msg: 'No se pudo registrar el voto' });
   }
 });

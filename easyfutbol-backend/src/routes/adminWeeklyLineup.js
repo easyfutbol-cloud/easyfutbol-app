@@ -5,11 +5,12 @@ import { pool } from '../config/db.js';
 import { requireAuth, requireAdmin } from '../middlewares/auth.js';
 import {
   POSITIONS,
-  MAX_CANDIDATES_PER_POSITION,
+  POSITION_CANDIDATE_POOL,
   ensureUpcomingDraftPoll,
   getPollWithCandidates,
   resolveLocationLabel,
   INFERRED_LOCATION_JOIN_SQL,
+  openPoll,
 } from '../services/weeklyLineupService.js';
 
 const router = express.Router();
@@ -84,8 +85,9 @@ router.post('/polls/:id/candidates', requireAuth, requireAdmin, async (req, res)
       'SELECT COUNT(*) AS total FROM weekly_lineup_candidates WHERE poll_id=? AND position=?',
       [pollId, position]
     );
-    if (Number(total) >= MAX_CANDIDATES_PER_POSITION) {
-      return res.status(409).json({ ok: false, msg: `Máximo ${MAX_CANDIDATES_PER_POSITION} candidatos por posición` });
+    const limit = POSITION_CANDIDATE_POOL[position];
+    if (Number(total) >= limit) {
+      return res.status(409).json({ ok: false, msg: `Máximo ${limit} candidatos en esta posición` });
     }
 
     await pool.query(
@@ -119,6 +121,25 @@ router.delete('/polls/:id/candidates/:candidateId', requireAuth, requireAdmin, a
   } catch (e) {
     console.error('[DELETE /admin/weekly-lineup/polls/:id/candidates/:candidateId]', e);
     res.status(500).json({ ok: false, msg: 'No se pudo eliminar el candidato' });
+  }
+});
+
+/**
+ * POST /api/admin/weekly-lineup/polls/:id/open
+ * Abre la votación a mano (mientras no automaticemos la apertura). Exige al
+ * menos un candidato en cada posición.
+ */
+router.post('/polls/:id/open', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const pollId = Number(req.params.id);
+    const result = await openPoll(pollId);
+    if (!result.ok) return res.status(409).json(result);
+
+    const [rows] = await pool.query('SELECT * FROM weekly_lineup_polls ORDER BY week_start DESC LIMIT 12');
+    res.json({ ok: true, msg: 'Votación abierta', data: rows });
+  } catch (e) {
+    console.error('[POST /admin/weekly-lineup/polls/:id/open]', e);
+    res.status(500).json({ ok: false, msg: 'No se pudo abrir la votación' });
   }
 });
 
