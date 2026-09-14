@@ -17,6 +17,7 @@ import easyPass from './routes/easypass.js';
 import adminNotify from './routes/adminNotify.js';
 import adminMatches from './routes/adminMatches.js';
 import adminFields from './routes/adminFields.js';
+import adminMatchEvents from './routes/adminMatchEvents.js';
 import achievements from './routes/achievements.js';
 import worldcup from './routes/worldcup.js';
 import tournaments from './routes/tournaments.js';
@@ -148,6 +149,7 @@ app.use('/api/referrals', referrals);
 app.use('/api/admin/scheduled-matches', scheduledMatches);
 app.use('/api/admin/fields', adminFields);
 app.use('/api/admin/matches', adminMatches);
+app.use('/api/admin/matches/:matchId/events', adminMatchEvents);
 
 // estáticos para avatares
 app.use('/uploads', express.static('uploads'));

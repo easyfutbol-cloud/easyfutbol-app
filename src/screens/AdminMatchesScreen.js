@@ -122,6 +122,7 @@ export default function AdminMatchesScreen({ navigation }) {
     });
   };
   const handleRosterPress = (match) => navigation.navigate('AdminMatchRoster', { matchId:match.id,matchTitle:match.title });
+  const handleLivePress = (match) => navigation.navigate('AdminMatchLive', { matchId:match.id,matchTitle:match.title });
   const duplicateMatch = (match) => Alert.alert('Duplicar partido',`Se creará una copia de ${match.title} exactamente una semana después.`,[{text:'Cancelar',style:'cancel'},{text:'Duplicar',onPress:async()=>{try{const token=await AsyncStorage.getItem('token');const response=await fetch(`${API_BASE_URL}/api/admin/matches/${match.id}/duplicate`,{method:'POST',headers:{'Content-Type':'application/json',Authorization:`Bearer ${token}`}});const data=await response.json();if(!response.ok)throw new Error(data?.error||'No se pudo duplicar');Alert.alert('Partido duplicado','La copia ya aparece en el listado.');fetchMatches();}catch(error){Alert.alert('Duplicar',error.message);}}}]);
 
   const renderMatchCard = ({ item }) => {
@@ -168,6 +169,8 @@ export default function AdminMatchesScreen({ navigation }) {
         {Number(item.risk)===1&&<View style={styles.riskCard}><Text style={styles.riskTitle}>RIESGO DE NO COMPLETARSE</Text><Text style={styles.riskText}>Faltan {item.available_slots} jugadores y quedan menos de 48 horas.</Text></View>}
 
         <TouchableOpacity style={styles.rosterButton} onPress={() => handleRosterPress(item)}><Text style={styles.rosterButtonText}>Ver quién viene y colores · {item.confirmed_count||0}</Text></TouchableOpacity>
+
+        <TouchableOpacity style={styles.liveButton} onPress={() => handleLivePress(item)}><Text style={styles.liveButtonText}>⚽ Goles y paradas en directo</Text></TouchableOpacity>
 
         <View style={styles.buttonRow}>
           <TouchableOpacity style={styles.editButton} onPress={() => handleEditPress(item)}>
@@ -451,5 +454,5 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     textAlign: 'center',
   },
-  rosterButton:{backgroundColor:'#f1f1f1',borderRadius:12,paddingVertical:13,alignItems:'center',marginBottom:10},rosterButtonText:{color:'#111',fontWeight:'900',fontSize:13},duplicateButton:{paddingVertical:12,alignItems:'center',marginTop:4},duplicateText:{color:'#888',fontSize:11,fontWeight:'800'},riskCard:{backgroundColor:'rgba(244,201,93,.09)',borderWidth:1,borderColor:'rgba(244,201,93,.3)',borderRadius:12,padding:11,marginBottom:11},riskTitle:{color:'#f4c95d',fontSize:9,fontWeight:'900',letterSpacing:.8},riskText:{color:'#aaa07f',fontSize:10,marginTop:4},
+  rosterButton:{backgroundColor:'#f1f1f1',borderRadius:12,paddingVertical:13,alignItems:'center',marginBottom:10},rosterButtonText:{color:'#111',fontWeight:'900',fontSize:13},liveButton:{backgroundColor:'rgba(255,90,0,0.12)',borderWidth:1,borderColor:'#ff5a00',borderRadius:12,paddingVertical:13,alignItems:'center',marginBottom:10},liveButtonText:{color:'#ff8c4d',fontWeight:'900',fontSize:13},duplicateButton:{paddingVertical:12,alignItems:'center',marginTop:4},duplicateText:{color:'#888',fontSize:11,fontWeight:'800'},riskCard:{backgroundColor:'rgba(244,201,93,.09)',borderWidth:1,borderColor:'rgba(244,201,93,.3)',borderRadius:12,padding:11,marginBottom:11},riskTitle:{color:'#f4c95d',fontSize:9,fontWeight:'900',letterSpacing:.8},riskText:{color:'#aaa07f',fontSize:10,marginTop:4},
 });
