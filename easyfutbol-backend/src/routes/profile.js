@@ -20,15 +20,25 @@ if (!fs.existsSync(uploadDir)) {
   fs.mkdirSync(uploadDir, { recursive: true });
 }
 
+const ALLOWED_AVATAR_EXTENSIONS = { 'image/jpeg': '.jpg', 'image/png': '.png', 'image/webp': '.webp', 'image/gif': '.gif' };
+
 const storage = multer.diskStorage({
   destination: (req, file, cb) => cb(null, uploadDir),
   filename: (req, file, cb) => {
-    const ext = path.extname(file.originalname);
-    // Nombre único para evitar caché en la app (y en CDNs/navegadores)
+    // La extensión sale del mimetype detectado, nunca del nombre que manda el cliente
+    // (evita subir .html/.svg ejecutables o rutas con "..").
+    const ext = ALLOWED_AVATAR_EXTENSIONS[file.mimetype] || '.jpg';
     cb(null, `user-${req.user.id}-${Date.now()}${ext}`);
   }
 });
-const upload = multer({ storage });
+const upload = multer({
+  storage,
+  limits: { fileSize: 8 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    if (!ALLOWED_AVATAR_EXTENSIONS[file.mimetype]) return cb(new Error('El archivo debe ser una imagen (jpg, png, webp o gif)'));
+    cb(null, true);
+  },
+});
 
 /**
  * Perfil + stats

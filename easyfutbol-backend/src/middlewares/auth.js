@@ -1,5 +1,9 @@
 import jwt from 'jsonwebtoken';
 
+if (!process.env.JWT_SECRET) {
+  console.error('*** AVISO DE SEGURIDAD: falta JWT_SECRET en el entorno. Se está usando un secreto de desarrollo conocido públicamente en el código — cualquiera podría falsificar tokens (incluido de admin). Configura JWT_SECRET en el .env de producción. ***');
+}
+
 const JWT_SECRET = process.env.JWT_SECRET || 'dev_secret';
 const N8N_TOKEN = process.env.N8N_INTERNAL_TOKEN || '';
 
@@ -8,7 +12,7 @@ export function requireAuth(req, res, next) {
   const rawToken =
     header.startsWith('Bearer ')
       ? header.slice(7)
-      : header || req.headers['x-access-token'] || req.query?.token || '';
+      : header || req.headers['x-access-token'] || '';
 
   const token = String(rawToken || '').trim().replace(/^"|"$/g, '');
 
@@ -18,7 +22,6 @@ export function requireAuth(req, res, next) {
       method: req.method,
       authorizationHeader: header ? 'present' : 'missing',
       xAccessToken: req.headers['x-access-token'] ? 'present' : 'missing',
-      queryToken: req.query?.token ? 'present' : 'missing',
     });
     return res.status(401).json({ ok: false, msg: 'Sin token' });
   }

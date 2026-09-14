@@ -33,6 +33,8 @@ export default function AdminMatchLiveScreen({ navigation, route }) {
   const [startedAt, setStartedAt] = useState(null);
   const [offsetMinutes, setOffsetMinutes] = useState(0);
   const [, setTick] = useState(0);
+  const [editingMinute, setEditingMinute] = useState(false);
+  const [minuteInput, setMinuteInput] = useState('');
 
   const [roster, setRoster] = useState({ white: [], black: [] });
   const [editingEvent, setEditingEvent] = useState(null);
@@ -109,6 +111,21 @@ export default function AdminMatchLiveScreen({ navigation, route }) {
 
   const adjustMinute = (delta) => {
     setOffsetMinutes((prev) => Math.max(0, prev + delta));
+  };
+
+  const openMinuteEdit = () => {
+    setMinuteInput(String(currentMinute));
+    setEditingMinute(true);
+  };
+
+  const confirmMinuteEdit = () => {
+    const minute = Number(minuteInput);
+    if (!Number.isInteger(minute) || minute < 0) {
+      return Alert.alert('Minuto inválido', 'Escribe un número de minuto válido.');
+    }
+    setOffsetMinutes(minute);
+    if (running) setStartedAt(Date.now());
+    setEditingMinute(false);
   };
 
   const logEvent = async (type) => {
@@ -204,7 +221,30 @@ export default function AdminMatchLiveScreen({ navigation, route }) {
 
         <View style={styles.timerBox}>
           <Text style={styles.timerLabel}>MINUTO</Text>
-          <Text style={styles.timerValue}>{elapsedLabel}</Text>
+          {editingMinute ? (
+            <View style={styles.minuteEditRow}>
+              <TextInput
+                style={styles.minuteEditInput}
+                value={minuteInput}
+                onChangeText={setMinuteInput}
+                keyboardType="number-pad"
+                autoFocus
+                selectTextOnFocus
+                onSubmitEditing={confirmMinuteEdit}
+              />
+              <TouchableOpacity style={styles.minuteEditConfirm} onPress={confirmMinuteEdit}>
+                <Ionicons name="checkmark" size={20} color="#fff" />
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.minuteEditCancel} onPress={() => setEditingMinute(false)}>
+                <Ionicons name="close" size={20} color="#999" />
+              </TouchableOpacity>
+            </View>
+          ) : (
+            <TouchableOpacity onPress={openMinuteEdit} activeOpacity={0.7}>
+              <Text style={styles.timerValue}>{elapsedLabel}</Text>
+              <Text style={styles.timerEditHint}>Toca para escribir el minuto</Text>
+            </TouchableOpacity>
+          )}
           <View style={styles.timerControls}>
             <TouchableOpacity style={styles.timerAdjustButton} onPress={() => adjustMinute(-1)}>
               <Text style={styles.timerAdjustText}>-1</Text>
@@ -328,7 +368,12 @@ const styles = StyleSheet.create({
   screenTitle: { color: '#fff', fontSize: 24, fontWeight: '800', marginBottom: 16 },
   timerBox: { backgroundColor: '#111', borderRadius: 18, borderWidth: 1, borderColor: '#222', padding: 18, alignItems: 'center', marginBottom: 16 },
   timerLabel: { color: '#888', fontSize: 11, fontWeight: '800', letterSpacing: 1 },
-  timerValue: { color: '#fff', fontSize: 44, fontWeight: '900', marginTop: 4, fontVariant: ['tabular-nums'] },
+  timerValue: { color: '#fff', fontSize: 44, fontWeight: '900', marginTop: 4, fontVariant: ['tabular-nums'], textAlign: 'center' },
+  timerEditHint: { color: '#666', fontSize: 10, fontWeight: '700', textAlign: 'center', marginTop: 2 },
+  minuteEditRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 6 },
+  minuteEditInput: { width: 100, backgroundColor: '#1c1c1c', borderWidth: 1, borderColor: '#333', borderRadius: 10, paddingVertical: 8, paddingHorizontal: 12, color: '#fff', fontSize: 24, fontWeight: '800', textAlign: 'center' },
+  minuteEditConfirm: { width: 40, height: 40, borderRadius: 10, backgroundColor: '#ff5a00', alignItems: 'center', justifyContent: 'center' },
+  minuteEditCancel: { width: 40, height: 40, borderRadius: 10, borderWidth: 1, borderColor: '#333', alignItems: 'center', justifyContent: 'center' },
   timerControls: { flexDirection: 'row', alignItems: 'center', gap: 14, marginTop: 14 },
   timerAdjustButton: { width: 44, height: 44, borderRadius: 12, borderWidth: 1, borderColor: '#333', alignItems: 'center', justifyContent: 'center' },
   timerAdjustText: { color: '#fff', fontWeight: '800' },

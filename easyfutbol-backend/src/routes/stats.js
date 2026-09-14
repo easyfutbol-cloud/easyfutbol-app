@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { pool } from '../config/db.js';
 import { madridWallTimeToUtc, toMysqlUtc } from '../utils/madridDateTime.js';
+import { requireAuth } from '../middlewares/auth.js';
 
 const router = Router();
 
@@ -92,7 +93,6 @@ router.get('/stats/top-players', async (req, res) => {
       SELECT
         u.id,
         u.name,
-        u.email,
         u.avatar_url,
         MAX(EXISTS(
           SELECT 1 FROM user_plus_subscriptions ups
@@ -117,7 +117,7 @@ router.get('/stats/top-players', async (req, res) => {
       WHERE 1=1
       ${dateWhere}
       ${locationFilter.sql}
-      GROUP BY u.id, u.name, u.email, u.avatar_url
+      GROUP BY u.id, u.name, u.avatar_url
       HAVING total > 0
       ORDER BY total DESC, goals DESC, mvps DESC
       LIMIT 50
@@ -158,16 +158,9 @@ router.get('/stats/top-players', async (req, res) => {
 });
 
 
-router.get('/stats/me/month', async (req, res) => {
+router.get('/stats/me/month', requireAuth, async (req, res) => {
   try {
-    const userId = req.user?.id || req.userId || req.query.user_id;
-
-    if (!userId) {
-      return res.status(401).json({
-        ok: false,
-        msg: 'Usuario no autenticado',
-      });
-    }
+    const userId = req.user.id;
 
     const locationFilter = getLocationFilter(req.query);
 

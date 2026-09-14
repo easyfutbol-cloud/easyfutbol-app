@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import rateLimit from 'express-rate-limit';
 import { pool } from '../config/db.js';
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
@@ -9,6 +10,11 @@ import { buildReferralCode } from '../services/referralService.js';
 import { validatePublicName } from '../services/publicNameModerationService.js';
 
 const router = Router();
+
+// Frena fuerza bruta e ingeniería sobre credenciales/códigos de un solo uso.
+const loginLimiter = rateLimit({ windowMs: 15 * 60 * 1000, limit: 15, standardHeaders: true, legacyHeaders: false, message: { ok: false, msg: 'Demasiados intentos. Prueba de nuevo en unos minutos.' } });
+const codeGuessLimiter = rateLimit({ windowMs: 15 * 60 * 1000, limit: 10, standardHeaders: true, legacyHeaders: false, message: { ok: false, msg: 'Demasiados intentos. Prueba de nuevo en unos minutos.' } });
+const accountActionLimiter = rateLimit({ windowMs: 60 * 60 * 1000, limit: 8, standardHeaders: true, legacyHeaders: false, message: { ok: false, msg: 'Demasiadas solicitudes. Prueba de nuevo más tarde.' } });
 
 const JWT_SECRET = process.env.JWT_SECRET || 'dev_secret';
 const JWT_EXPIRES = process.env.JWT_EXPIRES || '365d';
@@ -136,7 +142,7 @@ function sign(user) {
   );
 }
 
-router.post('/auth/register', async (req, res) => {
+router.post('/auth/register', accountActionLimiter, async (req, res) => {
   try {
     const body = req.body || {};
     const name = String(body.username || body.user || body.name || body.nombre || '').trim();
@@ -270,7 +276,7 @@ router.post('/auth/register', async (req, res) => {
   }
 });
 
-router.post('/auth/login', async (req, res) => {
+router.post('/auth/login', loginLimiter, async (req, res) => {
   try {
     const body = req.body || {};
     const identifierRaw =
@@ -403,7 +409,7 @@ router.post('/auth/google', async (req, res) => {
   }
 });
 
-router.post('/auth/email/resend', async (req, res) => {
+router.post('/auth/email/resend', accountActionLimiter, async (req, res) => {
   try {
     const email = normalizeEmail(req.body?.email || req.body?.correo);
     if (!email) return res.status(400).json({ ok: false, msg: 'Falta email' });
@@ -436,7 +442,7 @@ router.post('/auth/email/resend', async (req, res) => {
   }
 });
 
-router.post('/auth/email/verify', async (req, res) => {
+router.post('/auth/email/verify', codeGuessLimiter, async (req, res) => {
   try {
     const email = normalizeEmail(req.body?.email || req.body?.correo);
     const code = String(req.body?.code || '').trim();
@@ -500,7 +506,7 @@ router.post('/auth/email/verify', async (req, res) => {
 
 // === Password reset ===
 // POST /auth/password/forgot  { email }
-router.post('/auth/password/forgot', async (req, res) => {
+router.post('/auth/password/forgot', accountActionLimiter, async (req, res) => {
   try {
     const email = normalizeEmail(req.body?.email || req.body?.correo);
     if (!email) return res.status(400).json({ ok: false, msg: 'Falta email' });
@@ -546,7 +552,7 @@ router.post('/auth/password/forgot', async (req, res) => {
 });
 
 // POST /auth/password/reset  { token, newPassword }
-router.post('/auth/password/reset', async (req, res) => {
+router.post('/auth/password/reset', codeGuessLimiter, async (req, res) => {
   try {
     const token = String(req.body?.token || '').trim();
     const newPassword = String(req.body?.newPassword || req.body?.password || '').trim();
