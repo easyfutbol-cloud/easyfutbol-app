@@ -5,7 +5,7 @@ import { pool } from '../config/db.js';
 import { markSchedulerFailure, markSchedulerSuccess, registerScheduler } from './operationalHealthService.js';
 
 export const POSITIONS = ['portero', 'central', 'lateral', 'centrocampista', 'delantero'];
-export const POSITION_SLOTS = { portero: 1, central: 1, lateral: 2, centrocampista: 2, delantero: 1 };
+export const POSITION_SLOTS = { portero: 1, central: 1, lateral: 2, centrocampista: 2, delantero: 2 };
 export const POSITION_LABELS = {
   portero: 'Portero',
   central: 'Central',

@@ -16,7 +16,7 @@ import { api } from '../api/client';
 
 const POSITIONS = ['portero', 'central', 'lateral', 'centrocampista', 'delantero'];
 const POSITION_LABELS = { portero: 'Portero', central: 'Central', lateral: 'Laterales', centrocampista: 'Centrocampistas', delantero: 'Delantero' };
-const POSITION_SLOTS = { portero: 1, central: 1, lateral: 2, centrocampista: 2, delantero: 1 };
+const POSITION_SLOTS = { portero: 1, central: 1, lateral: 2, centrocampista: 2, delantero: 2 };
 
 const STATUS_LABELS = { draft: 'Borrador', open: 'Abierta', closed: 'Cerrada' };
 const MAX_CANDIDATES = 3;

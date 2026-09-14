@@ -1,11 +1,23 @@
 import React, { useCallback, useRef, useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, ActivityIndicator, TouchableOpacity, Image, Share, Alert } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
-import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { captureRef } from 'react-native-view-shot';
 import * as Sharing from 'expo-sharing';
 import { api } from '../api/client';
+
+const TEMPLATE_IMAGE = require('../../assets/weekly-lineup-template.png');
+const TEMPLATE_ASPECT_RATIO = 1080 / 1350;
+
+// Posición de cada hueco sobre la plantilla, en % del ancho/alto de la imagen
+// (ajustado a ojo sobre el campo dibujado en weekly-lineup-template.png).
+const POSITION_SPOTS = {
+  delantero: [{ top: 0.4, left: 0.4 }, { top: 0.4, left: 0.6 }],
+  centrocampista: [{ top: 0.505, left: 0.385 }, { top: 0.505, left: 0.615 }],
+  central: [{ top: 0.645, left: 0.5 }],
+  lateral: [{ top: 0.645, left: 0.345 }, { top: 0.645, left: 0.655 }],
+  portero: [{ top: 0.775, left: 0.5 }],
+};
 
 function formatWeek(weekStart, weekEnd) {
   const opts = { day: '2-digit', month: '2-digit' };
@@ -14,28 +26,23 @@ function formatWeek(weekStart, weekEnd) {
   return `${start} - ${end}`;
 }
 
-function PlayerSpot({ player, empty }) {
-  if (empty || !player) {
-    return (
-      <View style={styles.spot}>
-        <View style={[styles.avatarRing, styles.avatarRingEmpty]}>
-          <Ionicons name="person-outline" size={18} color="rgba(255,255,255,0.4)" />
-        </View>
-        <Text style={styles.spotNameEmpty}>Sin ganador</Text>
-      </View>
-    );
-  }
+function PlayerPin({ player, spot }) {
+  const pinStyle = { top: `${spot.top * 100}%`, left: `${spot.left * 100}%` };
   return (
-    <View style={styles.spot}>
+    <View style={[styles.pin, pinStyle]}>
       <View style={styles.avatarRing}>
-        {player.avatar_url ? (
+        {player?.avatar_url ? (
           <Image source={{ uri: player.avatar_url }} style={styles.avatarImage} />
         ) : (
-          <Text style={styles.avatarInitial}>{(player.name || '?').charAt(0).toUpperCase()}</Text>
+          <Text style={styles.avatarInitial}>{(player?.name || '?').charAt(0).toUpperCase()}</Text>
         )}
       </View>
-      <Text style={styles.spotName} numberOfLines={1}>{player.name}</Text>
-      {player.location ? <Text style={styles.spotLocation} numberOfLines={1}>{player.location}</Text> : null}
+      {player ? (
+        <View style={styles.pinLabel}>
+          <Text style={styles.pinName} numberOfLines={1}>{player.name}</Text>
+          {player.location ? <Text style={styles.pinLocation} numberOfLines={1}>{player.location}</Text> : null}
+        </View>
+      ) : null}
     </View>
   );
 }
@@ -124,42 +131,21 @@ export default function WeeklyLineupResultScreen({ navigation }) {
     );
   }
 
-  const lateral = winners.lateral || [];
-  const centrocampista = winners.centrocampista || [];
-
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
       <TouchableOpacity style={styles.backRow} onPress={() => navigation.goBack()}>
         <Ionicons name="arrow-back" size={18} color="#ccc" />
         <Text style={styles.backText}>Volver</Text>
       </TouchableOpacity>
-      <View ref={shareCardRef} collapsable={false} style={styles.shareCard}>
-        <Text style={styles.screenTitle}>El 8 de la semana</Text>
-        <Text style={styles.screenSubtitle}>{formatWeek(poll.week_start, poll.week_end)}</Text>
+      <Text style={styles.screenSubtitle}>{formatWeek(poll.week_start, poll.week_end)}</Text>
 
-        <LinearGradient colors={['#1d6b3d', '#123d24']} style={styles.pitch}>
-          <View style={styles.pitchLine} />
-          <View style={[styles.pitchCircle]} />
-
-          <View style={styles.row}>
-            <PlayerSpot player={winners.delantero?.[0]} />
-          </View>
-
-          <View style={styles.row}>
-            <PlayerSpot player={centrocampista[0]} />
-            <PlayerSpot player={centrocampista[1]} />
-          </View>
-
-          <View style={styles.row}>
-            <PlayerSpot player={lateral[0]} />
-            <PlayerSpot player={winners.central?.[0]} />
-            <PlayerSpot player={lateral[1]} />
-          </View>
-
-          <View style={styles.row}>
-            <PlayerSpot player={winners.portero?.[0]} />
-          </View>
-        </LinearGradient>
+      <View ref={shareCardRef} collapsable={false} style={styles.templateWrap}>
+        <Image source={TEMPLATE_IMAGE} style={styles.templateImage} resizeMode="contain" />
+        {Object.entries(POSITION_SPOTS).map(([position, spots]) =>
+          spots.map((spot, index) => (
+            <PlayerPin key={`${position}-${index}`} player={(winners[position] || [])[index]} spot={spot} />
+          ))
+        )}
       </View>
 
       <TouchableOpacity style={styles.shareButton} onPress={handleShare} disabled={sharing}>
@@ -180,25 +166,20 @@ const styles = StyleSheet.create({
   centeredContainer: { flex: 1, backgroundColor: '#000', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 32 },
   loadingText: { marginTop: 12, color: '#fff', fontSize: 16 },
   backRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 10 },
-  shareCard: { backgroundColor: '#000', paddingVertical: 4 },
   backRowFloating: { position: 'absolute', top: 16, left: 0, flexDirection: 'row', alignItems: 'center', gap: 6 },
   backText: { color: '#ccc', fontSize: 13, fontWeight: '700' },
   emptyTitle: { color: '#fff', fontSize: 18, fontWeight: '800', marginTop: 14, textAlign: 'center' },
   emptySubtitle: { color: '#888', fontSize: 13, marginTop: 6, textAlign: 'center', lineHeight: 19 },
-  screenTitle: { color: '#fff', fontSize: 26, fontWeight: '800', textAlign: 'center' },
-  screenSubtitle: { color: '#999', fontSize: 13, marginTop: 4, marginBottom: 20, textAlign: 'center' },
-  pitch: { borderRadius: 20, borderWidth: 2, borderColor: 'rgba(255,255,255,0.25)', padding: 18, justifyContent: 'space-between', minHeight: 460, overflow: 'hidden' },
-  pitchLine: { position: 'absolute', top: '50%', left: 0, right: 0, height: 1, backgroundColor: 'rgba(255,255,255,0.18)' },
-  pitchCircle: { position: 'absolute', top: '50%', left: '50%', width: 70, height: 70, borderRadius: 35, borderWidth: 1, borderColor: 'rgba(255,255,255,0.18)', marginLeft: -35, marginTop: -35 },
-  row: { flexDirection: 'row', justifyContent: 'space-evenly', alignItems: 'flex-start' },
-  spot: { alignItems: 'center', width: 84 },
-  avatarRing: { width: 56, height: 56, borderRadius: 28, backgroundColor: '#1a1a1a', borderWidth: 2, borderColor: '#fff', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
-  avatarRingEmpty: { borderColor: 'rgba(255,255,255,0.35)', borderStyle: 'dashed' },
+  screenSubtitle: { color: '#999', fontSize: 13, marginBottom: 14, textAlign: 'center' },
+  templateWrap: { width: '100%', aspectRatio: TEMPLATE_ASPECT_RATIO, borderRadius: 16, overflow: 'hidden', backgroundColor: '#c1410a' },
+  templateImage: { width: '100%', height: '100%' },
+  pin: { position: 'absolute', alignItems: 'center', width: 72, marginLeft: -36, marginTop: -22 },
+  avatarRing: { width: 44, height: 44, borderRadius: 22, backgroundColor: '#1a1a1a', borderWidth: 2, borderColor: '#000', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
   avatarImage: { width: '100%', height: '100%' },
-  avatarInitial: { color: '#fff', fontWeight: '900', fontSize: 18 },
-  spotName: { color: '#fff', fontSize: 11, fontWeight: '800', marginTop: 6, textAlign: 'center' },
-  spotLocation: { color: 'rgba(255,255,255,0.65)', fontSize: 9, fontWeight: '700', marginTop: 1, textAlign: 'center' },
-  spotNameEmpty: { color: 'rgba(255,255,255,0.5)', fontSize: 10, fontWeight: '700', marginTop: 6, textAlign: 'center' },
+  avatarInitial: { color: '#fff', fontWeight: '900', fontSize: 15 },
+  pinLabel: { marginTop: 3, backgroundColor: 'rgba(0,0,0,0.72)', borderRadius: 6, paddingHorizontal: 5, paddingVertical: 2, maxWidth: 90 },
+  pinName: { color: '#fff', fontSize: 9, fontWeight: '800', textAlign: 'center' },
+  pinLocation: { color: 'rgba(255,255,255,0.7)', fontSize: 7, fontWeight: '700', textAlign: 'center' },
   shareButton: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: '#ff5a00', borderRadius: 14, paddingVertical: 15, marginTop: 20 },
   shareButtonText: { color: '#fff', fontSize: 15, fontWeight: '800' },
 });
