@@ -14,6 +14,14 @@ export const POSITION_LABELS = {
   delantero: 'Delantero',
 };
 
+export const MAX_CANDIDATES_PER_POSITION = 3;
+
+const LOCATION_LABELS = { valladolid: 'Valladolid', asturias: 'Asturias' };
+export function formatLocationLabel(value) {
+  const key = String(value || '').trim().toLowerCase();
+  return LOCATION_LABELS[key] || null;
+}
+
 const MADRID_TZ = 'Europe/Madrid';
 
 function madridDateParts(date = new Date()) {
@@ -133,7 +141,7 @@ export async function getPollWithCandidates(pollId) {
   if (!poll) return null;
 
   const [rows] = await pool.query(
-    `SELECT c.id, c.position, c.user_id, u.name, u.avatar_url,
+    `SELECT c.id, c.position, c.user_id, u.name, u.avatar_url, u.preferred_location,
             (SELECT COUNT(*) FROM weekly_lineup_votes v WHERE v.candidate_id=c.id) AS votes
      FROM weekly_lineup_candidates c
      JOIN users u ON u.id = c.user_id
@@ -150,6 +158,7 @@ export async function getPollWithCandidates(pollId) {
       user_id: row.user_id,
       name: row.name,
       avatar_url: row.avatar_url,
+      location: formatLocationLabel(row.preferred_location),
       votes: Number(row.votes),
     });
   }

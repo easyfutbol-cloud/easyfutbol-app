@@ -108,7 +108,10 @@ export default function WeeklyLineupVoteScreen({ navigation }) {
                         <Text style={styles.avatarInitial}>{(candidate.name || '?').charAt(0).toUpperCase()}</Text>
                       </View>
                     )}
-                    <Text style={[styles.candidateName, selected && styles.candidateNameSelected]}>{candidate.name}</Text>
+                    <View style={styles.candidateNameCol}>
+                      <Text style={[styles.candidateName, selected && styles.candidateNameSelected]}>{candidate.name}</Text>
+                      {candidate.location ? <Text style={styles.candidateLocation}>{candidate.location}</Text> : null}
+                    </View>
                     {votingPosition === position && !selected ? (
                       <ActivityIndicator size="small" color="#ff5a00" />
                     ) : selected ? (
@@ -153,8 +156,10 @@ const styles = StyleSheet.create({
   avatar: { width: 38, height: 38, borderRadius: 19, backgroundColor: '#222' },
   avatarPlaceholder: { alignItems: 'center', justifyContent: 'center' },
   avatarInitial: { color: '#999', fontWeight: '800' },
-  candidateName: { flex: 1, color: '#eee', fontSize: 14, fontWeight: '700' },
+  candidateNameCol: { flex: 1 },
+  candidateName: { color: '#eee', fontSize: 14, fontWeight: '700' },
   candidateNameSelected: { color: '#fff' },
+  candidateLocation: { color: '#888', fontSize: 11, fontWeight: '600', marginTop: 1 },
   resultButton: { alignItems: 'center', paddingVertical: 14, marginTop: 6 },
   resultButtonText: { color: '#ff8c4d', fontSize: 13, fontWeight: '700' },
 });

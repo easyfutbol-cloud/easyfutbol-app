@@ -19,6 +19,7 @@ const POSITION_LABELS = { portero: 'Portero', central: 'Central', lateral: 'Late
 const POSITION_SLOTS = { portero: 1, central: 1, lateral: 2, centrocampista: 2, delantero: 1 };
 
 const STATUS_LABELS = { draft: 'Borrador', open: 'Abierta', closed: 'Cerrada' };
+const MAX_CANDIDATES = 3;
 
 function formatWeek(weekStart, weekEnd) {
   const opts = { day: '2-digit', month: '2-digit' };
@@ -118,6 +119,30 @@ export default function AdminWeeklyLineupScreen() {
     }
   };
 
+  const closeNow = () => {
+    Alert.alert(
+      'Cerrar ahora (modo prueba)',
+      'Esto cierra la votación de esta semana al momento, aunque no haya terminado, para que puedas ver ya la pantalla de resultado. No se puede deshacer.',
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        {
+          text: 'Cerrar ya',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              const res = await api.post(`/admin/weekly-lineup/polls/${selectedPollId}/close-now`);
+              setPolls(Array.isArray(res.data?.data) ? res.data.data : []);
+              await fetchDetail(selectedPollId);
+              Alert.alert('Listo', 'Ya puedes ver el resultado en "El 8 de la semana" desde la portada.');
+            } catch (e) {
+              Alert.alert('Error', e?.response?.data?.msg || e.message || 'No se pudo cerrar');
+            }
+          },
+        },
+      ]
+    );
+  };
+
   if (loading) {
     return (
       <View style={styles.centeredContainer}>
@@ -155,6 +180,13 @@ export default function AdminWeeklyLineupScreen() {
 
         {!pollDetail ? null : (
           <>
+            {pollDetail.poll.status !== 'closed' ? (
+              <TouchableOpacity style={styles.closeNowButton} onPress={closeNow}>
+                <Ionicons name="flash-outline" size={14} color="#ff8c4d" />
+                <Text style={styles.closeNowButtonText}>Cerrar ahora (modo prueba) — ver resultado ya</Text>
+              </TouchableOpacity>
+            ) : null}
+
             {!isDraft ? (
               <View style={styles.readOnlyNotice}>
                 <Ionicons name="lock-closed-outline" size={14} color="#f4c95d" />
@@ -170,7 +202,7 @@ export default function AdminWeeklyLineupScreen() {
                 <View key={position} style={styles.positionBlock}>
                   <View style={styles.positionHeader}>
                     <Text style={styles.positionTitle}>{POSITION_LABELS[position]}</Text>
-                    <Text style={styles.positionSlots}>{candidates.length} candidato{candidates.length === 1 ? '' : 's'} · {POSITION_SLOTS[position]} hueco{POSITION_SLOTS[position] === 1 ? '' : 's'}</Text>
+                    <Text style={styles.positionSlots}>{candidates.length}/{MAX_CANDIDATES} candidatos · {POSITION_SLOTS[position]} hueco{POSITION_SLOTS[position] === 1 ? '' : 's'}</Text>
                   </View>
 
                   {candidates.map((c) => (
@@ -182,7 +214,10 @@ export default function AdminWeeklyLineupScreen() {
                           <Text style={styles.candidateAvatarInitial}>{(c.name || '?').charAt(0).toUpperCase()}</Text>
                         </View>
                       )}
-                      <Text style={styles.candidateName}>{c.name}</Text>
+                      <View style={styles.candidateNameCol}>
+                        <Text style={styles.candidateName}>{c.name}</Text>
+                        {c.location ? <Text style={styles.candidateLocation}>{c.location}</Text> : null}
+                      </View>
                       {!isDraft ? <Text style={styles.candidateVotes}>{c.votes} votos</Text> : null}
                       {isDraft ? (
                         <TouchableOpacity onPress={() => removeCandidate(c)} style={styles.removeButton}>
@@ -192,7 +227,9 @@ export default function AdminWeeklyLineupScreen() {
                     </View>
                   ))}
 
-                  {isDraft ? (
+                  {isDraft && candidates.length >= MAX_CANDIDATES ? (
+                    <Text style={styles.limitReachedText}>Máximo de {MAX_CANDIDATES} candidatos alcanzado.</Text>
+                  ) : isDraft ? (
                     searchPosition === position ? (
                       <View style={styles.searchBox}>
                         <TextInput
@@ -213,7 +250,10 @@ export default function AdminWeeklyLineupScreen() {
                                 <Text style={styles.candidateAvatarInitial}>{(user.name || '?').charAt(0).toUpperCase()}</Text>
                               </View>
                             )}
-                            <Text style={styles.candidateName}>{user.name}</Text>
+                            <View style={styles.candidateNameCol}>
+                              <Text style={styles.candidateName}>{user.name}</Text>
+                              {user.location ? <Text style={styles.candidateLocation}>{user.location}</Text> : null}
+                            </View>
                           </TouchableOpacity>
                         ))}
                         <TouchableOpacity onPress={() => { setSearchPosition(null); setSearchQuery(''); }}>
@@ -251,6 +291,8 @@ const styles = StyleSheet.create({
   weekTabTextActive: { color: '#fff' },
   weekTabStatus: { color: '#777', fontSize: 10, fontWeight: '700', marginTop: 2 },
   weekTabStatusActive: { color: 'rgba(255,255,255,0.85)' },
+  closeNowButton: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, backgroundColor: 'rgba(255,90,0,0.1)', borderWidth: 1, borderColor: '#ff5a00', borderRadius: 12, paddingVertical: 11, marginBottom: 14 },
+  closeNowButtonText: { color: '#ff8c4d', fontSize: 12, fontWeight: '800' },
   readOnlyNotice: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: 'rgba(244,201,93,0.08)', borderWidth: 1, borderColor: 'rgba(244,201,93,0.3)', borderRadius: 12, padding: 12, marginBottom: 16 },
   readOnlyText: { color: '#e8d9ae', fontSize: 12, flex: 1 },
   positionBlock: { backgroundColor: '#111', borderRadius: 16, borderWidth: 1, borderColor: '#222', padding: 14, marginBottom: 14 },
@@ -261,9 +303,12 @@ const styles = StyleSheet.create({
   candidateAvatar: { width: 34, height: 34, borderRadius: 17, backgroundColor: '#222' },
   candidateAvatarPlaceholder: { alignItems: 'center', justifyContent: 'center' },
   candidateAvatarInitial: { color: '#999', fontWeight: '800', fontSize: 13 },
-  candidateName: { flex: 1, color: '#eee', fontSize: 14, fontWeight: '600' },
+  candidateNameCol: { flex: 1 },
+  candidateName: { color: '#eee', fontSize: 14, fontWeight: '600' },
+  candidateLocation: { color: '#888', fontSize: 11, fontWeight: '600', marginTop: 1 },
   candidateVotes: { color: '#ff8c4d', fontSize: 12, fontWeight: '800' },
   removeButton: { padding: 6 },
+  limitReachedText: { color: '#666', fontSize: 12, fontWeight: '600', marginTop: 6, fontStyle: 'italic' },
   addButton: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 6, paddingVertical: 8 },
   addButtonText: { color: '#ff8c4d', fontSize: 13, fontWeight: '700' },
   searchBox: { marginTop: 8, backgroundColor: '#191919', borderRadius: 12, borderWidth: 1, borderColor: '#2a2a2a', padding: 10 },

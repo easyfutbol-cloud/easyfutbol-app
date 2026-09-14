@@ -5,8 +5,10 @@ import { pool } from '../config/db.js';
 import { requireAuth, requireAdmin } from '../middlewares/auth.js';
 import {
   POSITIONS,
+  MAX_CANDIDATES_PER_POSITION,
   ensureUpcomingDraftPoll,
   getPollWithCandidates,
+  formatLocationLabel,
 } from '../services/weeklyLineupService.js';
 
 const router = express.Router();
@@ -44,10 +46,10 @@ router.get('/users-search', requireAuth, requireAdmin, async (req, res) => {
 
     const like = `%${q}%`;
     const [rows] = await pool.query(
-      `SELECT id, name, avatar_url FROM users WHERE name LIKE ? ORDER BY name ASC LIMIT 20`,
+      `SELECT id, name, avatar_url, preferred_location FROM users WHERE name LIKE ? ORDER BY name ASC LIMIT 20`,
       [like]
     );
-    res.json({ ok: true, data: rows });
+    res.json({ ok: true, data: rows.map((r) => ({ ...r, location: formatLocationLabel(r.preferred_location) })) });
   } catch (e) {
     console.error('[GET /admin/weekly-lineup/users-search]', e);
     res.status(500).json({ ok: false, msg: 'No se pudo buscar jugadores' });
@@ -73,6 +75,14 @@ router.post('/polls/:id/candidates', requireAuth, requireAdmin, async (req, res)
 
     const [[user]] = await pool.query('SELECT id FROM users WHERE id=?', [userId]);
     if (!user) return res.status(404).json({ ok: false, msg: 'Jugador no encontrado' });
+
+    const [[{ total }]] = await pool.query(
+      'SELECT COUNT(*) AS total FROM weekly_lineup_candidates WHERE poll_id=? AND position=?',
+      [pollId, position]
+    );
+    if (Number(total) >= MAX_CANDIDATES_PER_POSITION) {
+      return res.status(409).json({ ok: false, msg: `Máximo ${MAX_CANDIDATES_PER_POSITION} candidatos por posición` });
+    }
 
     await pool.query(
       'INSERT IGNORE INTO weekly_lineup_candidates (poll_id, position, user_id) VALUES (?,?,?)',
@@ -105,6 +115,28 @@ router.delete('/polls/:id/candidates/:candidateId', requireAuth, requireAdmin, a
   } catch (e) {
     console.error('[DELETE /admin/weekly-lineup/polls/:id/candidates/:candidateId]', e);
     res.status(500).json({ ok: false, msg: 'No se pudo eliminar el candidato' });
+  }
+});
+
+/**
+ * POST /api/admin/weekly-lineup/polls/:id/close-now
+ * Cierra la votación al momento (modo prueba), sin esperar a que acabe su semana.
+ * Sirve para poder ver ya la pantalla de resultado con datos reales.
+ */
+router.post('/polls/:id/close-now', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const pollId = Number(req.params.id);
+    const [[poll]] = await pool.query('SELECT id, status FROM weekly_lineup_polls WHERE id=?', [pollId]);
+    if (!poll) return res.status(404).json({ ok: false, msg: 'Votación no encontrada' });
+    if (poll.status === 'closed') return res.status(409).json({ ok: false, msg: 'Esta votación ya está cerrada' });
+
+    await pool.query("UPDATE weekly_lineup_polls SET status='closed', closed_at=NOW() WHERE id=?", [pollId]);
+
+    const [rows] = await pool.query('SELECT * FROM weekly_lineup_polls ORDER BY week_start DESC LIMIT 12');
+    res.json({ ok: true, msg: 'Votación cerrada', data: rows });
+  } catch (e) {
+    console.error('[POST /admin/weekly-lineup/polls/:id/close-now]', e);
+    res.status(500).json({ ok: false, msg: 'No se pudo cerrar la votación' });
   }
 });
 

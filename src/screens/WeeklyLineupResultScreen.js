@@ -35,6 +35,7 @@ function PlayerSpot({ player, empty }) {
         )}
       </View>
       <Text style={styles.spotName} numberOfLines={1}>{player.name}</Text>
+      {player.location ? <Text style={styles.spotLocation} numberOfLines={1}>{player.location}</Text> : null}
     </View>
   );
 }
@@ -196,6 +197,7 @@ const styles = StyleSheet.create({
   avatarImage: { width: '100%', height: '100%' },
   avatarInitial: { color: '#fff', fontWeight: '900', fontSize: 18 },
   spotName: { color: '#fff', fontSize: 11, fontWeight: '800', marginTop: 6, textAlign: 'center' },
+  spotLocation: { color: 'rgba(255,255,255,0.65)', fontSize: 9, fontWeight: '700', marginTop: 1, textAlign: 'center' },
   spotNameEmpty: { color: 'rgba(255,255,255,0.5)', fontSize: 10, fontWeight: '700', marginTop: 6, textAlign: 'center' },
   shareButton: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: '#ff5a00', borderRadius: 14, paddingVertical: 15, marginTop: 20 },
   shareButtonText: { color: '#fff', fontSize: 15, fontWeight: '800' },
