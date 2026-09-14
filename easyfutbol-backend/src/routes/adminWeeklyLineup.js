@@ -8,7 +8,8 @@ import {
   MAX_CANDIDATES_PER_POSITION,
   ensureUpcomingDraftPoll,
   getPollWithCandidates,
-  formatLocationLabel,
+  resolveLocationLabel,
+  INFERRED_LOCATION_JOIN_SQL,
 } from '../services/weeklyLineupService.js';
 
 const router = express.Router();
@@ -46,10 +47,13 @@ router.get('/users-search', requireAuth, requireAdmin, async (req, res) => {
 
     const like = `%${q}%`;
     const [rows] = await pool.query(
-      `SELECT id, name, avatar_url, preferred_location FROM users WHERE name LIKE ? ORDER BY name ASC LIMIT 20`,
+      `SELECT u.id, u.name, u.avatar_url, u.preferred_location, inferred_loc.location_slug AS inferred_location_slug
+       FROM users u
+       ${INFERRED_LOCATION_JOIN_SQL}
+       WHERE u.name LIKE ? ORDER BY u.name ASC LIMIT 20`,
       [like]
     );
-    res.json({ ok: true, data: rows.map((r) => ({ ...r, location: formatLocationLabel(r.preferred_location) })) });
+    res.json({ ok: true, data: rows.map((r) => ({ ...r, location: resolveLocationLabel(r.preferred_location, r.inferred_location_slug) })) });
   } catch (e) {
     console.error('[GET /admin/weekly-lineup/users-search]', e);
     res.status(500).json({ ok: false, msg: 'No se pudo buscar jugadores' });

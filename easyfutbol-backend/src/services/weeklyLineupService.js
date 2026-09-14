@@ -22,6 +22,27 @@ export function formatLocationLabel(value) {
   return LOCATION_LABELS[key] || null;
 }
 
+// Muchas cuentas se crearon antes de que existiera el filtro de ciudad
+// (preferred_location), así que si no lo tienen puesto deducimos su ciudad
+// habitual por dónde han jugado la mayoría de sus partidos.
+export const INFERRED_LOCATION_JOIN_SQL = `
+  LEFT JOIN (
+    SELECT user_id, location_slug FROM (
+      SELECT mps.user_id,
+             COALESCE(l.slug, CASE WHEN LOWER(m.city) IN ('avilés','aviles','oviedo','gijón','gijon','asturias') THEN 'asturias' ELSE 'valladolid' END) AS location_slug,
+             ROW_NUMBER() OVER (PARTITION BY mps.user_id ORDER BY COUNT(*) DESC) AS rn
+      FROM match_player_stats mps
+      JOIN matches m ON m.id = mps.match_id
+      LEFT JOIN locations l ON l.id = m.location_id
+      GROUP BY mps.user_id, location_slug
+    ) ranked WHERE rn = 1
+  ) inferred_loc ON inferred_loc.user_id = u.id
+`;
+
+export function resolveLocationLabel(preferredLocation, inferredLocationSlug) {
+  return formatLocationLabel(preferredLocation) || formatLocationLabel(inferredLocationSlug);
+}
+
 const MADRID_TZ = 'Europe/Madrid';
 
 function madridDateParts(date = new Date()) {
@@ -141,10 +162,11 @@ export async function getPollWithCandidates(pollId) {
   if (!poll) return null;
 
   const [rows] = await pool.query(
-    `SELECT c.id, c.position, c.user_id, u.name, u.avatar_url, u.preferred_location,
+    `SELECT c.id, c.position, c.user_id, u.name, u.avatar_url, u.preferred_location, inferred_loc.location_slug AS inferred_location_slug,
             (SELECT COUNT(*) FROM weekly_lineup_votes v WHERE v.candidate_id=c.id) AS votes
      FROM weekly_lineup_candidates c
      JOIN users u ON u.id = c.user_id
+     ${INFERRED_LOCATION_JOIN_SQL}
      WHERE c.poll_id=?
      ORDER BY c.position, votes DESC, c.id ASC`,
     [pollId]
@@ -158,7 +180,7 @@ export async function getPollWithCandidates(pollId) {
       user_id: row.user_id,
       name: row.name,
       avatar_url: row.avatar_url,
-      location: formatLocationLabel(row.preferred_location),
+      location: resolveLocationLabel(row.preferred_location, row.inferred_location_slug),
       votes: Number(row.votes),
     });
   }
