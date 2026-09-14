@@ -140,4 +140,37 @@ router.post('/polls/:id/close-now', requireAuth, requireAdmin, async (req, res) 
   }
 });
 
+/**
+ * DELETE /api/admin/weekly-lineup/polls/:id
+ * Borra una votación entera (candidatos y votos incluidos). Pensado para limpiar
+ * pruebas — para una semana real, mejor dejar que se cierre sola.
+ */
+router.delete('/polls/:id', requireAuth, requireAdmin, async (req, res) => {
+  const pollId = Number(req.params.id);
+  const conn = await pool.getConnection();
+  try {
+    const [[poll]] = await conn.query('SELECT id FROM weekly_lineup_polls WHERE id=?', [pollId]);
+    if (!poll) {
+      res.status(404).json({ ok: false, msg: 'Votación no encontrada' });
+      return;
+    }
+
+    await conn.beginTransaction();
+    await conn.query('DELETE FROM weekly_lineup_votes WHERE poll_id=?', [pollId]);
+    await conn.query('DELETE FROM weekly_lineup_candidates WHERE poll_id=?', [pollId]);
+    await conn.query('DELETE FROM weekly_lineup_polls WHERE id=?', [pollId]);
+    await conn.commit();
+
+    await ensureUpcomingDraftPoll();
+    const [rows] = await pool.query('SELECT * FROM weekly_lineup_polls ORDER BY week_start DESC LIMIT 12');
+    res.json({ ok: true, msg: 'Votación eliminada', data: rows });
+  } catch (e) {
+    await conn.rollback().catch(() => {});
+    console.error('[DELETE /admin/weekly-lineup/polls/:id]', e);
+    res.status(500).json({ ok: false, msg: 'No se pudo eliminar la votación' });
+  } finally {
+    conn.release();
+  }
+});
+
 export default router;

@@ -143,6 +143,31 @@ export default function AdminWeeklyLineupScreen() {
     );
   };
 
+  const deletePoll = () => {
+    Alert.alert(
+      'Eliminar esta votación',
+      'Se borra entera (candidatos y votos incluidos). Úsalo para limpiar pruebas. No se puede deshacer.',
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        {
+          text: 'Eliminar',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              const res = await api.delete(`/admin/weekly-lineup/polls/${selectedPollId}`);
+              const data = Array.isArray(res.data?.data) ? res.data.data : [];
+              setPolls(data);
+              setPollDetail(null);
+              setSelectedPollId(data[0]?.id || null);
+            } catch (e) {
+              Alert.alert('Error', e?.response?.data?.msg || e.message || 'No se pudo eliminar');
+            }
+          },
+        },
+      ]
+    );
+  };
+
   if (loading) {
     return (
       <View style={styles.centeredContainer}>
@@ -187,6 +212,11 @@ export default function AdminWeeklyLineupScreen() {
               </TouchableOpacity>
             ) : null}
 
+            <TouchableOpacity style={styles.deletePollButton} onPress={deletePoll}>
+              <Ionicons name="trash-outline" size={14} color="#ff6b6b" />
+              <Text style={styles.deletePollButtonText}>Eliminar esta votación</Text>
+            </TouchableOpacity>
+
             {!isDraft ? (
               <View style={styles.readOnlyNotice}>
                 <Ionicons name="lock-closed-outline" size={14} color="#f4c95d" />
@@ -215,7 +245,7 @@ export default function AdminWeeklyLineupScreen() {
                         </View>
                       )}
                       <View style={styles.candidateNameCol}>
-                        <Text style={styles.candidateName}>{c.name}</Text>
+                        <Text style={styles.candidateName}>{c.name} <Text style={styles.candidateId}>#{c.user_id}</Text></Text>
                         {c.location ? <Text style={styles.candidateLocation}>{c.location}</Text> : null}
                       </View>
                       {!isDraft ? <Text style={styles.candidateVotes}>{c.votes} votos</Text> : null}
@@ -251,7 +281,7 @@ export default function AdminWeeklyLineupScreen() {
                               </View>
                             )}
                             <View style={styles.candidateNameCol}>
-                              <Text style={styles.candidateName}>{user.name}</Text>
+                              <Text style={styles.candidateName}>{user.name} <Text style={styles.candidateId}>#{user.id}</Text></Text>
                               {user.location ? <Text style={styles.candidateLocation}>{user.location}</Text> : null}
                             </View>
                           </TouchableOpacity>
@@ -293,6 +323,8 @@ const styles = StyleSheet.create({
   weekTabStatusActive: { color: 'rgba(255,255,255,0.85)' },
   closeNowButton: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, backgroundColor: 'rgba(255,90,0,0.1)', borderWidth: 1, borderColor: '#ff5a00', borderRadius: 12, paddingVertical: 11, marginBottom: 14 },
   closeNowButtonText: { color: '#ff8c4d', fontSize: 12, fontWeight: '800' },
+  deletePollButton: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 10, marginBottom: 14 },
+  deletePollButtonText: { color: '#ff6b6b', fontSize: 12, fontWeight: '700' },
   readOnlyNotice: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: 'rgba(244,201,93,0.08)', borderWidth: 1, borderColor: 'rgba(244,201,93,0.3)', borderRadius: 12, padding: 12, marginBottom: 16 },
   readOnlyText: { color: '#e8d9ae', fontSize: 12, flex: 1 },
   positionBlock: { backgroundColor: '#111', borderRadius: 16, borderWidth: 1, borderColor: '#222', padding: 14, marginBottom: 14 },
@@ -305,6 +337,7 @@ const styles = StyleSheet.create({
   candidateAvatarInitial: { color: '#999', fontWeight: '800', fontSize: 13 },
   candidateNameCol: { flex: 1 },
   candidateName: { color: '#eee', fontSize: 14, fontWeight: '600' },
+  candidateId: { color: '#666', fontSize: 11, fontWeight: '600' },
   candidateLocation: { color: '#888', fontSize: 11, fontWeight: '600', marginTop: 1 },
   candidateVotes: { color: '#ff8c4d', fontSize: 12, fontWeight: '800' },
   removeButton: { padding: 6 },
