@@ -18,6 +18,9 @@ import adminNotify from './routes/adminNotify.js';
 import adminMatches from './routes/adminMatches.js';
 import adminFields from './routes/adminFields.js';
 import adminMatchEvents from './routes/adminMatchEvents.js';
+import adminWeeklyLineup from './routes/adminWeeklyLineup.js';
+import weeklyLineup from './routes/weeklyLineup.js';
+import { startWeeklyLineupScheduler } from './services/weeklyLineupService.js';
 import achievements from './routes/achievements.js';
 import worldcup from './routes/worldcup.js';
 import tournaments from './routes/tournaments.js';
@@ -150,6 +153,8 @@ app.use('/api/admin/scheduled-matches', scheduledMatches);
 app.use('/api/admin/fields', adminFields);
 app.use('/api/admin/matches', adminMatches);
 app.use('/api/admin/matches/:matchId/events', adminMatchEvents);
+app.use('/api/admin/weekly-lineup', adminWeeklyLineup);
+app.use('/api/weekly-lineup', weeklyLineup);
 
 // estáticos para avatares
 app.use('/uploads', express.static('uploads'));
@@ -166,6 +171,7 @@ app.get('/', (_req, res) => res.send('EasyFutbol Backend up'));
       startScheduledMatchPublisher();
       startPushReceiptScheduler();
       startNotificationCampaignScheduler();
+      startWeeklyLineupScheduler();
     });
   } catch (e) {
     console.error('❌ DB no responde:', e.message);

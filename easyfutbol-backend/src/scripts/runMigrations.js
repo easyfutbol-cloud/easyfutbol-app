@@ -31,6 +31,7 @@ const migrationOrder = [
   '20260901_valladolid_easypass_prices.sql',
   '20260914_field_details.sql',
   '20260914_match_live_events.sql',
+  '20260915_weekly_lineup.sql',
 ];
 
 const currentFile = fileURLToPath(import.meta.url);

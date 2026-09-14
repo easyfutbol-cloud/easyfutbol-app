@@ -28,6 +28,8 @@ const ROUTE_TAB = {
   EasyPass: 'profile',
   Plus: 'profile',
   Faq: 'profile',
+  WeeklyLineupVote: 'home',
+  WeeklyLineupResult: 'home',
 };
 
 const ROUTES_WITHOUT_PRIMARY_NAV = new Set([
@@ -43,6 +45,7 @@ const ROUTES_WITHOUT_PRIMARY_NAV = new Set([
   'AdminFieldEdit',
   'AdminMatchLive',
   'AdminMatchSummary',
+  'AdminWeeklyLineup',
   'AdminScheduledMatches',
   'AdminMatchStats',
   'AdminMatchStatsImport',

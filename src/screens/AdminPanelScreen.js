@@ -14,6 +14,7 @@ const SECTIONS = [
       { label: 'Crear partido', description: 'Nueva convocatoria', icon: 'add-circle-outline', route: 'AdminCreateMatch' },
       { label: 'Programados', description: 'Publicaciones automáticas', icon: 'time-outline', route: 'AdminScheduledMatches' },
       { label: 'Campos', description: 'Foto, ubicación e indicaciones', icon: 'location-outline', route: 'AdminFields' },
+      { label: 'El 8 de la semana', description: 'Candidatos de la votación', icon: 'trophy-outline', route: 'AdminWeeklyLineup' },
     ],
   },
   {

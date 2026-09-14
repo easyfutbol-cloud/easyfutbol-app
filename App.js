@@ -64,6 +64,9 @@ import AdminFieldsScreen from './src/screens/AdminFieldsScreen';
 import AdminFieldEditScreen from './src/screens/AdminFieldEditScreen';
 import AdminMatchLiveScreen from './src/screens/AdminMatchLiveScreen';
 import AdminMatchSummaryScreen from './src/screens/AdminMatchSummaryScreen';
+import AdminWeeklyLineupScreen from './src/screens/AdminWeeklyLineupScreen';
+import WeeklyLineupVoteScreen from './src/screens/WeeklyLineupVoteScreen';
+import WeeklyLineupResultScreen from './src/screens/WeeklyLineupResultScreen';
 import AdminUsersScreen from './src/screens/AdminUsersScreen';
 import AdminReportsScreen from './src/screens/AdminReportsScreen';
 import EasyPassScreen from './src/screens/EasyPassScreen';
@@ -760,6 +763,9 @@ function AppShell({ currentRouteName }) {
         <Stack.Screen name="AdminMatchRoster" component={AdminMatchRosterScreen} />
         <Stack.Screen name="AdminMatchLive" component={AdminMatchLiveScreen} />
         <Stack.Screen name="AdminMatchSummary" component={AdminMatchSummaryScreen} />
+        <Stack.Screen name="AdminWeeklyLineup" component={AdminWeeklyLineupScreen} />
+        <Stack.Screen name="WeeklyLineupVote" component={WeeklyLineupVoteScreen} />
+        <Stack.Screen name="WeeklyLineupResult" component={WeeklyLineupResultScreen} />
         <Stack.Screen name="AdminUsers" component={AdminUsersScreen} />
         <Stack.Screen name="AdminReports" component={AdminReportsScreen} />
         <Stack.Screen name="AdminNotify" component={AdminNotifyScreen} />

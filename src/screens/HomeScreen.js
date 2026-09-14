@@ -214,6 +214,14 @@ export default function HomeScreen({ navigation }) {
       onPress: () => requireAuth('EasyPass'),
       accent: true,
     },
+    {
+      key: 'weeklyLineup',
+      title: 'El 8 de la semana',
+      eyebrow: 'VOTA A TUS FAVORITOS',
+      description: 'Elige el mejor once entre los candidatos de esta semana.',
+      imageSource: CARD_IMAGES.stats,
+      onPress: () => requireAuth('WeeklyLineupVote'),
+    },
   ];
 
   return (

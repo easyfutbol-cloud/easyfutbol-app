@@ -6,13 +6,7 @@
     "orientation": "portrait",
     "icon": "./assets/Logo.png",
     "userInterfaceStyle": "automatic",
-    "newArchEnabled": true,
     "scheme": "easyfutbol",
-    "splash": {
-      "image": "./assets/Logo.png",
-      "resizeMode": "contain",
-      "backgroundColor": "#ffffff"
-    },
     "ios": {
       "bundleIdentifier": "com.easyfutbol.easyfutbol",
       "buildNumber": "21",
@@ -25,19 +19,30 @@
       "package": "es.easyfutbol.app",
       "versionCode": 21,
       "googleServicesFile": "./google-services.json",
-      "permissions": ["INTERNET"],
+      "permissions": [
+        "INTERNET"
+      ],
       "adaptiveIcon": {
         "foregroundImage": "./assets/Logo.png",
         "backgroundColor": "#ffffff"
-      },
-      "edgeToEdgeEnabled": true
+      }
     },
     "web": {
       "favicon": "./assets/favicon.png"
     },
     "plugins": [
       "expo-web-browser",
-      "expo-notifications"
+      "expo-notifications",
+      "expo-status-bar",
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/Logo.png",
+          "resizeMode": "contain",
+          "backgroundColor": "#ffffff"
+        }
+      ],
+      "expo-sharing"
     ],
     "extra": {
       "eas": {
@@ -45,7 +50,7 @@
       }
     },
     "owner": "easyfutbol",
-    "runtimeVersion": "2.0.0",
+    "runtimeVersion": "2.0.0-sdk57",
     "updates": {
       "url": "https://u.expo.dev/287d443d-1c44-43d1-9d00-5d4008cf038e"
     }
