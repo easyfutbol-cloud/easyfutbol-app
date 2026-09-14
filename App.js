@@ -60,6 +60,8 @@ import AdminNotifyScreen from './src/screens/AdminNotifyScreen';
 import AdminEasyPassScreen from './src/screens/admineasypassscreen';
 import AdminDashboardScreen from './src/screens/AdminDashboardScreen';
 import AdminPanelScreen from './src/screens/AdminPanelScreen';
+import AdminFieldsScreen from './src/screens/AdminFieldsScreen';
+import AdminFieldEditScreen from './src/screens/AdminFieldEditScreen';
 import AdminUsersScreen from './src/screens/AdminUsersScreen';
 import AdminReportsScreen from './src/screens/AdminReportsScreen';
 import EasyPassScreen from './src/screens/EasyPassScreen';
@@ -748,6 +750,8 @@ function AppShell({ currentRouteName }) {
         <Stack.Screen name="AdminMatches" component={AdminMatchesScreen} />
         <Stack.Screen name="AdminMatchEdit" component={AdminMatchEditScreen} />
         <Stack.Screen name="AdminCreateMatch" component={AdminCreateMatchScreen} />
+        <Stack.Screen name="AdminFields" component={AdminFieldsScreen} />
+        <Stack.Screen name="AdminFieldEdit" component={AdminFieldEditScreen} />
         <Stack.Screen name="AdminScheduledMatches" component={AdminScheduledMatchesScreen} />
         <Stack.Screen name="AdminMatchStats" component={AdminMatchStatsScreen} />
         <Stack.Screen name="AdminMatchStatsImport" component={AdminMatchStatsImportScreen} />

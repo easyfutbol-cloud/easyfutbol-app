@@ -39,6 +39,8 @@ const ROUTES_WITHOUT_PRIMARY_NAV = new Set([
   'AdminMatches',
   'AdminMatchEdit',
   'AdminCreateMatch',
+  'AdminFields',
+  'AdminFieldEdit',
   'AdminScheduledMatches',
   'AdminMatchStats',
   'AdminMatchStatsImport',

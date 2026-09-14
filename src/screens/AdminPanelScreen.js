@@ -13,6 +13,7 @@ const SECTIONS = [
       { label: 'Partidos', description: 'Gestionar calendario', icon: 'football-outline', route: 'AdminMatches' },
       { label: 'Crear partido', description: 'Nueva convocatoria', icon: 'add-circle-outline', route: 'AdminCreateMatch' },
       { label: 'Programados', description: 'Publicaciones automáticas', icon: 'time-outline', route: 'AdminScheduledMatches' },
+      { label: 'Campos', description: 'Foto, ubicación e indicaciones', icon: 'location-outline', route: 'AdminFields' },
     ],
   },
   {
