@@ -33,6 +33,8 @@ const migrationOrder = [
   '20260914_match_live_events.sql',
   '20260915_weekly_lineup.sql',
   '20260915_weekly_lineup_v2.sql',
+  '20260920_ticket_claim.sql',
+  '20260921_match_events_v2.sql',
 ];
 
 const currentFile = fileURLToPath(import.meta.url);

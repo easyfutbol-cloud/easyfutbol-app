@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import crypto from 'crypto';
 import { pool } from '../config/db.js';
 import { requireAuth } from '../middlewares/auth.js';
 import Stripe from 'stripe';
@@ -64,6 +65,10 @@ router.get('/me/inscriptions', requireAuth, async (req, res) => {
               i.stripe_session_id,
               i.ticket_type,
               i.payment_type,
+              i.claim_token,
+              i.assigned_user_id,
+              assigned.name AS assigned_name,
+              assigned.avatar_url AS assigned_avatar_url,
               1 AS quantity,
               1 AS total_entries,
               1 AS entradas_count,
@@ -87,6 +92,7 @@ router.get('/me/inscriptions', requireAuth, async (req, res) => {
        FROM inscriptions i
        JOIN matches m ON m.id = i.match_id
        JOIN fields  f ON f.id = m.field_id
+       LEFT JOIN users assigned ON assigned.id = i.assigned_user_id
        LEFT JOIN match_player_stats own_stats
          ON own_stats.match_id = m.id
         AND own_stats.user_id = i.user_id
@@ -270,10 +276,12 @@ router.post('/matches/:id/join-with-easypass', requireAuth, async (req, res) => 
       [quantity, userId]
     );
 
-    // crear inscripción confirmada
-    const inscriptionValues = Array.from({ length: quantity }, () => [matchId, userId, 'confirmed', shirtColor, 'easypass']);
+    // crear inscripción confirmada — cada plaza lleva su propio enlace para
+    // decidir quién juega (uno mismo o se manda el enlace a otra persona)
+    const claimTokens = Array.from({ length: quantity }, () => crypto.randomBytes(16).toString('hex'));
+    const inscriptionValues = claimTokens.map((token) => [matchId, userId, 'confirmed', shirtColor, 'easypass', token]);
     const [ins] = await conn.query(
-      `INSERT INTO inscriptions (match_id, user_id, status, ticket_type, payment_type)
+      `INSERT INTO inscriptions (match_id, user_id, status, ticket_type, payment_type, claim_token)
        VALUES ?`,
       [inscriptionValues]
     );
@@ -347,6 +355,7 @@ router.post('/matches/:id/join-with-easypass', requireAuth, async (req, res) => 
       quantity,
       created_rows: Number(ins.affectedRows || 0),
       easyPassBalance: Number(updatedUser?.easyPassBalance || 0),
+      tickets: claimTokens.map((claim_token) => ({ claim_token })),
     });
 
   } catch (e) {
@@ -793,6 +802,78 @@ router.post('/matches/:id/cancel', requireAuth, async (req, res) => {
     return res.status(500).json({ ok:false, msg:'Error al cancelar' });
   } finally {
     conn.release();
+  }
+});
+
+// --- Enlace para reclamar una entrada: "voy yo" o se la pasas a otra persona ---
+
+/** GET /api/inscriptions/claim/:token — info del partido antes de confirmar */
+router.get('/inscriptions/claim/:token', requireAuth, async (req, res) => {
+  try {
+    const token = String(req.params.token || '').trim();
+    if (!token) return res.status(400).json({ ok: false, msg: 'Enlace inválido' });
+
+    const [[row]] = await pool.query(
+      `SELECT i.id, i.user_id AS buyer_id, i.assigned_user_id, i.status,
+              m.id AS match_id, m.title, m.starts_at, m.city, f.name AS field_name,
+              buyer.name AS buyer_name
+       FROM inscriptions i
+       JOIN matches m ON m.id = i.match_id
+       LEFT JOIN fields f ON f.id = m.field_id
+       JOIN users buyer ON buyer.id = i.user_id
+       WHERE i.claim_token = ?
+       LIMIT 1`,
+      [token]
+    );
+
+    if (!row) return res.status(404).json({ ok: false, msg: 'Este enlace no es válido o ya no existe' });
+    if (row.status !== 'confirmed') return res.status(410).json({ ok: false, msg: 'Esta entrada ya no está disponible' });
+
+    res.json({
+      ok: true,
+      claimed: row.assigned_user_id != null,
+      claimed_by_me: row.assigned_user_id === req.user.id,
+      match: {
+        id: row.match_id,
+        title: row.title,
+        starts_at: row.starts_at,
+        city: row.city,
+        field_name: row.field_name,
+      },
+      buyer_name: row.buyer_name,
+    });
+  } catch (e) {
+    console.error('[GET /inscriptions/claim/:token]', e);
+    res.status(500).json({ ok: false, msg: 'No se pudo cargar el enlace' });
+  }
+});
+
+/** POST /api/inscriptions/claim/:token — confirma que vas a jugar esa entrada */
+router.post('/inscriptions/claim/:token', requireAuth, async (req, res) => {
+  try {
+    const token = String(req.params.token || '').trim();
+    if (!token) return res.status(400).json({ ok: false, msg: 'Enlace inválido' });
+
+    const [[row]] = await pool.query(
+      `SELECT id, assigned_user_id, status FROM inscriptions WHERE claim_token=? LIMIT 1`,
+      [token]
+    );
+    if (!row) return res.status(404).json({ ok: false, msg: 'Este enlace no es válido o ya no existe' });
+    if (row.status !== 'confirmed') return res.status(410).json({ ok: false, msg: 'Esta entrada ya no está disponible' });
+    if (row.assigned_user_id != null) {
+      return res.status(409).json({ ok: false, msg: row.assigned_user_id === req.user.id ? 'Ya te habías apuntado a esta entrada' : 'Esta entrada ya ha sido reclamada por otra persona' });
+    }
+
+    const [result] = await pool.query(
+      'UPDATE inscriptions SET assigned_user_id=? WHERE claim_token=? AND assigned_user_id IS NULL',
+      [req.user.id, token]
+    );
+    if (!result.affectedRows) return res.status(409).json({ ok: false, msg: 'Esta entrada ya ha sido reclamada por otra persona' });
+
+    res.json({ ok: true, msg: 'Te has apuntado a este partido' });
+  } catch (e) {
+    console.error('[POST /inscriptions/claim/:token]', e);
+    res.status(500).json({ ok: false, msg: 'No se pudo confirmar la entrada' });
   }
 });
 

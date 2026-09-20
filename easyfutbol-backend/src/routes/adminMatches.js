@@ -424,4 +424,82 @@ router.patch('/:id/status', requireAuth, requireAdmin, async (req, res) => {
   }
 });
 
+/**
+ * DELETE /api/admin/matches/:id
+ * Si hay gente apuntada, primero se les cancela la entrada y se les devuelve
+ * el 100% del EasyPass (el partido lo borra la organización, no ellos), y se
+ * les avisa. Después se borra todo lo asociado al partido (eventos,
+ * estadísticas, inscripciones) y el partido en sí.
+ */
+router.delete('/:id', requireAuth, requireAdmin, async (req, res) => {
+  const matchId = Number(req.params.id);
+  const conn = await pool.getConnection();
+  try {
+    const [[match]] = await conn.query('SELECT * FROM matches WHERE id=?', [matchId]);
+    if (!match) { conn.release(); return res.status(404).json({ ok: false, msg: 'Partido no encontrado' }); }
+
+    const [buyers] = await conn.query(
+      `SELECT user_id, COUNT(*) AS quantity
+       FROM inscriptions
+       WHERE match_id=? AND status='confirmed' AND payment_type='easypass'
+       GROUP BY user_id`,
+      [matchId]
+    );
+
+    const locationId = Number(
+      match.location_id
+      || (['avilés', 'aviles', 'oviedo', 'gijón', 'gijon', 'asturias'].includes(String(match.city || '').toLowerCase()) ? 2 : 1)
+    );
+    const easyPassCost = Math.max(1, Number(match.easypass_cost || 1));
+
+    await conn.beginTransaction();
+
+    for (const buyer of buyers) {
+      const refundAmount = easyPassCost * Number(buyer.quantity);
+      await conn.query(
+        `INSERT INTO user_easypass_balances (user_id, location_id, balance)
+         VALUES (?, ?, ?)
+         ON DUPLICATE KEY UPDATE balance = balance + VALUES(balance)`,
+        [buyer.user_id, locationId, refundAmount]
+      );
+      await conn.query(
+        'UPDATE users SET easypass_balance = COALESCE(easypass_balance, 0) + ? WHERE id=?',
+        [refundAmount, buyer.user_id]
+      );
+      await conn.query(
+        `INSERT INTO easypass_transactions (user_id, type, amount, description, event_id, created_at)
+         VALUES (?, 'refund', ?, ?, ?, NOW())`,
+        [buyer.user_id, refundAmount, `Partido eliminado por la organización: devolución de ${refundAmount} EasyPass`, matchId]
+      );
+    }
+
+    await conn.query('UPDATE inscriptions SET status=\'cancelled\' WHERE match_id=? AND status=\'confirmed\'', [matchId]);
+    await conn.query('DELETE FROM match_live_events WHERE match_id=?', [matchId]);
+    await conn.query('DELETE FROM match_player_stats WHERE match_id=?', [matchId]);
+    await conn.query('DELETE FROM inscriptions WHERE match_id=?', [matchId]);
+    await conn.query('DELETE FROM matches WHERE id=?', [matchId]);
+
+    await conn.commit();
+
+    await Promise.all(buyers.map(({ user_id: userId }) => createSocialNotification(pool, {
+      userId,
+      type: 'match_cancelled',
+      entityType: 'match',
+      entityId: matchId,
+      title: 'Partido eliminado',
+      body: `${match.title} ha sido eliminado por la organización. Se te ha devuelto el EasyPass.`,
+      data: { type: 'match_cancelled', screen: 'Home' },
+      dedupeKey: `admin-match:deleted:${matchId}:${userId}`,
+    })).map((p) => p.catch((err) => console.error('[DELETE match notify]', err?.message || err))));
+
+    res.json({ ok: true, msg: `Partido eliminado. ${buyers.length} jugador(es) reembolsado(s).` });
+  } catch (e) {
+    await conn.rollback().catch(() => {});
+    console.error('[DELETE /admin/matches/:id]', e);
+    res.status(500).json({ ok: false, msg: 'No se pudo eliminar el partido' });
+  } finally {
+    conn.release();
+  }
+});
+
 export default router;
