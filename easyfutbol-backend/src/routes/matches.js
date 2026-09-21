@@ -1,5 +1,6 @@
 
 import { Router } from 'express';
+import crypto from 'crypto';
 import Stripe from 'stripe';
 import { pool } from '../config/db.js';
 import { requireAuth } from '../middlewares/auth.js';
@@ -398,14 +399,19 @@ router.post('/matches/:id/join-with-easypass', requireAuth, async (req, res) => 
       [totalEasyPassCost, userId]
     );
 
+    // Cada plaza lleva su propio enlace para decidir quién juega (uno mismo,
+    // o se manda el enlace a otra persona para que enlace su perfil).
     const inscriptionIds = [];
+    const claimTokens = [];
     for (let i = 0; i < safeQuantity; i += 1) {
+      const claimToken = crypto.randomBytes(16).toString('hex');
       const [insertRes] = await conn.query(
-        `INSERT INTO inscriptions (user_id, match_id, status, ticket_type)
-         VALUES (?,?, 'confirmed', ?)`,
-        [userId, matchId, finalTicketType]
+        `INSERT INTO inscriptions (user_id, match_id, status, ticket_type, claim_token)
+         VALUES (?,?, 'confirmed', ?, ?)`,
+        [userId, matchId, finalTicketType, claimToken]
       );
       inscriptionIds.push(insertRes.insertId);
+      claimTokens.push(claimToken);
     }
 
     await conn.query(`UPDATE matches SET spots_taken = spots_taken + ? WHERE id = ?`, [safeQuantity, matchId]);
@@ -432,6 +438,7 @@ router.post('/matches/:id/join-with-easypass', requireAuth, async (req, res) => 
       paidWithEasyPass: true,
       inscription_ids: inscriptionIds,
       inscription_id: inscriptionIds[0] || null,
+      tickets: claimTokens.map((claim_token, index) => ({ inscription_id: inscriptionIds[index], claim_token })),
       easyPassSpent: totalEasyPassCost,
       location_id: locationId,
       locationId,
