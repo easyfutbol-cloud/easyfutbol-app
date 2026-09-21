@@ -19,6 +19,8 @@ import adminMatches from './routes/adminMatches.js';
 import adminFields from './routes/adminFields.js';
 import adminMatchEvents from './routes/adminMatchEvents.js';
 import adminWeeklyLineup from './routes/adminWeeklyLineup.js';
+import adminPopups from './routes/adminPopups.js';
+import popups from './routes/popups.js';
 import weeklyLineup from './routes/weeklyLineup.js';
 import { startWeeklyLineupScheduler } from './services/weeklyLineupService.js';
 import achievements from './routes/achievements.js';
@@ -155,6 +157,8 @@ app.use('/api/admin/matches', adminMatches);
 app.use('/api/admin/matches/:matchId/events', adminMatchEvents);
 app.use('/api/admin/weekly-lineup', adminWeeklyLineup);
 app.use('/api/weekly-lineup', weeklyLineup);
+app.use('/api/admin/popups', adminPopups);
+app.use('/api/popups', popups);
 
 // estáticos para avatares
 app.use('/uploads', express.static('uploads'));
