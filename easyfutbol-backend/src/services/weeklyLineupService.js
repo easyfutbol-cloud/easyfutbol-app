@@ -10,7 +10,7 @@ export const POSITIONS = ['portero', 'defensa', 'centrocampista', 'delantero'];
 // votante en esa posición) — suman 8, de ahí "el 8 de la semana".
 export const POSITION_SLOTS = { portero: 1, defensa: 3, centrocampista: 2, delantero: 2 };
 // Tamaño máximo del grupo de candidatos que el admin puede poner por posición.
-export const POSITION_CANDIDATE_POOL = { portero: 1, defensa: 5, centrocampista: 4, delantero: 4 };
+export const POSITION_CANDIDATE_POOL = { portero: 3, defensa: 5, centrocampista: 4, delantero: 4 };
 export const POSITION_LABELS = {
   portero: 'Portero',
   defensa: 'Defensa',
