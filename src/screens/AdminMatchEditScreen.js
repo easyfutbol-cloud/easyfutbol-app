@@ -62,6 +62,16 @@ export default function AdminMatchEditScreen({ route, navigation }) {
   const [confirmedCount, setConfirmedCount] = useState(0);
   const [availableSlots, setAvailableSlots] = useState(0);
 
+  const [roster, setRoster] = useState({ white: [], black: [] });
+  const [movingId, setMovingId] = useState(null);
+
+  const [notifyOpen, setNotifyOpen] = useState(false);
+  const [notifyTitle, setNotifyTitle] = useState('');
+  const [notifyBody, setNotifyBody] = useState('');
+  const [sendingNotify, setSendingNotify] = useState(false);
+
+  const [deleting, setDeleting] = useState(false);
+
   const fetchMatch = useCallback(async () => {
     try {
       setLoading(true);
@@ -116,6 +126,20 @@ export default function AdminMatchEditScreen({ route, navigation }) {
     }
   }, [matchId]);
 
+  const fetchRoster = useCallback(async () => {
+    try {
+      const token = await AsyncStorage.getItem('token');
+      if (!token) return;
+      const response = await fetch(`${API_BASE_URL}/api/admin/matches/${matchId}/roster`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await response.json();
+      if (response.ok) setRoster({ white: data?.white || [], black: data?.black || [] });
+    } catch {
+      // la plantilla es informativa, no bloquea el resto de la edición
+    }
+  }, [matchId]);
+
   useFocusEffect(
     useCallback(() => {
       if (!matchId) {
@@ -125,8 +149,89 @@ export default function AdminMatchEditScreen({ route, navigation }) {
       }
 
       fetchMatch();
-    }, [fetchMatch, matchId])
+      fetchRoster();
+    }, [fetchMatch, fetchRoster, matchId])
   );
+
+  const movePlayer = async (player, toColor) => {
+    setMovingId(player.inscription_id);
+    try {
+      const token = await AsyncStorage.getItem('token');
+      const response = await fetch(`${API_BASE_URL}/api/admin/matches/${matchId}/roster/${player.inscription_id}/color`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ color: toColor }),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data?.error || 'No se pudo cambiar de equipo');
+      await fetchRoster();
+    } catch (err) {
+      Alert.alert('Error', err.message || 'No se pudo cambiar de equipo');
+    } finally {
+      setMovingId(null);
+    }
+  };
+
+  const sendNotification = async () => {
+    if (!notifyTitle.trim() || !notifyBody.trim()) {
+      Alert.alert('Faltan datos', 'Escribe un título y un mensaje.');
+      return;
+    }
+    try {
+      setSendingNotify(true);
+      const token = await AsyncStorage.getItem('token');
+      const response = await fetch(`${API_BASE_URL}/api/admin/notify/match/${matchId}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ title: notifyTitle.trim(), body: notifyBody.trim() }),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data?.msg || 'No se pudo enviar la notificación');
+      Alert.alert('Enviado', `Notificación enviada a ${data?.tokens ?? 'los'} dispositivo(s).`);
+      setNotifyOpen(false);
+      setNotifyTitle('');
+      setNotifyBody('');
+    } catch (err) {
+      Alert.alert('Error', err.message || 'No se pudo enviar la notificación');
+    } finally {
+      setSendingNotify(false);
+    }
+  };
+
+  const handleDeleteMatch = () => {
+    Alert.alert(
+      'Eliminar partido',
+      confirmedCount > 0
+        ? `Hay ${confirmedCount} jugador(es) apuntado(s). Se les cancelará la entrada y se les devolverá el EasyPass antes de borrar el partido. Esto no se puede deshacer.`
+        : 'Este partido se borrará para siempre. Esto no se puede deshacer.',
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        {
+          text: 'Eliminar',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              setDeleting(true);
+              const token = await AsyncStorage.getItem('token');
+              const response = await fetch(`${API_BASE_URL}/api/admin/matches/${matchId}`, {
+                method: 'DELETE',
+                headers: { Authorization: `Bearer ${token}` },
+              });
+              const data = await response.json();
+              if (!response.ok) throw new Error(data?.msg || 'No se pudo eliminar el partido');
+              Alert.alert('Eliminado', data?.msg || 'Partido eliminado.', [
+                { text: 'OK', onPress: () => navigation.navigate('AdminMatches') },
+              ]);
+            } catch (err) {
+              Alert.alert('Error', err.message || 'No se pudo eliminar el partido');
+            } finally {
+              setDeleting(false);
+            }
+          },
+        },
+      ]
+    );
+  };
 
   const handleSave = async () => {
     if (!matchId) {
@@ -401,6 +506,58 @@ export default function AdminMatchEditScreen({ route, navigation }) {
         </View>
       </View>
 
+      {(roster.white.length > 0 || roster.black.length > 0) && (
+        <View style={styles.section}>
+          <Text style={styles.label}>Cambiar de equipo</Text>
+          {roster.white.map((p) => (
+            <View key={`w-${p.inscription_id}`} style={styles.rosterRow}>
+              <Text style={styles.rosterName} numberOfLines={1}>{p.name}</Text>
+              <Text style={styles.rosterTeam}>Blancos</Text>
+              <TouchableOpacity style={styles.rosterMoveButton} onPress={() => movePlayer(p, 'black')} disabled={movingId === p.inscription_id}>
+                {movingId === p.inscription_id ? <ActivityIndicator size="small" color="#fff" /> : <Text style={styles.rosterMoveButtonText}>→ Negros</Text>}
+              </TouchableOpacity>
+            </View>
+          ))}
+          {roster.black.map((p) => (
+            <View key={`b-${p.inscription_id}`} style={styles.rosterRow}>
+              <Text style={styles.rosterName} numberOfLines={1}>{p.name}</Text>
+              <Text style={styles.rosterTeam}>Negros</Text>
+              <TouchableOpacity style={styles.rosterMoveButton} onPress={() => movePlayer(p, 'white')} disabled={movingId === p.inscription_id}>
+                {movingId === p.inscription_id ? <ActivityIndicator size="small" color="#fff" /> : <Text style={styles.rosterMoveButtonText}>→ Blancos</Text>}
+              </TouchableOpacity>
+            </View>
+          ))}
+        </View>
+      )}
+
+      <View style={styles.section}>
+        <TouchableOpacity style={styles.notifyToggle} onPress={() => setNotifyOpen((v) => !v)}>
+          <Text style={styles.label}>Enviar notificación a los jugadores</Text>
+        </TouchableOpacity>
+        {notifyOpen && (
+          <>
+            <TextInput
+              style={styles.input}
+              placeholder="Título"
+              placeholderTextColor="#777"
+              value={notifyTitle}
+              onChangeText={setNotifyTitle}
+            />
+            <TextInput
+              style={[styles.input, styles.textArea]}
+              placeholder="Mensaje"
+              placeholderTextColor="#777"
+              value={notifyBody}
+              onChangeText={setNotifyBody}
+              multiline
+            />
+            <TouchableOpacity style={styles.notifySendButton} onPress={sendNotification} disabled={sendingNotify}>
+              {sendingNotify ? <ActivityIndicator color="#fff" /> : <Text style={styles.notifySendButtonText}>Enviar</Text>}
+            </TouchableOpacity>
+          </>
+        )}
+      </View>
+
       <TouchableOpacity
         style={[styles.saveButton, saving && styles.saveButtonDisabled]}
         onPress={handleSave}
@@ -411,6 +568,10 @@ export default function AdminMatchEditScreen({ route, navigation }) {
         ) : (
           <Text style={styles.saveButtonText}>Guardar cambios</Text>
         )}
+      </TouchableOpacity>
+
+      <TouchableOpacity style={styles.deleteButton} onPress={handleDeleteMatch} disabled={deleting}>
+        {deleting ? <ActivityIndicator color="#ff6b6b" /> : <Text style={styles.deleteButtonText}>Eliminar partido</Text>}
       </TouchableOpacity>
     </ScrollView>
   );
@@ -598,4 +759,14 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '800',
   },
+  rosterRow: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 8, borderTopWidth: 1, borderTopColor: '#1f1f1f' },
+  rosterName: { flex: 1, color: '#fff', fontSize: 13, fontWeight: '700' },
+  rosterTeam: { color: '#888', fontSize: 11, fontWeight: '700' },
+  rosterMoveButton: { backgroundColor: '#222', borderRadius: 9, paddingHorizontal: 10, paddingVertical: 7, minWidth: 78, alignItems: 'center' },
+  rosterMoveButtonText: { color: '#fff', fontSize: 11, fontWeight: '800' },
+  notifyToggle: { marginBottom: 4 },
+  notifySendButton: { backgroundColor: '#ff5a00', borderRadius: 12, paddingVertical: 13, alignItems: 'center' },
+  notifySendButtonText: { color: '#fff', fontSize: 14, fontWeight: '800' },
+  deleteButton: { alignItems: 'center', paddingVertical: 16, marginTop: 10 },
+  deleteButtonText: { color: '#ff6b6b', fontSize: 14, fontWeight: '800' },
 });

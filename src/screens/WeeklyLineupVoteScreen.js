@@ -4,15 +4,17 @@ import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { api } from '../api/client';
 
-const POSITIONS = ['portero', 'central', 'lateral', 'centrocampista', 'delantero'];
-const POSITION_LABELS = { portero: 'Portero', central: 'Central', lateral: 'Laterales', centrocampista: 'Centrocampistas', delantero: 'Delantero' };
+const POSITIONS = ['portero', 'defensa', 'centrocampista', 'delantero'];
+const POSITION_LABELS = { portero: 'Portero', defensa: 'Defensa', centrocampista: 'Centrocampista', delantero: 'Delantero' };
+const DEFAULT_LIMITS = { portero: 1, defensa: 3, centrocampista: 2, delantero: 2 };
 
 export default function WeeklyLineupVoteScreen({ navigation }) {
   const [loading, setLoading] = useState(true);
   const [poll, setPoll] = useState(null);
   const [candidates, setCandidates] = useState(null);
   const [myVotes, setMyVotes] = useState({});
-  const [votingPosition, setVotingPosition] = useState(null);
+  const [limits, setLimits] = useState(DEFAULT_LIMITS);
+  const [votingKey, setVotingKey] = useState(null);
 
   const fetchCurrent = useCallback(async () => {
     try {
@@ -21,6 +23,7 @@ export default function WeeklyLineupVoteScreen({ navigation }) {
       setPoll(res.data?.poll || null);
       setCandidates(res.data?.candidates || null);
       setMyVotes(res.data?.my_votes || {});
+      setLimits(res.data?.position_limits || DEFAULT_LIMITS);
     } catch (e) {
       Alert.alert('Error', e?.response?.data?.msg || e.message || 'No se pudo cargar la votación');
     } finally {
@@ -34,15 +37,29 @@ export default function WeeklyLineupVoteScreen({ navigation }) {
     }, [fetchCurrent])
   );
 
-  const vote = async (position, candidate) => {
+  const toggleVote = async (position, candidate) => {
+    const current = myVotes[position] || [];
+    const alreadySelected = current.includes(candidate.id);
+    const limit = limits[position] ?? DEFAULT_LIMITS[position];
+
+    if (!alreadySelected && current.length >= limit) {
+      Alert.alert('Límite alcanzado', `Ya has elegido ${limit} en ${POSITION_LABELS[position].toLowerCase()}. Quita alguno para cambiarlo.`);
+      return;
+    }
+
+    const key = `${position}-${candidate.id}`;
     try {
-      setVotingPosition(position);
-      await api.post('/weekly-lineup/vote', { position, candidate_id: candidate.id });
-      setMyVotes((prev) => ({ ...prev, [position]: candidate.id }));
+      setVotingKey(key);
+      await api.post('/weekly-lineup/vote/toggle', { position, candidate_id: candidate.id });
+      setMyVotes((prev) => {
+        const list = prev[position] || [];
+        const next = alreadySelected ? list.filter((id) => id !== candidate.id) : [...list, candidate.id];
+        return { ...prev, [position]: next };
+      });
     } catch (e) {
       Alert.alert('Error', e?.response?.data?.msg || e.message || 'No se pudo registrar el voto');
     } finally {
-      setVotingPosition(null);
+      setVotingKey(null);
     }
   };
 
@@ -64,7 +81,7 @@ export default function WeeklyLineupVoteScreen({ navigation }) {
         </TouchableOpacity>
         <Ionicons name="football-outline" size={40} color="#444" />
         <Text style={styles.emptyTitle}>No hay votación abierta</Text>
-        <Text style={styles.emptySubtitle}>Vuelve a mirar esta semana — se abre y cierra automáticamente.</Text>
+        <Text style={styles.emptySubtitle}>Vuelve a mirar los lunes a las 19:00, cuando se abre la votación.</Text>
         <TouchableOpacity style={styles.resultLink} onPress={() => navigation.navigate('WeeklyLineupResult')}>
           <Text style={styles.resultLinkText}>Ver el último 8 ganador →</Text>
         </TouchableOpacity>
@@ -79,26 +96,31 @@ export default function WeeklyLineupVoteScreen({ navigation }) {
         <Text style={styles.backText}>Volver</Text>
       </TouchableOpacity>
       <Text style={styles.screenTitle}>Vota el 8 de la semana</Text>
-      <Text style={styles.screenSubtitle}>Elige tu favorito en cada posición. Puedes cambiar el voto mientras la votación siga abierta.</Text>
+      <Text style={styles.screenSubtitle}>Elige a tus favoritos en cada posición. Puedes cambiar de opinión mientras la votación siga abierta.</Text>
 
       {POSITIONS.map((position) => {
         const options = candidates?.[position] || [];
-        const myVoteId = myVotes[position];
+        const selectedIds = myVotes[position] || [];
+        const limit = limits[position] ?? DEFAULT_LIMITS[position];
 
         return (
           <View key={position} style={styles.positionBlock}>
-            <Text style={styles.positionTitle}>{POSITION_LABELS[position]}</Text>
+            <View style={styles.positionHeader}>
+              <Text style={styles.positionTitle}>{POSITION_LABELS[position]}</Text>
+              <Text style={styles.positionCount}>{selectedIds.length}/{limit}</Text>
+            </View>
             {options.length === 0 ? (
               <Text style={styles.noCandidates}>Sin candidatos esta semana.</Text>
             ) : (
               options.map((candidate) => {
-                const selected = myVoteId === candidate.id;
+                const selected = selectedIds.includes(candidate.id);
+                const key = `${position}-${candidate.id}`;
                 return (
                   <TouchableOpacity
                     key={candidate.id}
                     style={[styles.candidateRow, selected && styles.candidateRowSelected]}
-                    onPress={() => vote(position, candidate)}
-                    disabled={votingPosition === position}
+                    onPress={() => toggleVote(position, candidate)}
+                    disabled={votingKey === key}
                     activeOpacity={0.8}
                   >
                     {candidate.avatar_url ? (
@@ -112,7 +134,7 @@ export default function WeeklyLineupVoteScreen({ navigation }) {
                       <Text style={[styles.candidateName, selected && styles.candidateNameSelected]}>{candidate.name}</Text>
                       {candidate.location ? <Text style={styles.candidateLocation}>{candidate.location}</Text> : null}
                     </View>
-                    {votingPosition === position && !selected ? (
+                    {votingKey === key ? (
                       <ActivityIndicator size="small" color="#ff5a00" />
                     ) : selected ? (
                       <Ionicons name="checkmark-circle" size={22} color="#ff5a00" />
@@ -149,7 +171,9 @@ const styles = StyleSheet.create({
   screenTitle: { color: '#fff', fontSize: 24, fontWeight: '800' },
   screenSubtitle: { color: '#999', fontSize: 13, marginTop: 6, marginBottom: 18, lineHeight: 19 },
   positionBlock: { marginBottom: 18 },
-  positionTitle: { color: '#fff', fontSize: 15, fontWeight: '800', marginBottom: 8 },
+  positionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
+  positionTitle: { color: '#fff', fontSize: 15, fontWeight: '800' },
+  positionCount: { color: '#ff8c4d', fontSize: 13, fontWeight: '800' },
   noCandidates: { color: '#666', fontSize: 12 },
   candidateRow: { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: '#111', borderWidth: 1, borderColor: '#222', borderRadius: 12, padding: 11, marginBottom: 8 },
   candidateRowSelected: { borderColor: '#ff5a00', backgroundColor: 'rgba(255,90,0,0.08)' },

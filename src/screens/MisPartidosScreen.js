@@ -19,8 +19,11 @@ import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
 import { api } from '../api/client';
 import ScreenHeader from '../components/ScreenHeader';
+import PlayerStatsShareModal from '../components/PlayerStatsShareCard';
 import SegmentedControl from '../components/SegmentedControl';
 import { colors, layout, radii, spacing } from '../theme';
+
+const PUBLIC_BASE = String(api?.defaults?.baseURL || '').replace(/\/api\/?$/, '');
 
 const ORANGE = colors.orange;
 const DARK = colors.background;
@@ -358,6 +361,7 @@ export default function MisPartidosScreen({ navigation }) {
   const [activeTab, setActiveTab] = useState('upcoming');
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [statsCard, setStatsCard] = useState(null);
 
   const selectedField = useMemo(() => {
     if (!selectedMatch) return null;
@@ -479,6 +483,54 @@ export default function MisPartidosScreen({ navigation }) {
   const handleRefresh = () => {
     setRefreshing(true);
     loadMatches();
+  };
+
+  const applyAssignmentToEntry = (entry, assignment) => {
+    const entryId = getInscriptionId(entry);
+    const apply = (item) => (String(getInscriptionId(item)) === String(entryId) ? { ...item, ...assignment } : item);
+
+    setMatches((current) =>
+      current.map((match) => ({ ...match, inscriptions: (match.inscriptions || []).map(apply) }))
+    );
+    setSelectedMatch((current) =>
+      current ? { ...current, inscriptions: (current.inscriptions || []).map(apply) } : current
+    );
+  };
+
+  const handleClaimForMe = async (entry) => {
+    const claimToken = entry?.claim_token;
+    if (!claimToken) return;
+
+    try {
+      await api.post(`/inscriptions/claim/${claimToken}`);
+      const storedUser = await AsyncStorage.getItem('user');
+      const me = storedUser ? JSON.parse(storedUser) : null;
+      applyAssignmentToEntry(entry, {
+        assigned_user_id: me?.id,
+        assigned_name: me?.name || me?.username || 'Tú',
+        assigned_avatar_url: me?.avatar_url,
+      });
+    } catch (error) {
+      Alert.alert('No se pudo asignar', error?.response?.data?.msg || error.message || 'Inténtalo de nuevo.');
+    }
+  };
+
+  const handleShareTicketLink = async (entry) => {
+    const claimToken = entry?.claim_token;
+    if (!claimToken) return;
+
+    // WhatsApp y similares solo convierten en pulsable un enlace http(s), nunca
+    // un esquema personalizado (easyfutbol://), así que compartimos la página
+    // puente del backend, que a su vez abre la app.
+    const link = `${PUBLIC_BASE}/claim/${claimToken}`;
+    const matchTitle = selectedMatch?.title || selectedMatch?.nombre || selectedMatch?.name || 'un partido de EasyFutbol';
+    const message = `⚽ Te han invitado a jugar: ${matchTitle}\n\nÚnete al partido para que puedan contar tus estadísticas. Recuerda que tienes que tener la app instalada con la sesión iniciada.\n\n${link}`;
+
+    try {
+      await Share.share({ message });
+    } catch (error) {
+      console.log('Error compartiendo enlace de entrada', error?.message || error);
+    }
   };
 
   const handleCancelInscription = (entry) => {
@@ -629,17 +681,35 @@ export default function MisPartidosScreen({ navigation }) {
       ? `${saves} ${saves === 1 ? 'parada' : 'paradas'} bajo palos`
       : 'Partido completado';
     const sharePostMatchRecap = async () => {
-      const matchTitle = selectedMatch.title || selectedMatch.nombre || selectedMatch.name || 'Partido EasyFutbol';
-      const performance = [`${goals} goles`, `${assists} asistencias`, saves > 0 ? `${saves} paradas` : null, personalMvp ? 'MVP' : null].filter(Boolean).join(' · ');
+      let me = null;
       try {
-        await Share.share({ title: `Mi partido en EasyFutbol`, message: [`⚽ ${matchTitle}`, `Resultado: ${resultLabel}`, performance, 'Juega tu próximo partido con EasyFutbol.'].filter(Boolean).join('\n') });
-      } catch (error) {
-        console.log('Error compartiendo resumen del partido', error?.message || error);
+        const storedUser = await AsyncStorage.getItem('user');
+        me = storedUser ? JSON.parse(storedUser) : null;
+      } catch {
+        me = null;
       }
+      setStatsCard({
+        name: me?.name || me?.username || 'Jugador',
+        avatarUrl: me?.avatar_url || null,
+        goals,
+        assists,
+        isMvp: personalMvp,
+        date,
+      });
     };
 
     return (
       <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+        <PlayerStatsShareModal
+          visible={!!statsCard}
+          onClose={() => setStatsCard(null)}
+          name={statsCard?.name}
+          avatarUrl={statsCard?.avatarUrl}
+          goals={statsCard?.goals}
+          assists={statsCard?.assists}
+          isMvp={statsCard?.isMvp}
+          date={statsCard?.date}
+        />
         <TouchableOpacity
           style={styles.backButton}
           onPress={() => setSelectedMatch(null)}
@@ -707,12 +777,27 @@ export default function MisPartidosScreen({ navigation }) {
             </View>
             {inscriptions.map((entry, index) => {
               const entryId = getInscriptionId(entry);
+              const isClaimed = !!entry.assigned_user_id;
 
               return (
                 <View key={`entry-detail-${entryId || index}-${index}`} style={styles.entryRow}>
                   <View style={styles.entryInfo}>
                     <Text style={styles.entryText}>Entrada {index + 1}</Text>
                     <Text style={styles.entryMuted}>Camiseta {getTicketColor(entry.ticket_type || entry.ticketType || entry.camiseta)}</Text>
+                    <Text style={isClaimed ? styles.entryAssigned : styles.entryUnassigned}>
+                      {isClaimed ? `Juega: ${entry.assigned_name || 'Jugador'}` : 'Sin asignar todavía'}
+                    </Text>
+                    {!isClaimed && !isPastMatch && (
+                      <View style={styles.entryActionsRow}>
+                        <TouchableOpacity style={styles.assignMeButton} onPress={() => handleClaimForMe(entry)}>
+                          <Text style={styles.assignMeButtonText}>Voy yo</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity style={styles.assignShareButton} onPress={() => handleShareTicketLink(entry)}>
+                          <Ionicons name="share-social-outline" size={12} color={TEXT} />
+                          <Text style={styles.assignShareButtonText}>Enviar enlace</Text>
+                        </TouchableOpacity>
+                      </View>
+                    )}
                   </View>
 
                   {!isPastMatch && (
@@ -1406,7 +1491,7 @@ const styles = StyleSheet.create({
   },
   entryRow: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     justifyContent: 'space-between',
     borderBottomWidth: 1,
     borderBottomColor: BORDER,
@@ -1450,6 +1535,49 @@ const styles = StyleSheet.create({
   entryInfo: {
     flex: 1,
     paddingRight: 10,
+  },
+  entryAssigned: {
+    color: '#39D98A',
+    fontSize: 12,
+    fontWeight: '700',
+    marginTop: 3,
+  },
+  entryUnassigned: {
+    color: '#f4c95d',
+    fontSize: 12,
+    fontWeight: '700',
+    marginTop: 3,
+  },
+  entryActionsRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginTop: 8,
+  },
+  assignMeButton: {
+    backgroundColor: ORANGE,
+    borderRadius: 9,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+  },
+  assignMeButtonText: {
+    color: '#fff',
+    fontSize: 11,
+    fontWeight: '900',
+  },
+  assignShareButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    borderWidth: 1,
+    borderColor: BORDER,
+    borderRadius: 9,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+  },
+  assignShareButtonText: {
+    color: TEXT,
+    fontSize: 11,
+    fontWeight: '800',
   },
   cancelEntryButton: {
     borderWidth: 1,

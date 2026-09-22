@@ -8,10 +8,14 @@ import { useFocusEffect } from '@react-navigation/native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { registerForPushNotificationsAsync } from '../utils/notifications';
 import InviteFriendsModal from '../components/social/InviteFriendsModal';
+import AssignTicketsModal from '../components/AssignTicketsModal';
 
 
 const MAX_TICKETS_PER_PURCHASE = 8;
 const EASY_PASS_COST = 1;
+
+const SUPPORT_WHATSAPP_NUMBER = '34659152445';
+const SUPPORT_PHONE_DISPLAY = '+34 659 152 445';
 
 const SCREEN_BACKGROUND = require('../../assets/matches/match-6.jpg');
 const EASYPASS_LOGO = require('../../assets/easypass-logo.png');
@@ -106,6 +110,7 @@ export default function MatchScreen({ route, navigation }) {
   const [attendees, setAttendees] = useState([]);
   const [attendeesLoading, setAttendeesLoading] = useState(true);
   const [inviteFriendsVisible, setInviteFriendsVisible] = useState(false);
+  const [ticketsToAssign, setTicketsToAssign] = useState(null);
   const [matchFriends, setMatchFriends] = useState([]);
 
   const attendeesNormalized = useMemo(() => {
@@ -474,6 +479,15 @@ export default function MatchScreen({ route, navigation }) {
     }
   };
 
+  const handleContactSupport = async () => {
+    const text = encodeURIComponent(`Hola EasyFutbol, tengo una duda sobre el partido "${match?.title || ''}".`);
+    try {
+      await Linking.openURL(`https://wa.me/${SUPPORT_WHATSAPP_NUMBER}?text=${text}`);
+    } catch {
+      Alert.alert('No se pudo abrir WhatsApp', `Puedes escribirnos al ${SUPPORT_PHONE_DISPLAY}.`);
+    }
+  };
+
 
   const totalEasyPassCost = quantity * easyPassCost;
   const canJoinWithEasyPass = easyPassBalance >= totalEasyPassCost;
@@ -543,10 +557,14 @@ export default function MatchScreen({ route, navigation }) {
         };
       });
 
-      Alert.alert(
-        'Reserva confirmada',
-        `Te has inscrito al partido con ${quantity} plaza${quantity > 1 ? 's' : ''} usando ${totalEasyPassCost} EasyPass.`
-      );
+      if (Array.isArray(data?.tickets) && data.tickets.length) {
+        setTicketsToAssign(data.tickets);
+      } else {
+        Alert.alert(
+          'Reserva confirmada',
+          `Te has inscrito al partido con ${quantity} plaza${quantity > 1 ? 's' : ''} usando ${totalEasyPassCost} EasyPass.`
+        );
+      }
     } catch (e) {
       const status = e?.response?.status;
 
@@ -708,6 +726,7 @@ export default function MatchScreen({ route, navigation }) {
         <View style={styles.practicalActions}>
           {!!(fieldName || city) && <TouchableOpacity onPress={handleOpenDirections} style={styles.practicalPrimary}><Ionicons name="navigate-outline" size={16} color="#0d0d0f"/><Text style={styles.practicalPrimaryText}>Cómo llegar</Text></TouchableOpacity>}
           <TouchableOpacity onPress={handleShareMatch} style={styles.practicalSecondary}><Ionicons name="share-social-outline" size={16} color={colors.white}/><Text style={styles.practicalSecondaryText}>Compartir</Text></TouchableOpacity>
+          <TouchableOpacity onPress={handleContactSupport} style={styles.practicalSecondary}><Ionicons name="logo-whatsapp" size={16} color="#25D366"/><Text style={styles.practicalSecondaryText}>Dudas</Text></TouchableOpacity>
         </View>
       </View>
       {hasAftergame && (
@@ -794,6 +813,7 @@ export default function MatchScreen({ route, navigation }) {
         </ScrollView>
       )}
       <InviteFriendsModal visible={inviteFriendsVisible} onClose={()=>setInviteFriendsVisible(false)} matchId={matchId}/>
+      <AssignTicketsModal visible={!!ticketsToAssign} tickets={ticketsToAssign} matchTitle={match?.title} onClose={() => setTicketsToAssign(null)} />
       </View>
       {isGuest ? (
         <View style={styles.loginPromptCard}>

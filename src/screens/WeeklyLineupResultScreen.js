@@ -11,36 +11,60 @@ const TEMPLATE_ASPECT_RATIO = 1080 / 1350;
 
 // Posición de cada hueco sobre la plantilla, en % del ancho/alto de la imagen
 // (ajustado a ojo sobre el campo dibujado en weekly-lineup-template.png).
+// Repartidas con hueco de sobra entre filas para que quepan foto + etiqueta
+// sin solaparse, sea cual sea el ancho real de pantalla (ver AVATAR_RATIO).
 const POSITION_SPOTS = {
-  delantero: [{ top: 0.4, left: 0.4 }, { top: 0.4, left: 0.6 }],
-  centrocampista: [{ top: 0.505, left: 0.385 }, { top: 0.505, left: 0.615 }],
-  central: [{ top: 0.645, left: 0.5 }],
-  lateral: [{ top: 0.645, left: 0.345 }, { top: 0.645, left: 0.655 }],
-  portero: [{ top: 0.775, left: 0.5 }],
+  delantero: [{ top: 0.35, left: 0.37 }, { top: 0.35, left: 0.63 }],
+  centrocampista: [{ top: 0.495, left: 0.35 }, { top: 0.495, left: 0.65 }],
+  defensa: [{ top: 0.64, left: 0.26 }, { top: 0.64, left: 0.5 }, { top: 0.64, left: 0.74 }],
+  portero: [{ top: 0.79, left: 0.5 }],
 };
+
+// Diámetro de la foto como fracción del ancho real del campo en pantalla,
+// para que escale igual en un móvil pequeño que en una tablet.
+const AVATAR_RATIO = 0.105;
+
+function parseDateOnly(value) {
+  const str = String(value ?? '');
+  // mysql2 devuelve las columnas DATE como Date, que Express serializa a ISO
+  // completo ("2026-09-14T00:00:00.000Z") — no hay que volver a añadirle hora.
+  if (str.length > 10) return new Date(str);
+  return new Date(`${str}T12:00:00Z`);
+}
 
 function formatWeek(weekStart, weekEnd) {
   const opts = { day: '2-digit', month: '2-digit' };
-  const start = new Date(`${weekStart}T12:00:00Z`).toLocaleDateString('es-ES', opts);
-  const end = new Date(`${weekEnd}T12:00:00Z`).toLocaleDateString('es-ES', opts);
+  const start = parseDateOnly(weekStart).toLocaleDateString('es-ES', opts);
+  const end = parseDateOnly(weekEnd).toLocaleDateString('es-ES', opts);
   return `${start} - ${end}`;
 }
 
-function PlayerPin({ player, spot }) {
-  const pinStyle = { top: `${spot.top * 100}%`, left: `${spot.left * 100}%` };
+function PlayerPin({ player, spot, containerWidth }) {
+  if (!containerWidth) return null;
+
+  const avatarSize = containerWidth * AVATAR_RATIO;
+  const pinStyle = {
+    top: `${spot.top * 100}%`,
+    left: `${spot.left * 100}%`,
+    width: avatarSize * 1.7,
+    marginLeft: -(avatarSize * 1.7) / 2,
+    marginTop: -avatarSize / 2,
+  };
+  const avatarStyle = { width: avatarSize, height: avatarSize, borderRadius: avatarSize / 2 };
+
   return (
     <View style={[styles.pin, pinStyle]}>
-      <View style={styles.avatarRing}>
+      <View style={[styles.avatarRing, avatarStyle]}>
         {player?.avatar_url ? (
           <Image source={{ uri: player.avatar_url }} style={styles.avatarImage} />
         ) : (
-          <Text style={styles.avatarInitial}>{(player?.name || '?').charAt(0).toUpperCase()}</Text>
+          <Text style={[styles.avatarInitial, { fontSize: avatarSize * 0.4 }]}>{(player?.name || '?').charAt(0).toUpperCase()}</Text>
         )}
       </View>
       {player ? (
         <View style={styles.pinLabel}>
-          <Text style={styles.pinName} numberOfLines={1}>{player.name}</Text>
-          {player.location ? <Text style={styles.pinLocation} numberOfLines={1}>{player.location}</Text> : null}
+          <Text style={[styles.pinName, { fontSize: avatarSize * 0.19 }]} numberOfLines={1}>{player.name}</Text>
+          {player.location ? <Text style={[styles.pinLocation, { fontSize: avatarSize * 0.15 }]} numberOfLines={1}>{player.location}</Text> : null}
         </View>
       ) : null}
     </View>
@@ -53,10 +77,9 @@ function buildShareText(poll, winners) {
     lines.push(`${label}: ${(list || []).map((p) => p.name).join(', ') || '—'}`);
   };
   section('Portero', winners.portero);
-  section('Central', winners.central);
-  section('Laterales', winners.lateral);
+  section('Defensa', winners.defensa);
   section('Centrocampistas', winners.centrocampista);
-  section('Delantero', winners.delantero);
+  section('Delanteros', winners.delantero);
   return lines.join('\n');
 }
 
@@ -65,6 +88,7 @@ export default function WeeklyLineupResultScreen({ navigation }) {
   const [poll, setPoll] = useState(null);
   const [winners, setWinners] = useState(null);
   const [sharing, setSharing] = useState(false);
+  const [containerWidth, setContainerWidth] = useState(0);
   const shareCardRef = useRef(null);
 
   const fetchResult = useCallback(async () => {
@@ -139,11 +163,21 @@ export default function WeeklyLineupResultScreen({ navigation }) {
       </TouchableOpacity>
       <Text style={styles.screenSubtitle}>{formatWeek(poll.week_start, poll.week_end)}</Text>
 
-      <View ref={shareCardRef} collapsable={false} style={styles.templateWrap}>
+      <View
+        ref={shareCardRef}
+        collapsable={false}
+        style={styles.templateWrap}
+        onLayout={(e) => setContainerWidth(e.nativeEvent.layout.width)}
+      >
         <Image source={TEMPLATE_IMAGE} style={styles.templateImage} resizeMode="contain" />
         {Object.entries(POSITION_SPOTS).map(([position, spots]) =>
           spots.map((spot, index) => (
-            <PlayerPin key={`${position}-${index}`} player={(winners[position] || [])[index]} spot={spot} />
+            <PlayerPin
+              key={`${position}-${index}`}
+              player={(winners[position] || [])[index]}
+              spot={spot}
+              containerWidth={containerWidth}
+            />
           ))
         )}
       </View>
@@ -173,13 +207,13 @@ const styles = StyleSheet.create({
   screenSubtitle: { color: '#999', fontSize: 13, marginBottom: 14, textAlign: 'center' },
   templateWrap: { width: '100%', aspectRatio: TEMPLATE_ASPECT_RATIO, borderRadius: 16, overflow: 'hidden', backgroundColor: '#c1410a' },
   templateImage: { width: '100%', height: '100%' },
-  pin: { position: 'absolute', alignItems: 'center', width: 72, marginLeft: -36, marginTop: -22 },
-  avatarRing: { width: 44, height: 44, borderRadius: 22, backgroundColor: '#1a1a1a', borderWidth: 2, borderColor: '#000', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
+  pin: { position: 'absolute', alignItems: 'center' },
+  avatarRing: { backgroundColor: '#1a1a1a', borderWidth: 3, borderColor: '#000', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
   avatarImage: { width: '100%', height: '100%' },
-  avatarInitial: { color: '#fff', fontWeight: '900', fontSize: 15 },
-  pinLabel: { marginTop: 3, backgroundColor: 'rgba(0,0,0,0.72)', borderRadius: 6, paddingHorizontal: 5, paddingVertical: 2, maxWidth: 90 },
-  pinName: { color: '#fff', fontSize: 9, fontWeight: '800', textAlign: 'center' },
-  pinLocation: { color: 'rgba(255,255,255,0.7)', fontSize: 7, fontWeight: '700', textAlign: 'center' },
+  avatarInitial: { color: '#fff', fontWeight: '900' },
+  pinLabel: { marginTop: 4, backgroundColor: 'rgba(0,0,0,0.72)', borderRadius: 7, paddingHorizontal: 6, paddingVertical: 3, maxWidth: '100%' },
+  pinName: { color: '#fff', fontWeight: '800', textAlign: 'center' },
+  pinLocation: { color: 'rgba(255,255,255,0.7)', fontWeight: '700', textAlign: 'center' },
   shareButton: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: '#ff5a00', borderRadius: 14, paddingVertical: 15, marginTop: 20 },
   shareButtonText: { color: '#fff', fontSize: 15, fontWeight: '800' },
 });

@@ -168,19 +168,20 @@ export default function AdminMatchesScreen({ navigation }) {
 
         {Number(item.risk)===1&&<View style={styles.riskCard}><Text style={styles.riskTitle}>RIESGO DE NO COMPLETARSE</Text><Text style={styles.riskText}>Faltan {item.available_slots} jugadores y quedan menos de 48 horas.</Text></View>}
 
-        <TouchableOpacity style={styles.rosterButton} onPress={() => handleRosterPress(item)}><Text style={styles.rosterButtonText}>Ver quién viene y colores · {item.confirmed_count||0}</Text></TouchableOpacity>
-
-        <TouchableOpacity style={styles.liveButton} onPress={() => handleLivePress(item)}><Text style={styles.liveButtonText}>⚽ Goles y paradas en directo</Text></TouchableOpacity>
-
         <View style={styles.buttonRow}>
           <TouchableOpacity style={styles.editButton} onPress={() => handleEditPress(item)}>
-            <Text style={styles.editButtonText}>Editar partido</Text>
+            <Text style={styles.editButtonText}>Editar</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={styles.statsButton} onPress={() => handleStatsPress(item)}>
-            <Text style={styles.statsButtonText}>Cargar estadísticas</Text>
+          <TouchableOpacity style={styles.liveButton} onPress={() => handleLivePress(item)}>
+            <Text style={styles.liveButtonText}>⚽ Apuntar eventos</Text>
           </TouchableOpacity>
         </View>
-        <TouchableOpacity style={styles.duplicateButton} onPress={()=>duplicateMatch(item)}><Text style={styles.duplicateText}>Duplicar una semana después</Text></TouchableOpacity>
+
+        <View style={styles.secondaryRow}>
+          <TouchableOpacity onPress={() => handleRosterPress(item)}><Text style={styles.secondaryLink}>Ver plantilla · {item.confirmed_count||0}</Text></TouchableOpacity>
+          <TouchableOpacity onPress={() => handleStatsPress(item)}><Text style={styles.secondaryLink}>Cargar CSV</Text></TouchableOpacity>
+          <TouchableOpacity onPress={()=>duplicateMatch(item)}><Text style={styles.secondaryLink}>Duplicar</Text></TouchableOpacity>
+        </View>
       </TouchableOpacity>
     );
   };
@@ -425,34 +426,26 @@ const styles = StyleSheet.create({
   buttonRow: {
     flexDirection: 'row',
     gap: 10,
+    marginBottom: 10,
   },
   editButton: {
     flex: 1,
-    backgroundColor: '#ff5a00',
+    minHeight: 50,
+    backgroundColor: '#1c1c1c',
+    borderWidth: 1,
+    borderColor: '#333',
     borderRadius: 12,
-    paddingVertical: 13,
     alignItems: 'center',
+    justifyContent: 'center',
   },
   editButtonText: {
     color: '#fff',
     fontSize: 14,
-    fontWeight: '700',
+    fontWeight: '800',
   },
-  statsButton: {
-    flex: 1,
-    minHeight: 46,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: '#ff5a00',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 8,
-  },
-  statsButtonText: {
-    color: '#ff8c4d',
-    fontSize: 14,
-    fontWeight: '700',
-    textAlign: 'center',
-  },
-  rosterButton:{backgroundColor:'#f1f1f1',borderRadius:12,paddingVertical:13,alignItems:'center',marginBottom:10},rosterButtonText:{color:'#111',fontWeight:'900',fontSize:13},liveButton:{backgroundColor:'rgba(255,90,0,0.12)',borderWidth:1,borderColor:'#ff5a00',borderRadius:12,paddingVertical:13,alignItems:'center',marginBottom:10},liveButtonText:{color:'#ff8c4d',fontWeight:'900',fontSize:13},duplicateButton:{paddingVertical:12,alignItems:'center',marginTop:4},duplicateText:{color:'#888',fontSize:11,fontWeight:'800'},riskCard:{backgroundColor:'rgba(244,201,93,.09)',borderWidth:1,borderColor:'rgba(244,201,93,.3)',borderRadius:12,padding:11,marginBottom:11},riskTitle:{color:'#f4c95d',fontSize:9,fontWeight:'900',letterSpacing:.8},riskText:{color:'#aaa07f',fontSize:10,marginTop:4},
+  liveButton: { flex: 1, minHeight: 50, backgroundColor: '#ff5a00', borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
+  liveButtonText: { color: '#fff', fontWeight: '900', fontSize: 14 },
+  secondaryRow: { flexDirection: 'row', justifyContent: 'space-between', paddingTop: 2 },
+  secondaryLink: { color: '#888', fontSize: 11, fontWeight: '700' },
+  riskCard:{backgroundColor:'rgba(244,201,93,.09)',borderWidth:1,borderColor:'rgba(244,201,93,.3)',borderRadius:12,padding:11,marginBottom:11},riskTitle:{color:'#f4c95d',fontSize:9,fontWeight:'900',letterSpacing:.8},riskText:{color:'#aaa07f',fontSize:10,marginTop:4},
 });

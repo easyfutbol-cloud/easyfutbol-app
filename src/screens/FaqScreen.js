@@ -15,7 +15,8 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { colors, layout, radii, shadows, spacing, typography } from '../theme';
 import { goBackOrFallback } from '../utils/navigation';
 
-const WHATSAPP_SUPPORT_URL = `https://wa.me/34640294177?text=${encodeURIComponent('Hola EasyFutbol, necesito ayuda.')}`;
+const SUPPORT_PHONE_DISPLAY = '+34 659 152 445';
+const WHATSAPP_SUPPORT_URL = `https://wa.me/34659152445?text=${encodeURIComponent('Hola EasyFutbol, necesito ayuda.')}`;
 const WHATSAPP_VALLADOLID_URL = 'https://chat.whatsapp.com/IdRGx2RDihu1ghbLWv44J5?s=cl&p=i&ilr=0&amv=2';
 const WHATSAPP_ASTURIAS_URL = 'https://chat.whatsapp.com/ElR7I1uBofT5jKUO4Jhbs6?s=cl&p=i&ilr=0&amv=2';
 
@@ -63,7 +64,7 @@ const FAQS = [
   { category: 'Normas', question: '¿Qué hago si me lesiono durante un partido?', answer: 'Avisa inmediatamente al organizador para que pueda ayudarte y actuar de la forma más adecuada.' },
   { category: 'Aplicación', question: 'No puedo iniciar sesión.', answer: 'Comprueba que el correo y la contraseña sean correctos. Si el problema continúa, utiliza la recuperación de contraseña.' },
   { category: 'Aplicación', question: 'No aparecen los partidos o las estadísticas.', answer: 'Comprueba tu conexión a Internet, actualiza la información y asegúrate de utilizar la última versión de la aplicación.' },
-  { category: 'Aplicación', question: '¿Cómo puedo contactar con EasyFutbol?', answer: 'Puedes escribir al soporte por WhatsApp en el +34 640 29 41 77, entrar en el grupo de Valladolid o Asturias, o contactar mediante las redes sociales oficiales.' },
+  { category: 'Aplicación', question: '¿Cómo puedo contactar con EasyFutbol?', answer: 'Puedes escribir al soporte por WhatsApp en el +34 659 152 445, entrar en el grupo de Valladolid o Asturias, o contactar mediante las redes sociales oficiales.' },
 ];
 
 function FaqItem({ item, isOpen, onPress }) {
@@ -108,7 +109,7 @@ export default function FaqScreen({ navigation }) {
     try {
       await Linking.openURL(url);
     } catch {
-      Alert.alert('No se pudo abrir WhatsApp', 'Puedes escribirnos al +34 640 29 41 77.');
+      Alert.alert('No se pudo abrir WhatsApp', `Puedes escribirnos al ${SUPPORT_PHONE_DISPLAY}.`);
     }
   };
 
@@ -186,7 +187,7 @@ export default function FaqScreen({ navigation }) {
             <Ionicons name="logo-whatsapp" size={20} color="#123125" />
             <Text style={styles.contactButtonText}>Escribir a soporte</Text>
           </TouchableOpacity>
-          <Text style={styles.supportPhone}>+34 640 29 41 77</Text>
+          <Text style={styles.supportPhone}>{SUPPORT_PHONE_DISPLAY}</Text>
           <View style={styles.groupActions}>
             <TouchableOpacity style={styles.groupButton} onPress={() => openWhatsApp(WHATSAPP_VALLADOLID_URL)} accessibilityRole="link">
               <Ionicons name="location-outline" size={18} color={colors.white} />

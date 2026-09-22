@@ -14,18 +14,32 @@ import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { api } from '../api/client';
 
-const POSITIONS = ['portero', 'central', 'lateral', 'centrocampista', 'delantero'];
-const POSITION_LABELS = { portero: 'Portero', central: 'Central', lateral: 'Laterales', centrocampista: 'Centrocampistas', delantero: 'Delantero' };
-const POSITION_SLOTS = { portero: 1, central: 1, lateral: 2, centrocampista: 2, delantero: 2 };
+const POSITIONS = ['portero', 'defensa', 'centrocampista', 'delantero'];
+const POSITION_LABELS = { portero: 'Portero', defensa: 'Defensa', centrocampista: 'Centrocampista', delantero: 'Delantero' };
+// Cuántos gana cada posición (y elige cada votante) / tamaño máximo del grupo de candidatos.
+const POSITION_SLOTS = { portero: 1, defensa: 3, centrocampista: 2, delantero: 2 };
+const POSITION_CANDIDATE_POOL = { portero: 3, defensa: 5, centrocampista: 4, delantero: 4 };
 
 const STATUS_LABELS = { draft: 'Borrador', open: 'Abierta', closed: 'Cerrada' };
-const MAX_CANDIDATES = 3;
+
+function parseDateOnly(value) {
+  const str = String(value ?? '');
+  // mysql2 devuelve las columnas DATE como Date, que Express serializa a ISO
+  // completo ("2026-09-14T00:00:00.000Z") — no hay que volver a añadirle hora.
+  if (str.length > 10) return new Date(str);
+  return new Date(`${str}T12:00:00Z`);
+}
 
 function formatWeek(weekStart, weekEnd) {
   const opts = { day: '2-digit', month: '2-digit' };
-  const start = new Date(`${weekStart}T12:00:00Z`).toLocaleDateString('es-ES', opts);
-  const end = new Date(`${weekEnd}T12:00:00Z`).toLocaleDateString('es-ES', opts);
+  const start = parseDateOnly(weekStart).toLocaleDateString('es-ES', opts);
+  const end = parseDateOnly(weekEnd).toLocaleDateString('es-ES', opts);
   return `${start} - ${end}`;
+}
+
+function formatDateTime(value) {
+  if (!value) return null;
+  return new Date(value).toLocaleString('es-ES', { weekday: 'short', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
 }
 
 export default function AdminWeeklyLineupScreen() {
@@ -119,6 +133,16 @@ export default function AdminWeeklyLineupScreen() {
     }
   };
 
+  const openPoll = async () => {
+    try {
+      const res = await api.post(`/admin/weekly-lineup/polls/${selectedPollId}/open`);
+      setPolls(Array.isArray(res.data?.data) ? res.data.data : []);
+      await fetchDetail(selectedPollId);
+    } catch (e) {
+      Alert.alert('No se pudo abrir', e?.response?.data?.msg || e.message || 'Revisa que haya candidatos en todas las posiciones');
+    }
+  };
+
   const closeNow = () => {
     Alert.alert(
       'Cerrar ahora (modo prueba)',
@@ -182,8 +206,8 @@ export default function AdminWeeklyLineupScreen() {
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
         <Text style={styles.screenTitle}>El 8 de la semana</Text>
         <Text style={styles.screenSubtitle}>
-          Añade candidatos a cada posición del borrador. La votación se abre sola cuando empieza su semana
-          (con al menos 1 candidato por posición) y se cierra sola al terminarla.
+          Añade candidatos a cada posición del borrador y ábrela tú cuando esté lista (de momento la apertura es manual).
+          Se cierra sola en la hora prevista (miércoles 19:00).
         </Text>
 
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.weekTabs}>
@@ -205,6 +229,19 @@ export default function AdminWeeklyLineupScreen() {
 
         {!pollDetail ? null : (
           <>
+            {(pollDetail.poll.scheduled_open_at || pollDetail.poll.scheduled_close_at) ? (
+              <Text style={styles.scheduleText}>
+                Previsto: abre {formatDateTime(pollDetail.poll.scheduled_open_at) || '—'} · cierra {formatDateTime(pollDetail.poll.scheduled_close_at) || '—'}
+              </Text>
+            ) : null}
+
+            {isDraft ? (
+              <TouchableOpacity style={styles.openButton} onPress={openPoll}>
+                <Ionicons name="play-outline" size={14} color="#fff" />
+                <Text style={styles.openButtonText}>Abrir votación ahora</Text>
+              </TouchableOpacity>
+            ) : null}
+
             {pollDetail.poll.status !== 'closed' ? (
               <TouchableOpacity style={styles.closeNowButton} onPress={closeNow}>
                 <Ionicons name="flash-outline" size={14} color="#ff8c4d" />
@@ -228,11 +265,12 @@ export default function AdminWeeklyLineupScreen() {
 
             {POSITIONS.map((position) => {
               const candidates = pollDetail.candidates?.[position] || [];
+              const pool = POSITION_CANDIDATE_POOL[position];
               return (
                 <View key={position} style={styles.positionBlock}>
                   <View style={styles.positionHeader}>
                     <Text style={styles.positionTitle}>{POSITION_LABELS[position]}</Text>
-                    <Text style={styles.positionSlots}>{candidates.length}/{MAX_CANDIDATES} candidatos · {POSITION_SLOTS[position]} hueco{POSITION_SLOTS[position] === 1 ? '' : 's'}</Text>
+                    <Text style={styles.positionSlots}>{candidates.length}/{pool} candidatos · cada uno elige {POSITION_SLOTS[position]}</Text>
                   </View>
 
                   {candidates.map((c) => (
@@ -257,8 +295,8 @@ export default function AdminWeeklyLineupScreen() {
                     </View>
                   ))}
 
-                  {isDraft && candidates.length >= MAX_CANDIDATES ? (
-                    <Text style={styles.limitReachedText}>Máximo de {MAX_CANDIDATES} candidatos alcanzado.</Text>
+                  {isDraft && candidates.length >= pool ? (
+                    <Text style={styles.limitReachedText}>Máximo de {pool} candidatos alcanzado.</Text>
                   ) : isDraft ? (
                     searchPosition === position ? (
                       <View style={styles.searchBox}>
@@ -321,6 +359,9 @@ const styles = StyleSheet.create({
   weekTabTextActive: { color: '#fff' },
   weekTabStatus: { color: '#777', fontSize: 10, fontWeight: '700', marginTop: 2 },
   weekTabStatusActive: { color: 'rgba(255,255,255,0.85)' },
+  scheduleText: { color: '#777', fontSize: 11, fontWeight: '600', marginBottom: 10, textTransform: 'capitalize' },
+  openButton: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, backgroundColor: '#ff5a00', borderRadius: 12, paddingVertical: 12, marginBottom: 10 },
+  openButtonText: { color: '#fff', fontSize: 13, fontWeight: '800' },
   closeNowButton: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, backgroundColor: 'rgba(255,90,0,0.1)', borderWidth: 1, borderColor: '#ff5a00', borderRadius: 12, paddingVertical: 11, marginBottom: 14 },
   closeNowButtonText: { color: '#ff8c4d', fontSize: 12, fontWeight: '800' },
   deletePollButton: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 10, marginBottom: 14 },

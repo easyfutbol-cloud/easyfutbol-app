@@ -6,8 +6,9 @@ import { api } from '../api/client';
 
 function eventLine(event) {
   const player = event.player_name ? ` — ${event.player_name}` : '';
+  const assist = event.assist_name ? ` (asiste ${event.assist_name})` : '';
   const team = event.team_color ? ` (${event.team_color === 'white' ? 'Blancos' : 'Negros'})` : '';
-  return `${event.minute}'${player}${team}`;
+  return `${event.minute}'${player}${assist}${team}`;
 }
 
 function buildShareText(match, data) {
@@ -20,6 +21,8 @@ function buildShareText(match, data) {
   lines.push('', `PARADAS (${data.saves.length})`);
   if (data.saves.length) data.saves.forEach((e) => lines.push(`${e.is_candidate ? '⭐ ' : ''}${eventLine(e)}`));
   else lines.push('Sin paradas registradas');
+
+  lines.push('', `MVP: ${data.mvp?.player_name || 'Sin asignar'}`);
 
   if (data.goal_candidates.length || data.save_candidates.length) {
     lines.push('', 'CANDIDATOS DE LA SEMANA');
@@ -95,6 +98,13 @@ export default function AdminMatchSummaryScreen({ route }) {
         </View>
       )}
 
+      {data.mvp && (
+        <View style={styles.mvpBox}>
+          <Ionicons name="star" size={16} color="#f4c95d" />
+          <Text style={styles.mvpText}>MVP: {data.mvp.player_name}</Text>
+        </View>
+      )}
+
       <Section title={`Goles (${data.goals.length})`} events={data.goals} emptyLabel="Sin goles registrados" />
       <Section title={`Paradas (${data.saves.length})`} events={data.saves} emptyLabel="Sin paradas registradas" />
 
@@ -120,6 +130,7 @@ function Section({ title, events, emptyLabel }) {
             </View>
             <Text style={styles.eventText}>
               {e.player_name || 'Jugador sin especificar'}
+              {e.assist_name ? ` · asiste ${e.assist_name}` : ''}
               {e.team_color ? ` · ${e.team_color === 'white' ? 'Blancos' : 'Negros'}` : ''}
             </Text>
             {e.is_candidate ? <Ionicons name="star" size={16} color="#f4c95d" /> : null}
@@ -141,6 +152,8 @@ const styles = StyleSheet.create({
   candidatesHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 },
   candidatesTitle: { color: '#f4c95d', fontWeight: '800', fontSize: 14 },
   candidateLine: { color: '#e8d9ae', fontSize: 13, marginTop: 4 },
+  mvpBox: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: '#181818', borderRadius: 12, borderWidth: 1, borderColor: '#262626', padding: 12, marginBottom: 22 },
+  mvpText: { color: '#f4c95d', fontSize: 14, fontWeight: '800' },
   section: { marginBottom: 22 },
   sectionTitle: { color: '#fff', fontSize: 16, fontWeight: '800', marginBottom: 10 },
   emptyText: { color: '#777', fontSize: 13 },

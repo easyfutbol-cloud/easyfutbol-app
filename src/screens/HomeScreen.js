@@ -1,8 +1,10 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Alert,
   Image,
   ImageBackground,
+  Linking,
+  Modal,
   ScrollView,
   StatusBar,
   StyleSheet,
@@ -22,6 +24,7 @@ import SportsFeatureCard from '../components/SportsFeatureCard';
 import { menuController } from '../navigation/menuController';
 import { publishUnreadNotifications, subscribeUnreadNotifications } from '../utils/notificationEvents';
 import { syncNotificationBadge } from '../utils/notifications';
+import AppPopupHost from '../components/AppPopupHost';
 import {
   colors,
   gradients,
@@ -33,6 +36,10 @@ import {
 
 const APP_LOGO = require('../../assets/Logo.png');
 const EASYPASS_LOGO = require('../../assets/easypass-logo.png');
+
+const WHATSAPP_PROMPT_DISMISSED_KEY = 'whatsapp_prompt_dismissed';
+const WHATSAPP_VALLADOLID_URL = 'https://chat.whatsapp.com/IdRGx2RDihu1ghbLWv44J5?s=cl&p=i&ilr=0&amv=2';
+const WHATSAPP_ASTURIAS_URL = 'https://chat.whatsapp.com/ElR7I1uBofT5jKUO4Jhbs6?s=cl&p=i&ilr=0&amv=2';
 
 const SCREEN_BACKGROUND = require('../../assets/matches/match-6.jpg');
 
@@ -58,6 +65,28 @@ export default function HomeScreen({ navigation }) {
   const [easyPassLoading, setEasyPassLoading] = useState(false);
   const [upcomingTournament, setUpcomingTournament] = useState(null);
   const [unreadNotifications, setUnreadNotifications] = useState(0);
+  const [showWhatsAppPrompt, setShowWhatsAppPrompt] = useState(false);
+  const [whatsAppPromptChecked, setWhatsAppPromptChecked] = useState(false);
+  const whatsAppPromptCheckedRef = useRef(false);
+
+  useEffect(() => {
+    if (!isLogged || whatsAppPromptCheckedRef.current) return;
+    whatsAppPromptCheckedRef.current = true;
+    AsyncStorage.getItem(WHATSAPP_PROMPT_DISMISSED_KEY)
+      .then((value) => { if (!value) setShowWhatsAppPrompt(true); })
+      .catch(() => {})
+      .finally(() => setWhatsAppPromptChecked(true));
+  }, [isLogged]);
+
+  const dismissWhatsAppPrompt = useCallback(() => {
+    setShowWhatsAppPrompt(false);
+    AsyncStorage.setItem(WHATSAPP_PROMPT_DISMISSED_KEY, '1').catch(() => {});
+  }, []);
+
+  const joinWhatsAppGroup = useCallback((url) => {
+    dismissWhatsAppPrompt();
+    Linking.openURL(url).catch(() => {});
+  }, [dismissWhatsAppPrompt]);
 
   const requireAuth = useCallback((targetScreen) => {
     if (isLogged) {
@@ -340,6 +369,27 @@ export default function HomeScreen({ navigation }) {
           </View>
         </View>
       </ScrollView>
+
+      <AppPopupHost navigation={navigation} enabled={isLogged && whatsAppPromptChecked && !showWhatsAppPrompt} />
+      <Modal visible={showWhatsAppPrompt} transparent animationType="fade" onRequestClose={dismissWhatsAppPrompt}>
+        <View style={styles.whatsappOverlay}>
+          <View style={styles.whatsappCard}>
+            <View style={styles.whatsappIcon}><Ionicons name="logo-whatsapp" size={28} color="#25D366" /></View>
+            <Text style={styles.whatsappTitle}>Aún no estás en nuestro grupo de WhatsApp</Text>
+            <Text style={styles.whatsappText}>Por aquí informamos de todas las novedades y promociones.</Text>
+
+            <TouchableOpacity style={styles.whatsappPrimaryButton} onPress={() => joinWhatsAppGroup(WHATSAPP_VALLADOLID_URL)}>
+              <Text style={styles.whatsappPrimaryButtonText}>Unirme al grupo de Valladolid</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.whatsappPrimaryButton} onPress={() => joinWhatsAppGroup(WHATSAPP_ASTURIAS_URL)}>
+              <Text style={styles.whatsappPrimaryButtonText}>Unirme al grupo de Asturias</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.whatsappDismissButton} onPress={dismissWhatsAppPrompt}>
+              <Text style={styles.whatsappDismissButtonText}>No volver a enseñarme este mensaje</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -520,4 +570,13 @@ const styles = StyleSheet.create({
   cardCellWide: {
     width: '50%',
   },
+  whatsappOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.72)', alignItems: 'center', justifyContent: 'center', padding: spacing(2.5) },
+  whatsappCard: { width: '100%', maxWidth: 400, backgroundColor: colors.surface, borderRadius: radii.large, borderWidth: 1, borderColor: colors.border, padding: spacing(2.5), alignItems: 'center' },
+  whatsappIcon: { width: 56, height: 56, borderRadius: 28, backgroundColor: 'rgba(37,211,102,0.14)', alignItems: 'center', justifyContent: 'center', marginBottom: spacing(1.5) },
+  whatsappTitle: { color: colors.white, ...typography.heading, textAlign: 'center' },
+  whatsappText: { color: colors.textMuted, ...typography.body, textAlign: 'center', marginTop: spacing(1), marginBottom: spacing(2) },
+  whatsappPrimaryButton: { width: '100%', minHeight: 48, borderRadius: radii.medium, backgroundColor: '#25D366', alignItems: 'center', justifyContent: 'center', marginBottom: spacing(1) },
+  whatsappPrimaryButtonText: { color: '#0d1f13', ...typography.bodyStrong },
+  whatsappDismissButton: { width: '100%', minHeight: 44, alignItems: 'center', justifyContent: 'center', marginTop: spacing(0.5) },
+  whatsappDismissButtonText: { color: colors.textSubtle, ...typography.caption },
 });
