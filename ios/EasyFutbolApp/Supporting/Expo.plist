@@ -9,8 +9,10 @@
     <key>EXUpdatesLaunchWaitMs</key>
     <integer>0</integer>
     <key>EXUpdatesRuntimeVersion</key>
-    <string>2.0.0-sdk57</string>
+    <string>2.1.0-sdk57</string>
     <key>EXUpdatesURL</key>
     <string>https://u.expo.dev/287d443d-1c44-43d1-9d00-5d4008cf038e</string>
+    <key>EXUpdatesEnableBsdiffPatchSupport</key>
+    <true/>
   </dict>
 </plist>

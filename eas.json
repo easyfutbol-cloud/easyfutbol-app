@@ -25,6 +25,10 @@
     }
   },
   "submit": {
-    "production": {}
+    "production": {
+      "ios": {
+        "bundleIdentifier": "com.easyfutbol.easyfutbol"
+      }
+    }
   }
 }
