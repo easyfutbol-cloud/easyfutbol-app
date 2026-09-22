@@ -28,6 +28,7 @@ import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-cont
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Application from 'expo-application';
 import Constants from 'expo-constants';
+import * as ExpoLinking from 'expo-linking';
 import { api, setUnauthorizedHandler } from './src/api/client';
 import { menuController } from './src/navigation/menuController';
 import { publishUnreadNotifications, subscribeUnreadNotifications } from './src/utils/notificationEvents';
@@ -40,6 +41,7 @@ import { isLeagueRoute } from './src/navigation/leagueNavigation';
 import HomeScreen from './src/screens/HomeScreen';
 import AccessScreen from './src/screens/AccessScreen';
 import MatchScreen from './src/screens/MatchScreen';
+import ClaimTicketScreen from './src/screens/ClaimTicketScreen';
 import MatchsScreen from './src/screens/MatchsScreen';
 import MyMatchesScreen from './src/screens/MyMatchesScreen';
 import MisPartidosScreen from './src/screens/MisPartidosScreen';
@@ -65,6 +67,8 @@ import AdminFieldEditScreen from './src/screens/AdminFieldEditScreen';
 import AdminMatchLiveScreen from './src/screens/AdminMatchLiveScreen';
 import AdminMatchSummaryScreen from './src/screens/AdminMatchSummaryScreen';
 import AdminWeeklyLineupScreen from './src/screens/AdminWeeklyLineupScreen';
+import AdminPopupsScreen from './src/screens/AdminPopupsScreen';
+import AdminPopupEditScreen from './src/screens/AdminPopupEditScreen';
 import WeeklyLineupVoteScreen from './src/screens/WeeklyLineupVoteScreen';
 import WeeklyLineupResultScreen from './src/screens/WeeklyLineupResultScreen';
 import AdminUsersScreen from './src/screens/AdminUsersScreen';
@@ -115,6 +119,16 @@ const navTheme = {
 // === Navigation Ref para navegar desde fuera de las screens ===
 export const navigationRef = createNavigationContainerRef();
 
+// === Enlaces para reclamar una entrada (easyfutbol://claim/<token>) ===
+const linking = {
+  prefixes: [ExpoLinking.createURL('/'), 'easyfutbol://'],
+  config: {
+    screens: {
+      ClaimTicket: 'claim/:token',
+    },
+  },
+};
+
 function normalizeVersion(version) {
   return String(version || '0')
     .split('.')
@@ -155,7 +169,7 @@ async function checkMinimumAppVersion() {
   }
 
   try {
-    const versionUrl = 'https://api.easyfutbol.es/api/app-config/version';
+    const versionUrl = `https://api.easyfutbol.es/api/app-config/version?platform=${Platform.OS}`;
 
     console.log('APP VERSION REQUEST:', versionUrl);
 
@@ -723,6 +737,7 @@ function AppShell({ currentRouteName }) {
         <Stack.Screen name="PrivacyPolicy" component={PrivacyPolicyScreen} />
         <Stack.Screen name="Faq" component={FaqScreen} />
         <Stack.Screen name="Match" component={MatchScreen} />
+        <Stack.Screen name="ClaimTicket" component={ClaimTicketScreen} />
         <Stack.Screen name="Matchs" component={MatchsScreen} />
         <Stack.Screen name="MyMatches" component={MyMatchesScreen} />
         <Stack.Screen name="MisPartidos" component={MisPartidosScreen} />
@@ -764,6 +779,8 @@ function AppShell({ currentRouteName }) {
         <Stack.Screen name="AdminMatchLive" component={AdminMatchLiveScreen} />
         <Stack.Screen name="AdminMatchSummary" component={AdminMatchSummaryScreen} />
         <Stack.Screen name="AdminWeeklyLineup" component={AdminWeeklyLineupScreen} />
+        <Stack.Screen name="AdminPopups" component={AdminPopupsScreen} />
+        <Stack.Screen name="AdminPopupEdit" component={AdminPopupEditScreen} />
         <Stack.Screen name="WeeklyLineupVote" component={WeeklyLineupVoteScreen} />
         <Stack.Screen name="WeeklyLineupResult" component={WeeklyLineupResultScreen} />
         <Stack.Screen name="AdminUsers" component={AdminUsersScreen} />
@@ -906,6 +923,7 @@ export default function App() {
       <View style={{ flex: 1 }}>
         <NavigationContainer
           theme={navTheme}
+          linking={linking}
           ref={navigationRef}
           onReady={() => {
             const route = navigationRef.getCurrentRoute();
