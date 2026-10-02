@@ -33,11 +33,14 @@ async function getEventById(id) {
   return row || null;
 }
 
-async function isRosterPlayer(matchId, userId) {
-  const [[row]] = await pool.query(
-    `SELECT 1 FROM inscriptions WHERE match_id=? AND status='confirmed' AND (user_id=? OR assigned_user_id=?) LIMIT 1`,
-    [matchId, userId, userId]
-  );
+/**
+ * Antes solo se admitían jugadores apuntados (confirmados) a este partido en
+ * concreto. Eso bloqueaba goles de gente que jugó sin estar en el roster
+ * (fichas sueltas, invitados que ya tienen cuenta pero no entrada para este
+ * partido...), así que ahora basta con que el usuario exista en la app.
+ */
+async function isPlayableUser(userId) {
+  const [[row]] = await pool.query('SELECT 1 FROM users WHERE id=? LIMIT 1', [userId]);
   return !!row;
 }
 
@@ -66,6 +69,29 @@ router.get('/', requireAuth, requireAdmin, async (req, res) => {
 });
 
 /**
+ * GET /api/admin/matches/:matchId/events/search-players?q=texto
+ * Busca cualquier jugador de la app por nombre, esté o no apuntado a este
+ * partido — para poder anotarle un gol/asistencia/parada aunque no tenga
+ * entrada en este partido concreto.
+ */
+router.get('/search-players', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const q = String(req.query?.q || '').trim();
+    if (q.length < 2) return res.json({ ok: true, data: [] });
+
+    const like = `%${q}%`;
+    const [rows] = await pool.query(
+      `SELECT id, name, avatar_url FROM users WHERE name LIKE ? ORDER BY name ASC LIMIT 20`,
+      [like]
+    );
+    res.json({ ok: true, data: rows });
+  } catch (e) {
+    console.error('[GET /admin/matches/:matchId/events/search-players]', e);
+    res.status(500).json({ ok: false, msg: 'No se pudo buscar jugadores' });
+  }
+});
+
+/**
  * POST /api/admin/matches/:matchId/events
  * Body: { type: 'goal'|'save'|'mvp', minute, user_id, assist_user_id?, team_color?, is_candidate? }
  * user_id (y assist_user_id) deben pertenecer al roster confirmado del partido.
@@ -84,7 +110,7 @@ router.post('/', requireAuth, requireAdmin, async (req, res) => {
 
     const userId = Number(req.body?.user_id);
     if (!Number.isInteger(userId) || userId <= 0) { conn.release(); return res.status(400).json({ ok: false, msg: 'Selecciona un jugador' }); }
-    if (!(await isRosterPlayer(matchId, userId))) { conn.release(); return res.status(400).json({ ok: false, msg: 'Ese jugador no está confirmado en este partido' }); }
+    if (!(await isPlayableUser(userId))) { conn.release(); return res.status(400).json({ ok: false, msg: 'Ese jugador no existe' }); }
 
     let minute = null;
     if (type !== 'mvp') {
@@ -96,7 +122,7 @@ router.post('/', requireAuth, requireAdmin, async (req, res) => {
     if (type === 'goal' && req.body?.assist_user_id) {
       assistUserId = Number(req.body.assist_user_id);
       if (assistUserId === userId) { conn.release(); return res.status(400).json({ ok: false, msg: 'La asistencia no puede ser del mismo jugador' }); }
-      if (!(await isRosterPlayer(matchId, assistUserId))) { conn.release(); return res.status(400).json({ ok: false, msg: 'El jugador de la asistencia no está confirmado en este partido' }); }
+      if (!(await isPlayableUser(assistUserId))) { conn.release(); return res.status(400).json({ ok: false, msg: 'El jugador de la asistencia no existe' }); }
     }
 
     const teamColor = req.body?.team_color;
@@ -154,7 +180,7 @@ router.put('/:eventId', requireAuth, requireAdmin, async (req, res) => {
     if (req.body?.user_id !== undefined) {
       userId = Number(req.body.user_id);
       if (!Number.isInteger(userId) || userId <= 0) { conn.release(); return res.status(400).json({ ok: false, msg: 'Selecciona un jugador' }); }
-      if (!(await isRosterPlayer(matchId, userId))) { conn.release(); return res.status(400).json({ ok: false, msg: 'Ese jugador no está confirmado en este partido' }); }
+      if (!(await isPlayableUser(userId))) { conn.release(); return res.status(400).json({ ok: false, msg: 'Ese jugador no existe' }); }
     }
 
     let assistUserId = current.assist_user_id;
@@ -162,7 +188,7 @@ router.put('/:eventId', requireAuth, requireAdmin, async (req, res) => {
       assistUserId = req.body.assist_user_id ? Number(req.body.assist_user_id) : null;
       if (assistUserId) {
         if (assistUserId === userId) { conn.release(); return res.status(400).json({ ok: false, msg: 'La asistencia no puede ser del mismo jugador' }); }
-        if (!(await isRosterPlayer(matchId, assistUserId))) { conn.release(); return res.status(400).json({ ok: false, msg: 'El jugador de la asistencia no está confirmado en este partido' }); }
+        if (!(await isPlayableUser(assistUserId))) { conn.release(); return res.status(400).json({ ok: false, msg: 'El jugador de la asistencia no existe' }); }
       }
     }
 

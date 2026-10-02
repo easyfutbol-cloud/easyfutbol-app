@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator
 import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { api } from '../api/client';
+import { resolveSocialAvatarUrl } from '../components/social/SocialComponents';
 
 const POSITIONS = ['portero', 'defensa', 'centrocampista', 'delantero'];
 const POSITION_LABELS = { portero: 'Portero', defensa: 'Defensa', centrocampista: 'Centrocampista', delantero: 'Delantero' };
@@ -124,7 +125,7 @@ export default function WeeklyLineupVoteScreen({ navigation }) {
                     activeOpacity={0.8}
                   >
                     {candidate.avatar_url ? (
-                      <Image source={{ uri: candidate.avatar_url }} style={styles.avatar} />
+                      <Image source={{ uri: resolveSocialAvatarUrl(candidate.avatar_url) }} style={styles.avatar} />
                     ) : (
                       <View style={[styles.avatar, styles.avatarPlaceholder]}>
                         <Text style={styles.avatarInitial}>{(candidate.name || '?').charAt(0).toUpperCase()}</Text>

@@ -13,6 +13,7 @@ import {
 import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { api } from '../api/client';
+import { resolveSocialAvatarUrl } from '../components/social/SocialComponents';
 
 const POSITIONS = ['portero', 'defensa', 'centrocampista', 'delantero'];
 const POSITION_LABELS = { portero: 'Portero', defensa: 'Defensa', centrocampista: 'Centrocampista', delantero: 'Delantero' };
@@ -276,7 +277,7 @@ export default function AdminWeeklyLineupScreen() {
                   {candidates.map((c) => (
                     <View key={c.id} style={styles.candidateRow}>
                       {c.avatar_url ? (
-                        <Image source={{ uri: c.avatar_url }} style={styles.candidateAvatar} />
+                        <Image source={{ uri: resolveSocialAvatarUrl(c.avatar_url) }} style={styles.candidateAvatar} />
                       ) : (
                         <View style={[styles.candidateAvatar, styles.candidateAvatarPlaceholder]}>
                           <Text style={styles.candidateAvatarInitial}>{(c.name || '?').charAt(0).toUpperCase()}</Text>
@@ -312,7 +313,7 @@ export default function AdminWeeklyLineupScreen() {
                         {searchResults.map((user) => (
                           <TouchableOpacity key={user.id} style={styles.searchResultRow} onPress={() => addCandidate(position, user)}>
                             {user.avatar_url ? (
-                              <Image source={{ uri: user.avatar_url }} style={styles.candidateAvatar} />
+                              <Image source={{ uri: resolveSocialAvatarUrl(user.avatar_url) }} style={styles.candidateAvatar} />
                             ) : (
                               <View style={[styles.candidateAvatar, styles.candidateAvatarPlaceholder]}>
                                 <Text style={styles.candidateAvatarInitial}>{(user.name || '?').charAt(0).toUpperCase()}</Text>

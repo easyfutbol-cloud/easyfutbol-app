@@ -58,6 +58,11 @@ export default function AdminMatchLiveScreen({ navigation, route }) {
   const [picker, setPicker] = useState(null);
   const [submitting, setSubmitting] = useState(false);
 
+  // buscador de "otro jugador" (cualquiera de la app, esté o no apuntado a este partido)
+  const [otherQuery, setOtherQuery] = useState('');
+  const [otherResults, setOtherResults] = useState([]);
+  const [searchingOther, setSearchingOther] = useState(false);
+
   const [editingEvent, setEditingEvent] = useState(null);
   const [savingEdit, setSavingEdit] = useState(false);
 
@@ -154,18 +159,50 @@ export default function AdminMatchLiveScreen({ navigation, route }) {
 
   // --- flujo de registrar eventos con jugadores reales ---
 
+  useEffect(() => {
+    if (!picker || otherQuery.trim().length < 2) {
+      setOtherResults([]);
+      return;
+    }
+    let cancelled = false;
+    setSearchingOther(true);
+    const timeout = setTimeout(async () => {
+      try {
+        const res = await api.get(`/admin/matches/${matchId}/events/search-players`, { params: { q: otherQuery.trim() } });
+        if (!cancelled) setOtherResults(Array.isArray(res.data?.data) ? res.data.data : []);
+      } catch {
+        if (!cancelled) setOtherResults([]);
+      } finally {
+        if (!cancelled) setSearchingOther(false);
+      }
+    }, 300);
+    return () => { cancelled = true; clearTimeout(timeout); };
+  }, [otherQuery, picker, matchId]);
+
+  // jugadores que ya salen en la lista del roster, para no duplicarlos en la búsqueda
+  const rosterIds = useMemo(() => new Set(allPlayers.map((p) => p.user_id)), [allPlayers]);
+  const otherResultsFiltered = useMemo(
+    () => otherResults.filter((r) => !rosterIds.has(r.id)),
+    [otherResults, rosterIds]
+  );
+
+  const resetOtherSearch = () => {
+    setOtherQuery('');
+    setOtherResults([]);
+  };
+
   const startGoalFlow = () => {
-    if (!allPlayers.length) return Alert.alert('Sin jugadores', 'Todavía no hay nadie confirmado en este partido.');
+    resetOtherSearch();
     setPicker({ mode: 'goal-scorer', minute: currentMinute });
   };
 
   const startSaveFlow = () => {
-    if (!allPlayers.length) return Alert.alert('Sin jugadores', 'Todavía no hay nadie confirmado en este partido.');
+    resetOtherSearch();
     setPicker({ mode: 'save', minute: currentMinute });
   };
 
   const startMvpFlow = () => {
-    if (!allPlayers.length) return Alert.alert('Sin jugadores', 'Todavía no hay nadie confirmado en este partido.');
+    resetOtherSearch();
     setPicker({ mode: 'mvp' });
   };
 
@@ -181,6 +218,7 @@ export default function AdminMatchLiveScreen({ navigation, route }) {
         });
       }
       setPicker(null);
+      resetOtherSearch();
     } catch (e) {
       Alert.alert('Error', e?.response?.data?.msg || e.message || 'No se pudo registrar el evento');
     } finally {
@@ -191,6 +229,7 @@ export default function AdminMatchLiveScreen({ navigation, route }) {
   const handlePickPlayer = (player) => {
     if (!picker) return;
     if (picker.mode === 'goal-scorer') {
+      resetOtherSearch();
       setPicker({ mode: 'goal-assist', minute: picker.minute, scorer: player });
       return;
     }
@@ -448,10 +487,30 @@ export default function AdminMatchLiveScreen({ navigation, route }) {
                 {roster.black.map((p) => (
                   <PlayerRow key={`b-${p.user_id}`} player={{ ...p, color: 'black' }} onPress={handlePickPlayer} />
                 ))}
+
+                <Text style={styles.pickerTeamLabel}>Otro jugador (no apuntado a este partido)</Text>
+                <View style={styles.otherSearchBox}>
+                  <Ionicons name="search" size={16} color="#777" />
+                  <TextInput
+                    style={styles.otherSearchInput}
+                    placeholder="Buscar por nombre..."
+                    placeholderTextColor="#666"
+                    value={otherQuery}
+                    onChangeText={setOtherQuery}
+                    autoCorrect={false}
+                  />
+                  {searchingOther && <ActivityIndicator size="small" color="#777" />}
+                </View>
+                {otherQuery.trim().length >= 2 && !searchingOther && otherResultsFiltered.length === 0 && (
+                  <Text style={styles.otherSearchEmpty}>Sin resultados</Text>
+                )}
+                {otherResultsFiltered.map((p) => (
+                  <PlayerRow key={`o-${p.id}`} player={{ ...p, user_id: p.id, color: null }} onPress={handlePickPlayer} />
+                ))}
               </ScrollView>
             )}
 
-            <TouchableOpacity style={styles.pickerCancelButton} onPress={() => setPicker(null)}>
+            <TouchableOpacity style={styles.pickerCancelButton} onPress={() => { setPicker(null); resetOtherSearch(); }}>
               <Text style={styles.pickerCancelButtonText}>Cancelar</Text>
             </TouchableOpacity>
           </View>
@@ -544,6 +603,9 @@ const styles = StyleSheet.create({
   skipAssistButtonText: { color: '#ccc', fontSize: 14, fontWeight: '800' },
   pickerList: { marginBottom: 10 },
   pickerTeamLabel: { color: '#888', fontSize: 11, fontWeight: '800', letterSpacing: 1, marginTop: 10, marginBottom: 6 },
+  otherSearchBox: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: '#141414', borderWidth: 1, borderColor: '#262626', borderRadius: 12, paddingHorizontal: 12, height: 42, marginBottom: 6 },
+  otherSearchInput: { flex: 1, color: '#fff', fontSize: 13 },
+  otherSearchEmpty: { color: '#555', fontSize: 12, textAlign: 'center', paddingVertical: 8 },
   playerRow: { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: '#1c1c1c', borderRadius: 14, padding: 12, marginBottom: 8, minHeight: 60 },
   playerAvatar: { width: 40, height: 40, borderRadius: 20, backgroundColor: '#333' },
   playerAvatarPlaceholder: { alignItems: 'center', justifyContent: 'center' },

@@ -5,6 +5,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { captureRef } from 'react-native-view-shot';
 import * as Sharing from 'expo-sharing';
 import { api } from '../api/client';
+import { resolveSocialAvatarUrl } from '../components/social/SocialComponents';
 
 const TEMPLATE_IMAGE = require('../../assets/weekly-lineup-template.png');
 const TEMPLATE_ASPECT_RATIO = 1080 / 1350;
@@ -56,7 +57,7 @@ function PlayerPin({ player, spot, containerWidth }) {
     <View style={[styles.pin, pinStyle]}>
       <View style={[styles.avatarRing, avatarStyle]}>
         {player?.avatar_url ? (
-          <Image source={{ uri: player.avatar_url }} style={styles.avatarImage} />
+          <Image source={{ uri: resolveSocialAvatarUrl(player.avatar_url) }} style={styles.avatarImage} />
         ) : (
           <Text style={[styles.avatarInitial, { fontSize: avatarSize * 0.4 }]}>{(player?.name || '?').charAt(0).toUpperCase()}</Text>
         )}
