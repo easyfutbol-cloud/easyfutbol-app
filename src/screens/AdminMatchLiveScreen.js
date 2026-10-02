@@ -63,6 +63,10 @@ export default function AdminMatchLiveScreen({ navigation, route }) {
   const [otherResults, setOtherResults] = useState([]);
   const [searchingOther, setSearchingOther] = useState(false);
 
+  // jugador sin cuenta en la app (solo nombre, no cuenta para el ranking ni puede ser MVP)
+  const [guestName, setGuestName] = useState('');
+  const [guestColor, setGuestColor] = useState(null);
+
   const [editingEvent, setEditingEvent] = useState(null);
   const [savingEdit, setSavingEdit] = useState(false);
 
@@ -191,18 +195,26 @@ export default function AdminMatchLiveScreen({ navigation, route }) {
     setOtherResults([]);
   };
 
+  const resetGuestForm = () => {
+    setGuestName('');
+    setGuestColor(null);
+  };
+
   const startGoalFlow = () => {
     resetOtherSearch();
+    resetGuestForm();
     setPicker({ mode: 'goal-scorer', minute: currentMinute });
   };
 
   const startSaveFlow = () => {
     resetOtherSearch();
+    resetGuestForm();
     setPicker({ mode: 'save', minute: currentMinute });
   };
 
   const startMvpFlow = () => {
     resetOtherSearch();
+    resetGuestForm();
     setPicker({ mode: 'mvp' });
   };
 
@@ -219,6 +231,7 @@ export default function AdminMatchLiveScreen({ navigation, route }) {
       }
       setPicker(null);
       resetOtherSearch();
+      resetGuestForm();
     } catch (e) {
       Alert.alert('Error', e?.response?.data?.msg || e.message || 'No se pudo registrar el evento');
     } finally {
@@ -226,19 +239,25 @@ export default function AdminMatchLiveScreen({ navigation, route }) {
     }
   };
 
+  // `player` es o bien alguien de la app ({ user_id, color }) o un invitado sin
+  // cuenta ({ guestName, color }) añadido desde el formulario de abajo.
+  const playerIdentity = (player) => (player.user_id ? { user_id: player.user_id } : { guest_name: player.guestName });
+  const assistIdentity = (player) => (player.user_id ? { assist_user_id: player.user_id } : { assist_guest_name: player.guestName });
+
   const handlePickPlayer = (player) => {
     if (!picker) return;
     if (picker.mode === 'goal-scorer') {
       resetOtherSearch();
+      resetGuestForm();
       setPicker({ mode: 'goal-assist', minute: picker.minute, scorer: player });
       return;
     }
     if (picker.mode === 'goal-assist') {
-      submitEvent({ type: 'goal', minute: picker.minute, user_id: picker.scorer.user_id, assist_user_id: player.user_id, team_color: picker.scorer.color });
+      submitEvent({ type: 'goal', minute: picker.minute, ...playerIdentity(picker.scorer), ...assistIdentity(player), team_color: picker.scorer.color });
       return;
     }
     if (picker.mode === 'save') {
-      submitEvent({ type: 'save', minute: picker.minute, user_id: player.user_id, team_color: player.color });
+      submitEvent({ type: 'save', minute: picker.minute, ...playerIdentity(player), team_color: player.color });
       return;
     }
     if (picker.mode === 'mvp') {
@@ -247,7 +266,7 @@ export default function AdminMatchLiveScreen({ navigation, route }) {
   };
 
   const skipAssist = () => {
-    submitEvent({ type: 'goal', minute: picker.minute, user_id: picker.scorer.user_id, team_color: picker.scorer.color });
+    submitEvent({ type: 'goal', minute: picker.minute, ...playerIdentity(picker.scorer), team_color: picker.scorer.color });
   };
 
   const toggleCandidate = async (event) => {
@@ -421,8 +440,8 @@ export default function AdminMatchLiveScreen({ navigation, route }) {
               <View style={styles.eventBody}>
                 <Text style={styles.eventType}>{TYPE_LABEL[event.type]}</Text>
                 <Text style={styles.eventPlayer}>
-                  {event.player_name || 'Jugador'}
-                  {event.assist_name ? ` · asiste ${event.assist_name}` : ''}
+                  {event.player_name || 'Jugador'}{!event.user_id ? ' (invitado)' : ''}
+                  {event.assist_name ? ` · asiste ${event.assist_name}${!event.assist_user_id ? ' (invitado)' : ''}` : ''}
                   {event.team_color ? ` · ${event.team_color === 'white' ? 'Blancos' : 'Negros'}` : ''}
                 </Text>
               </View>
@@ -507,10 +526,49 @@ export default function AdminMatchLiveScreen({ navigation, route }) {
                 {otherResultsFiltered.map((p) => (
                   <PlayerRow key={`o-${p.id}`} player={{ ...p, user_id: p.id, color: null }} onPress={handlePickPlayer} />
                 ))}
+
+                {picker?.mode === 'mvp' ? (
+                  <Text style={styles.otherSearchEmpty}>El MVP tiene que tener cuenta en la app, porque cuenta para el ranking.</Text>
+                ) : (
+                  <>
+                    <Text style={styles.pickerTeamLabel}>Jugador sin cuenta en la app</Text>
+                    <View style={styles.guestBox}>
+                      <TextInput
+                        style={styles.guestInput}
+                        placeholder="Nombre del jugador..."
+                        placeholderTextColor="#666"
+                        value={guestName}
+                        onChangeText={setGuestName}
+                      />
+                      <View style={styles.guestRow}>
+                        <TouchableOpacity
+                          style={[styles.guestTeamChip, guestColor === 'white' && styles.guestTeamChipActive]}
+                          onPress={() => setGuestColor((prev) => (prev === 'white' ? null : 'white'))}
+                        >
+                          <Text style={styles.guestTeamChipText}>Blancos</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          style={[styles.guestTeamChip, guestColor === 'black' && styles.guestTeamChipActive]}
+                          onPress={() => setGuestColor((prev) => (prev === 'black' ? null : 'black'))}
+                        >
+                          <Text style={styles.guestTeamChipText}>Negros</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          style={[styles.guestAddButton, guestName.trim().length < 2 && styles.guestAddButtonDisabled]}
+                          disabled={guestName.trim().length < 2}
+                          onPress={() => handlePickPlayer({ guestName: guestName.trim(), color: guestColor })}
+                        >
+                          <Text style={styles.guestAddButtonText}>Añadir</Text>
+                        </TouchableOpacity>
+                      </View>
+                      <Text style={styles.guestHint}>No tiene cuenta en la app, así que no sumará al ranking oficial.</Text>
+                    </View>
+                  </>
+                )}
               </ScrollView>
             )}
 
-            <TouchableOpacity style={styles.pickerCancelButton} onPress={() => { setPicker(null); resetOtherSearch(); }}>
+            <TouchableOpacity style={styles.pickerCancelButton} onPress={() => { setPicker(null); resetOtherSearch(); resetGuestForm(); }}>
               <Text style={styles.pickerCancelButtonText}>Cancelar</Text>
             </TouchableOpacity>
           </View>
@@ -606,6 +664,16 @@ const styles = StyleSheet.create({
   otherSearchBox: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: '#141414', borderWidth: 1, borderColor: '#262626', borderRadius: 12, paddingHorizontal: 12, height: 42, marginBottom: 6 },
   otherSearchInput: { flex: 1, color: '#fff', fontSize: 13 },
   otherSearchEmpty: { color: '#555', fontSize: 12, textAlign: 'center', paddingVertical: 8 },
+  guestBox: { backgroundColor: '#141414', borderWidth: 1, borderColor: '#262626', borderRadius: 12, padding: 10, marginBottom: 10 },
+  guestInput: { color: '#fff', fontSize: 13, height: 38, paddingHorizontal: 10, backgroundColor: '#1c1c1c', borderRadius: 10, marginBottom: 8 },
+  guestRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  guestTeamChip: { paddingHorizontal: 12, height: 36, borderRadius: 10, borderWidth: 1, borderColor: '#333', alignItems: 'center', justifyContent: 'center' },
+  guestTeamChipActive: { backgroundColor: '#ff5a00', borderColor: '#ff5a00' },
+  guestTeamChipText: { color: '#ccc', fontSize: 12, fontWeight: '700' },
+  guestAddButton: { flex: 1, height: 36, borderRadius: 10, backgroundColor: '#2a6e4e', alignItems: 'center', justifyContent: 'center' },
+  guestAddButtonDisabled: { opacity: 0.4 },
+  guestAddButtonText: { color: '#fff', fontSize: 12, fontWeight: '800' },
+  guestHint: { color: '#666', fontSize: 10, marginTop: 8 },
   playerRow: { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: '#1c1c1c', borderRadius: 14, padding: 12, marginBottom: 8, minHeight: 60 },
   playerAvatar: { width: 40, height: 40, borderRadius: 20, backgroundColor: '#333' },
   playerAvatarPlaceholder: { alignItems: 'center', justifyContent: 'center' },

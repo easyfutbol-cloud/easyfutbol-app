@@ -38,6 +38,7 @@ const migrationOrder = [
   '20260921_match_events_mvp_minute.sql',
   '20260921_backfill_claim_tokens.sql',
   '20260922_app_popups.sql',
+  '20261002_match_events_guest_players.sql',
 ];
 
 const currentFile = fileURLToPath(import.meta.url);

@@ -9,9 +9,10 @@ import { applyEventStatDelta, setMvp, clearMvp, applyMatchResult } from '../serv
 const router = express.Router({ mergeParams: true });
 
 const EVENT_COLUMNS = `e.id, e.match_id, e.type, e.minute, e.user_id, e.assist_user_id, e.team_color,
+                       e.guest_player_name, e.guest_assist_name,
                        CAST(e.is_candidate AS UNSIGNED) AS is_candidate, e.created_at,
-                       scorer.name AS player_name, scorer.avatar_url AS player_avatar_url,
-                       assist.name AS assist_name`;
+                       COALESCE(scorer.name, e.guest_player_name) AS player_name, scorer.avatar_url AS player_avatar_url,
+                       COALESCE(assist.name, e.guest_assist_name) AS assist_name`;
 
 async function getMatch(matchId) {
   const [[match]] = await pool.query(
@@ -42,6 +43,13 @@ async function getEventById(id) {
 async function isPlayableUser(userId) {
   const [[row]] = await pool.query('SELECT 1 FROM users WHERE id=? LIMIT 1', [userId]);
   return !!row;
+}
+
+/** Nombre de un jugador sin cuenta en la app: recortado y con un tope de longitud. */
+function cleanGuestName(value) {
+  const name = String(value ?? '').trim().replace(/\s+/g, ' ');
+  if (!name) return null;
+  return name.slice(0, 80);
 }
 
 /** GET /api/admin/matches/:matchId/events — lista cronológica de goles, paradas y MVP */
@@ -93,8 +101,10 @@ router.get('/search-players', requireAuth, requireAdmin, async (req, res) => {
 
 /**
  * POST /api/admin/matches/:matchId/events
- * Body: { type: 'goal'|'save'|'mvp', minute, user_id, assist_user_id?, team_color?, is_candidate? }
- * user_id (y assist_user_id) deben pertenecer al roster confirmado del partido.
+ * Body: { type: 'goal'|'save'|'mvp', minute, user_id | guest_name, assist_user_id? | assist_guest_name?, team_color?, is_candidate? }
+ * Admite jugadores sin cuenta en la app (guest_name / assist_guest_name): se
+ * guardan por nombre y no entran en match_player_stats (no cuentan para el
+ * ranking oficial), por eso el MVP no puede ser un invitado.
  */
 router.post('/', requireAuth, requireAdmin, async (req, res) => {
   const conn = await pool.getConnection();
@@ -108,9 +118,17 @@ router.post('/', requireAuth, requireAdmin, async (req, res) => {
     const type = req.body?.type;
     if (!['goal', 'save', 'mvp'].includes(type)) { conn.release(); return res.status(400).json({ ok: false, msg: 'Tipo de evento inválido' }); }
 
-    const userId = Number(req.body?.user_id);
-    if (!Number.isInteger(userId) || userId <= 0) { conn.release(); return res.status(400).json({ ok: false, msg: 'Selecciona un jugador' }); }
-    if (!(await isPlayableUser(userId))) { conn.release(); return res.status(400).json({ ok: false, msg: 'Ese jugador no existe' }); }
+    let userId = null;
+    let guestPlayerName = null;
+    if (req.body?.user_id !== undefined && req.body?.user_id !== null && req.body?.user_id !== '') {
+      userId = Number(req.body.user_id);
+      if (!Number.isInteger(userId) || userId <= 0) { conn.release(); return res.status(400).json({ ok: false, msg: 'Selecciona un jugador' }); }
+      if (!(await isPlayableUser(userId))) { conn.release(); return res.status(400).json({ ok: false, msg: 'Ese jugador no existe' }); }
+    } else {
+      guestPlayerName = cleanGuestName(req.body?.guest_name);
+      if (!guestPlayerName) { conn.release(); return res.status(400).json({ ok: false, msg: 'Selecciona un jugador' }); }
+      if (type === 'mvp') { conn.release(); return res.status(400).json({ ok: false, msg: 'El MVP tiene que ser un jugador con cuenta en la app, porque cuenta para el ranking.' }); }
+    }
 
     let minute = null;
     if (type !== 'mvp') {
@@ -119,10 +137,15 @@ router.post('/', requireAuth, requireAdmin, async (req, res) => {
     }
 
     let assistUserId = null;
-    if (type === 'goal' && req.body?.assist_user_id) {
-      assistUserId = Number(req.body.assist_user_id);
-      if (assistUserId === userId) { conn.release(); return res.status(400).json({ ok: false, msg: 'La asistencia no puede ser del mismo jugador' }); }
-      if (!(await isPlayableUser(assistUserId))) { conn.release(); return res.status(400).json({ ok: false, msg: 'El jugador de la asistencia no existe' }); }
+    let guestAssistName = null;
+    if (type === 'goal') {
+      if (req.body?.assist_user_id) {
+        assistUserId = Number(req.body.assist_user_id);
+        if (userId && assistUserId === userId) { conn.release(); return res.status(400).json({ ok: false, msg: 'La asistencia no puede ser del mismo jugador' }); }
+        if (!(await isPlayableUser(assistUserId))) { conn.release(); return res.status(400).json({ ok: false, msg: 'El jugador de la asistencia no existe' }); }
+      } else if (req.body?.assist_guest_name) {
+        guestAssistName = cleanGuestName(req.body.assist_guest_name);
+      }
     }
 
     const teamColor = req.body?.team_color;
@@ -138,9 +161,9 @@ router.post('/', requireAuth, requireAdmin, async (req, res) => {
     }
 
     const [result] = await conn.query(
-      `INSERT INTO match_live_events (match_id, type, minute, user_id, assist_user_id, team_color, is_candidate, created_by)
-       VALUES (?,?,?,?,?,?,?,?)`,
-      [matchId, type, minute, userId, assistUserId, teamColor || null, req.body?.is_candidate ? 1 : 0, req.user?.id || null]
+      `INSERT INTO match_live_events (match_id, type, minute, user_id, guest_player_name, assist_user_id, guest_assist_name, team_color, is_candidate, created_by)
+       VALUES (?,?,?,?,?,?,?,?,?,?)`,
+      [matchId, type, minute, userId, guestPlayerName, assistUserId, guestAssistName, teamColor || null, req.body?.is_candidate ? 1 : 0, req.user?.id || null]
     );
 
     await conn.commit();
