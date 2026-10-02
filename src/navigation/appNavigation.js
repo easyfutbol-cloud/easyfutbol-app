@@ -24,6 +24,7 @@ const ROUTE_TAB = {
   NotificationPreferences: 'profile',
   Profile: 'profile',
   Stats: 'profile',
+  MySeason: 'profile',
   Achievements: 'profile',
   EasyPass: 'profile',
   Plus: 'profile',

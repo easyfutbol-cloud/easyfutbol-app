@@ -37,7 +37,7 @@ import subscriptions from './routes/subscriptions.js';
 import social from './routes/social.js';
 import { requireAuth } from './middlewares/auth.js';
 import { sendPushNotification, startPushReceiptScheduler } from './services/pushService.js';
-import { startMatchReminderScheduler } from './services/reminderService.js';
+import { startMatchReminderScheduler, startUnclaimedTicketReminderScheduler } from './services/reminderService.js';
 import { startWaitlistScheduler } from './services/waitlistService.js';
 import { startScheduledMatchPublisher } from './services/scheduledMatchService.js';
 import { startNotificationCampaignScheduler } from './services/notificationCampaignService.js';
@@ -173,6 +173,7 @@ app.get('/', (_req, res) => res.send('EasyFutbol Backend up'));
     app.listen(PORT, () => {
       console.log(`✅ API http://localhost:${PORT}`);
       startMatchReminderScheduler();
+      startUnclaimedTicketReminderScheduler();
       startWaitlistScheduler();
       startScheduledMatchPublisher();
       startPushReceiptScheduler();

@@ -228,4 +228,91 @@ router.get('/stats/me/month', requireAuth, async (req, res) => {
   }
 });
 
+/**
+ * GET /api/stats/me/season — totales de toda la vida del jugador (no solo
+ * el mes en curso, como /stats/me/month): partidos jugados, goles,
+ * asistencias, paradas, veces MVP y récord de victorias/derrotas/empates.
+ */
+router.get('/stats/me/season', requireAuth, async (req, res) => {
+  try {
+    const [[row]] = await pool.query(
+      `SELECT
+         COUNT(*) AS matches_played,
+         COALESCE(SUM(mps.goals), 0) AS goals,
+         COALESCE(SUM(mps.assists), 0) AS assists,
+         COALESCE(SUM(mps.saves), 0) AS saves,
+         COALESCE(SUM(mps.is_mvp), 0) AS mvp_count,
+         COALESCE(SUM(CASE WHEN mps.result = 'win' THEN 1 ELSE 0 END), 0) AS wins,
+         COALESCE(SUM(CASE WHEN mps.result = 'loss' THEN 1 ELSE 0 END), 0) AS losses,
+         COALESCE(SUM(CASE WHEN mps.result = 'draw' THEN 1 ELSE 0 END), 0) AS draws
+       FROM match_player_stats mps
+       WHERE mps.user_id = ?`,
+      [req.user.id]
+    );
+
+    const matchesPlayed = Number(row?.matches_played || 0);
+    const decided = Number(row?.wins || 0) + Number(row?.losses || 0) + Number(row?.draws || 0);
+
+    res.json({
+      ok: true,
+      data: {
+        matches_played: matchesPlayed,
+        goals: Number(row?.goals || 0),
+        assists: Number(row?.assists || 0),
+        saves: Number(row?.saves || 0),
+        mvp_count: Number(row?.mvp_count || 0),
+        wins: Number(row?.wins || 0),
+        losses: Number(row?.losses || 0),
+        draws: Number(row?.draws || 0),
+        win_rate: decided ? Math.round((Number(row.wins || 0) / decided) * 100) : null,
+      },
+    });
+  } catch (e) {
+    console.error('Error en /stats/me/season:', e);
+    res.status(500).json({ ok: false, msg: 'Error cargando tu temporada' });
+  }
+});
+
+/**
+ * GET /api/stats/me/history — partido a partido, más reciente primero.
+ * Query: limit (máx. 50, por defecto 20), offset.
+ */
+router.get('/stats/me/history', requireAuth, async (req, res) => {
+  try {
+    const limit = Math.min(50, Math.max(1, Number(req.query.limit) || 20));
+    const offset = Math.max(0, Number(req.query.offset) || 0);
+
+    const [rows] = await pool.query(
+      `SELECT m.id AS match_id, m.title, m.starts_at, m.city, f.name AS field_name,
+              mps.goals, mps.assists, mps.saves, CAST(mps.is_mvp AS UNSIGNED) AS is_mvp, mps.result
+       FROM match_player_stats mps
+       JOIN matches m ON m.id = mps.match_id
+       LEFT JOIN fields f ON f.id = m.field_id
+       WHERE mps.user_id = ?
+       ORDER BY m.starts_at DESC, m.id DESC
+       LIMIT ? OFFSET ?`,
+      [req.user.id, limit, offset]
+    );
+
+    res.json({
+      ok: true,
+      data: rows.map((r) => ({
+        match_id: r.match_id,
+        title: r.title,
+        starts_at: r.starts_at,
+        location: r.field_name || r.city || null,
+        goals: Number(r.goals || 0),
+        assists: Number(r.assists || 0),
+        saves: Number(r.saves || 0),
+        is_mvp: Boolean(r.is_mvp),
+        result: r.result || null,
+      })),
+      has_more: rows.length === limit,
+    });
+  } catch (e) {
+    console.error('Error en /stats/me/history:', e);
+    res.status(500).json({ ok: false, msg: 'No se pudo cargar tu historial' });
+  }
+});
+
 export default router;

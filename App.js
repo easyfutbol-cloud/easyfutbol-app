@@ -47,6 +47,7 @@ import MyMatchesScreen from './src/screens/MyMatchesScreen';
 import MisPartidosScreen from './src/screens/MisPartidosScreen';
 import PostMatchSummaryScreen from './src/screens/PostMatchSummaryScreen';
 import StatsScreen from './src/screens/StatsScreen';
+import MySeasonScreen from './src/screens/MySeasonScreen';
 import ProfileScreen from './src/screens/ProfileScreen';
 import MatchPreferencesScreen from './src/screens/MatchPreferencesScreen';
 import ReputationScreen from './src/screens/ReputationScreen';
@@ -743,6 +744,7 @@ function AppShell({ currentRouteName }) {
         <Stack.Screen name="MisPartidos" component={MisPartidosScreen} />
         <Stack.Screen name="PostMatchSummary" component={PostMatchSummaryScreen} />
         <Stack.Screen name="Stats" component={StatsScreen} />
+        <Stack.Screen name="MySeason" component={MySeasonScreen} />
         <Stack.Screen name="Profile" component={ProfileScreen} />
         <Stack.Screen name="MatchPreferences" component={MatchPreferencesScreen} />
         <Stack.Screen name="Reputation" component={ReputationScreen} />

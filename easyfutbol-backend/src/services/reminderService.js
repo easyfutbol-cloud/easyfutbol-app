@@ -3,7 +3,7 @@
 import { pool } from '../config/db.js';
 import { sendPushNotification } from './pushService.js';
 import { markSchedulerFailure, markSchedulerSuccess, registerScheduler } from './operationalHealthService.js';
-import { isNotificationPushEnabled } from './socialService.js';
+import { createSocialNotification, isNotificationPushEnabled } from './socialService.js';
 
 function formatMatchHour(startsAtISO) {
   return new Date(startsAtISO).toLocaleTimeString('es-ES', {
@@ -192,4 +192,97 @@ export function startMatchReminderScheduler({ intervalMinutes = 5 } = {}) {
 
   run();
   setInterval(run, Math.max(1, Number(intervalMinutes) || 5) * 60 * 1000);
+}
+
+// --- Recordatorio de entradas sin asignar (nadie ha confirmado que las juega) ---
+
+function formatUnclaimedBody(candidate) {
+  const count = Number(candidate.unclaimed_count || 0);
+  const label = count === 1 ? '1 entrada sin asignar' : `${count} entradas sin asignar`;
+  const dayLabel = { Hoy: 'hoy', Mañana: 'mañana' }[getMatchDayLabel(candidate.starts_at)] || 'esta semana';
+  return `Tienes ${label} para tu partido de ${dayLabel}. Si nadie las reclama antes de jugar, esas estadísticas no van a contar.`;
+}
+
+/**
+ * Jugadores que compraron entradas y, a las puertas del partido, todavía
+ * tienen alguna sin que nadie (ni ellos mismos) haya confirmado que la juega
+ * — "Voy yo" / enlace compartido en AssignTicketsModal / Mis partidos. Solo
+ * mira entradas con claim_token: las pagadas con Stripe todavía no pasan por
+ * ese flujo, así que no se les puede pedir que las "reclamen".
+ */
+export async function sendUnclaimedTicketReminders({ hoursAhead = 24, windowMinutes = 20 } = {}) {
+  const now = new Date();
+  const targetTime = new Date(now.getTime() + hoursAhead * 60 * 60 * 1000);
+  const windowStart = new Date(targetTime.getTime() - windowMinutes * 60 * 1000);
+  const windowEnd = new Date(targetTime.getTime() + windowMinutes * 60 * 1000);
+
+  const [candidates] = await pool.query(
+    `SELECT i.user_id, i.match_id, m.starts_at, m.title AS match_title, COUNT(*) AS unclaimed_count
+     FROM inscriptions i
+     INNER JOIN matches m ON m.id = i.match_id
+     WHERE i.status = 'confirmed'
+       AND i.claim_token IS NOT NULL
+       AND i.assigned_user_id IS NULL
+       AND m.status <> 'cancelled'
+       AND m.starts_at >= ? AND m.starts_at <= ?
+     GROUP BY i.user_id, i.match_id, m.starts_at, m.title
+     ORDER BY m.starts_at ASC`,
+    [windowStart, windowEnd]
+  );
+
+  const results = { scanned: candidates.length, sent: 0, failed: 0 };
+
+  for (const candidate of candidates) {
+    try {
+      const ok = await createSocialNotification(pool, {
+        userId: candidate.user_id,
+        type: 'unclaimed_tickets',
+        entityType: 'match',
+        entityId: candidate.match_id,
+        title: '¿Quién juega tus entradas?',
+        body: formatUnclaimedBody(candidate),
+        data: { type: 'unclaimed_tickets', screen: 'MisPartidos' },
+        // estable (sin timestamp): como mucho un aviso por partido y comprador
+        dedupeKey: `unclaimed-tickets:${candidate.match_id}:${candidate.user_id}`,
+      });
+      if (ok) results.sent += 1;
+    } catch (error) {
+      results.failed += 1;
+      console.error('Error enviando recordatorio de entradas sin asignar:', {
+        userId: candidate.user_id,
+        matchId: candidate.match_id,
+        error: error?.message || error,
+      });
+    }
+  }
+
+  return { ok: true, windowStart, windowEnd, ...results };
+}
+
+let unclaimedSchedulerStarted = false;
+let unclaimedSchedulerRunning = false;
+
+/** Revisa los partidos que empiezan dentro de 24 horas con entradas sin asignar. */
+export function startUnclaimedTicketReminderScheduler({ intervalMinutes = 15 } = {}) {
+  if (unclaimedSchedulerStarted) return;
+  unclaimedSchedulerStarted = true;
+  registerScheduler('unclaimed-ticket-reminders', { maxAgeSeconds: 30 * 60 });
+
+  const run = async () => {
+    if (unclaimedSchedulerRunning) return;
+    unclaimedSchedulerRunning = true;
+    try {
+      const result = await sendUnclaimedTicketReminders({ hoursAhead: 24, windowMinutes: 20 });
+      markSchedulerSuccess('unclaimed-ticket-reminders');
+      if (result.scanned || result.failed) console.log('[REMINDERS UNCLAIMED]', result);
+    } catch (error) {
+      markSchedulerFailure('unclaimed-ticket-reminders', error);
+      console.error('[REMINDERS UNCLAIMED] Error ejecutando recordatorios:', error?.message || error);
+    } finally {
+      unclaimedSchedulerRunning = false;
+    }
+  };
+
+  run();
+  setInterval(run, Math.max(1, Number(intervalMinutes) || 15) * 60 * 1000);
 }

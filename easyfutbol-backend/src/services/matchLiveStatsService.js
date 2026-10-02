@@ -3,6 +3,7 @@
 // Un gol/parada/asistencia suma o resta 1 según se cree, edite o borre el
 // evento; el MVP es exclusivo (solo puede haber uno por partido).
 import { pool } from '../config/db.js';
+import { createSocialNotification } from './socialService.js';
 
 const STAT_COLUMN_BY_TYPE = { goal: 'goals', save: 'saves' };
 
@@ -91,4 +92,55 @@ export async function applyMatchResult(matchId, winnerColor) {
   } finally {
     conn.release();
   }
+}
+
+const RESULT_LABELS = { win: 'Victoria', loss: 'Derrota', draw: 'Empate' };
+
+function buildResultNotificationBody(stat) {
+  const resultLabel = RESULT_LABELS[stat.result] || 'Partido completado';
+  const goals = Number(stat.goals || 0);
+  const assists = Number(stat.assists || 0);
+  const saves = Number(stat.saves || 0);
+  const parts = [`${goals} ${goals === 1 ? 'gol' : 'goles'}`, `${assists} ${assists === 1 ? 'asistencia' : 'asistencias'}`];
+  if (saves) parts.push(`${saves} ${saves === 1 ? 'parada' : 'paradas'}`);
+  if (stat.is_mvp) parts.push('MVP del partido ⭐');
+  return `${resultLabel} · ${parts.join(' · ')}`;
+}
+
+/**
+ * Avisa a cada jugador con cuenta y estadísticas en el partido —los
+ * invitados sin cuenta no están en match_player_stats, así que no se les
+ * puede notificar— con su actuación personal, justo al cerrar el resultado
+ * final. Un fallo al notificar nunca debe tirar abajo la petición que cerró
+ * el resultado, así que cada aviso va envuelto en su propio try/catch.
+ */
+export async function notifyMatchResultToPlayers(matchId) {
+  const [[match]] = await pool.query('SELECT id, title FROM matches WHERE id=? LIMIT 1', [matchId]);
+  if (!match) return { sent: 0, total: 0 };
+
+  const [stats] = await pool.query(
+    `SELECT user_id, goals, assists, saves, CAST(is_mvp AS UNSIGNED) AS is_mvp, result
+     FROM match_player_stats WHERE match_id=?`,
+    [matchId]
+  );
+
+  let sent = 0;
+  await Promise.all(stats.map(async (stat) => {
+    try {
+      const ok = await createSocialNotification(pool, {
+        userId: stat.user_id,
+        type: 'post_match_summary',
+        entityType: 'match',
+        entityId: matchId,
+        title: `⚽ ${match.title || 'Resumen del partido'}`,
+        body: buildResultNotificationBody(stat),
+        data: { type: 'post_match_summary', screen: 'PostMatchSummary', matchId },
+        dedupeKey: `post-match-summary:${matchId}:${stat.user_id}`,
+      });
+      if (ok) sent += 1;
+    } catch (error) {
+      console.error('[notifyMatchResultToPlayers]', { userId: stat.user_id, matchId, error: error?.message || error });
+    }
+  }));
+  return { sent, total: stats.length };
 }

@@ -33,7 +33,7 @@ export async function sendPushNotification(tokens = [], { title, body, data = {}
       continue;
     }
 
-    const channelId={match_cancelled:'matches',match_updated:'matches',match_reminder:'matches',waitlist_offer:'matches',friend_request:'social',friend_accepted:'social',match_invitation:'social',group_invitation:'social',easypass_gift:'easypass',news:'news'}[data?.type]||'default';
+    const channelId={match_cancelled:'matches',match_updated:'matches',match_reminder:'matches',waitlist_offer:'matches',friend_request:'social',friend_accepted:'social',match_invitation:'social',group_invitation:'social',easypass_gift:'easypass',news:'news',post_match_summary:'matches',unclaimed_tickets:'matches'}[data?.type]||'default';
     messages.push({
       to: token,
       sound: 'default',

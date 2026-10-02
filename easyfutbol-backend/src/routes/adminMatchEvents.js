@@ -4,7 +4,7 @@
 import express from 'express';
 import { pool } from '../config/db.js';
 import { requireAuth, requireAdmin } from '../middlewares/auth.js';
-import { applyEventStatDelta, setMvp, clearMvp, applyMatchResult } from '../services/matchLiveStatsService.js';
+import { applyEventStatDelta, setMvp, clearMvp, applyMatchResult, notifyMatchResultToPlayers } from '../services/matchLiveStatsService.js';
 
 const router = express.Router({ mergeParams: true });
 
@@ -294,7 +294,17 @@ router.post('/result', requireAuth, requireAdmin, async (req, res) => {
     if (!['white', 'black', 'draw'].includes(winner)) return res.status(400).json({ ok: false, msg: 'Resultado inválido' });
 
     const updated = await applyMatchResult(matchId, winner);
-    res.json({ ok: true, msg: `Resultado aplicado a ${updated} jugador(es)` });
+
+    // Aviso con la actuación personal de cada jugador. Si falla no tiene que
+    // tumbar la respuesta: el resultado ya se aplicó y quedó guardado.
+    let notified = 0;
+    try {
+      notified = (await notifyMatchResultToPlayers(matchId)).sent;
+    } catch (notifyError) {
+      console.error('[POST /admin/matches/:matchId/events/result] aviso', notifyError?.message || notifyError);
+    }
+
+    res.json({ ok: true, msg: `Resultado aplicado a ${updated} jugador(es)`, notified });
   } catch (e) {
     console.error('[POST /admin/matches/:matchId/events/result]', e);
     res.status(500).json({ ok: false, msg: 'No se pudo aplicar el resultado' });

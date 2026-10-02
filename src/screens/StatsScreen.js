@@ -43,7 +43,7 @@ const LOCATIONS = [
   { key: 'asturias', label: 'Asturias', location_id: 2 },
 ];
 
-export default function StatsScreen() {
+export default function StatsScreen({ navigation }) {
   const [period, setPeriod] = useState('monthly');
   const [location, setLocation] = useState('national');
   const [referenceDate, setReferenceDate] = useState(() => new Date());
@@ -154,6 +154,17 @@ export default function StatsScreen() {
             description="Compara el rendimiento de los jugadores por periodo y ciudad."
           />
 
+          <TouchableOpacity style={styles.mySeasonCard} activeOpacity={0.85} onPress={() => navigation.navigate('MySeason')}>
+            <View style={styles.mySeasonIcon}>
+              <Ionicons name="person-circle-outline" size={22} color="#ff8c4d" />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.mySeasonTitle}>Tu temporada</Text>
+              <Text style={styles.mySeasonSubtitle}>Goles, asistencias, paradas y tu historial completo</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={20} color="#777" />
+          </TouchableOpacity>
+
           {/* Filtros compactos */}
           <View style={styles.controlsCard}>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.segmentRow}>
@@ -218,6 +229,10 @@ const styles = StyleSheet.create({
   bg: { flex: 1 },
   backgroundImage: { opacity: 0.58 },
   safe: { flex: 1, width: '100%', maxWidth: layout.maxContentWidth, alignSelf: 'center', paddingHorizontal: spacing(2), paddingTop: spacing(1) },
+  mySeasonCard: { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: 'rgba(255,255,255,.06)', borderWidth: 1, borderColor: 'rgba(255,138,76,.35)', borderRadius: radii.medium, padding: 14, marginBottom: spacing(2) },
+  mySeasonIcon: { width: 42, height: 42, borderRadius: 21, backgroundColor: 'rgba(255,138,76,.15)', alignItems: 'center', justifyContent: 'center' },
+  mySeasonTitle: { color: '#fff', fontSize: 15, fontWeight: '800' },
+  mySeasonSubtitle: { color: '#999', fontSize: 11, marginTop: 2 },
 
   controlsCard: {
     backgroundColor: 'rgba(17,21,27,0.92)',
