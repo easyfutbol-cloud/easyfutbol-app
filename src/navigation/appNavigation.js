@@ -23,6 +23,7 @@ const ROUTE_TAB = {
   Notifications: 'profile',
   NotificationPreferences: 'profile',
   Profile: 'profile',
+  MyPublicProfile: 'profile',
   Stats: 'profile',
   MySeason: 'profile',
   Achievements: 'profile',

@@ -608,6 +608,24 @@ export default function ProfileScreen({ navigation }) {
           </TouchableOpacity>
 
           <TouchableOpacity
+            style={[styles.communityCard, { borderColor:'rgba(86,122,255,.30)', borderWidth:1 }]}
+            onPress={() => navigation.navigate('MyPublicProfile')}
+            activeOpacity={0.84}
+            accessibilityRole="button"
+          >
+            <View style={{ flexDirection:'row', alignItems:'center', gap:12 }}>
+              <View style={{ width:46,height:46,borderRadius:15,backgroundColor:'rgba(86,122,255,.14)',alignItems:'center',justifyContent:'center' }}>
+                <Ionicons name="person-circle" size={23} color="#7892ff" />
+              </View>
+              <View style={{ flex:1 }}>
+                <Text style={[styles.section,{color:'#7892ff'}]}>MI PERFIL PÚBLICO</Text>
+                <Text style={[styles.communityText,{marginBottom:0}]}>Portada, fotos de partidos, qué estadísticas enseñas y comentarios.</Text>
+              </View>
+              <Ionicons name="chevron-forward" color="#888" size={22}/>
+            </View>
+          </TouchableOpacity>
+
+          <TouchableOpacity
             style={[styles.communityCard, { borderColor:'rgba(77,187,120,.30)', borderWidth:1 }]}
             onPress={() => navigation.navigate('Reputation')}
             activeOpacity={0.84}
