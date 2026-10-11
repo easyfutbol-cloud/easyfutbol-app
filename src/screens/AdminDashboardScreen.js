@@ -113,6 +113,15 @@ export default function AdminDashboardScreen({ navigation }) {
           <Text style={styles.description}>Analiza actividad, repetición y rendimiento deportivo por sede.</Text>
         </LinearGradient>
 
+        <TouchableOpacity style={styles.businessCard} activeOpacity={0.85} onPress={() => navigation.navigate('AdminBusinessKpis')} accessibilityRole="button">
+          <View style={styles.businessIcon}><Ionicons name="trending-up" size={22} color={colors.orange} /></View>
+          <View style={styles.businessCopy}>
+            <Text style={styles.businessTitle}>KPIs de negocio</Text>
+            <Text style={styles.businessText}>Retención, jugadores activos, frecuencia, precio por EasyPass y CAC</Text>
+          </View>
+          <Ionicons name="chevron-forward" size={20} color={colors.textSubtle} />
+        </TouchableOpacity>
+
         <View style={styles.filterCard}>
           <Text style={styles.filterLabel}>SEDE</Text>
           <SegmentedControl options={LOCATIONS} value={locationKey} onChange={setLocationKey} accessibilityLabel="Sede de los indicadores" />
@@ -185,6 +194,11 @@ const styles = StyleSheet.create({
   eyebrow: { color: colors.orange, ...typography.overline, marginTop: spacing(1.5) },
   title: { color: colors.white, ...typography.display, marginTop: spacing(0.75) },
   description: { color: colors.textMuted, ...typography.body, marginTop: spacing(0.75) },
+  businessCard: { flexDirection: 'row', alignItems: 'center', gap: spacing(1.5), backgroundColor: 'rgba(255,90,0,0.08)', borderWidth: 1, borderColor: 'rgba(255,90,0,0.35)', borderRadius: radii.large, padding: spacing(1.5), marginBottom: spacing(2) },
+  businessIcon: { width: 44, height: 44, borderRadius: 14, backgroundColor: 'rgba(255,90,0,0.14)', alignItems: 'center', justifyContent: 'center' },
+  businessCopy: { flex: 1 },
+  businessTitle: { color: colors.white, ...typography.bodyStrong },
+  businessText: { color: colors.textMuted, ...typography.caption, marginTop: 2 },
   filterCard: { backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, borderRadius: radii.large, padding: spacing(1.5), marginBottom: spacing(2) },
   filterLabel: { color: colors.textSubtle, ...typography.overline, marginBottom: spacing(0.75) },
   scopeSummary: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: spacing(0.75), backgroundColor: 'rgba(255,90,0,0.08)', borderRadius: radii.medium, padding: spacing(1) },

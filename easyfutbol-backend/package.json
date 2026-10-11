@@ -13,7 +13,8 @@
     "migrate": "node src/scripts/runMigrations.js",
     "migrate:status": "node src/scripts/runMigrations.js --status",
     "migrate:dry-run": "node src/scripts/runMigrations.js --dry-run",
-    "migrate:verify": "node src/scripts/runMigrations.js --verify-files"
+    "migrate:verify": "node src/scripts/runMigrations.js --verify-files",
+    "kpis:sync-revenue": "node src/scripts/syncRevenue.js"
   },
   "dependencies": {
     "bcrypt": "^6.0.0",

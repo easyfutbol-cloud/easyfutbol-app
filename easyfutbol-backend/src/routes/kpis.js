@@ -1,6 +1,20 @@
 import express from 'express';
+import rateLimit from 'express-rate-limit';
 import * as dbModule from '../config/db.js';
 import { requireAuth, requireAdmin } from '../middlewares/auth.js';
+import {
+  deleteMarketingSpend,
+  getAcquisitionKpis,
+  getInvestorReport,
+  getMonetizationKpis,
+  getTractionKpis,
+  investorReportToCsv,
+  listMarketingSpend,
+  parseMarketingSpend,
+  upsertMarketingSpend,
+} from '../services/kpiService.js';
+import { syncRevenue, countUnsyncedPurchases } from '../services/revenueSyncService.js';
+import { getStripe } from '../services/stripeClient.js';
 
 const router = express.Router();
 const db = dbModule.default || dbModule.pool || dbModule.db || dbModule.connection;
@@ -166,6 +180,112 @@ router.get('/weekday-repeat', async (req, res) => {
   } catch (error) {
     console.error('Error obteniendo repetición por día:', error);
     return res.status(500).json({ ok: false, error: 'Error obteniendo repetición por día' });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// KPIs de negocio: tracción, monetización, adquisición (CAC) e informe mensual.
+// Todos admiten ?location_id=1|2 (sin él, global) y ?fresh=1 para saltarse la caché.
+// ---------------------------------------------------------------------------
+
+const kpiFailure = (res, label, error) => {
+  console.error(`[KPIs] ${label}:`, error);
+  return res.status(500).json({ ok: false, error: `No se pudo calcular: ${label}`, msg: `No se pudo calcular: ${label}` });
+};
+
+const syncLimiter = rateLimit({
+  windowMs: 10 * 60 * 1000,
+  limit: 6,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { ok: false, msg: 'Demasiadas sincronizaciones seguidas. Espera unos minutos.' },
+});
+
+router.get('/traction', async (req, res) => {
+  try {
+    const { locationId } = getLocationFilter(req.query);
+    return res.json(await getTractionKpis({ locationId, fresh: req.query.fresh === '1' }));
+  } catch (error) {
+    return kpiFailure(res, 'tracción', error);
+  }
+});
+
+router.get('/monetization', async (req, res) => {
+  try {
+    const { locationId } = getLocationFilter(req.query);
+    const data = await getMonetizationKpis({ locationId, fresh: req.query.fresh === '1' });
+    return res.json({ ...data, pending_sync: await countUnsyncedPurchases(dbModule.pool), stripe_configured: Boolean(getStripe()) });
+  } catch (error) {
+    return kpiFailure(res, 'monetización', error);
+  }
+});
+
+router.get('/acquisition', async (req, res) => {
+  try {
+    const { locationId } = getLocationFilter(req.query);
+    return res.json(await getAcquisitionKpis({ locationId, fresh: req.query.fresh === '1' }));
+  } catch (error) {
+    return kpiFailure(res, 'adquisición', error);
+  }
+});
+
+router.get('/investor-report', async (req, res) => {
+  try {
+    const { locationId } = getLocationFilter(req.query);
+    const report = await getInvestorReport({ locationId });
+    if (req.query.format === 'csv') {
+      const day = report.generated_at.slice(0, 10);
+      res.set('Content-Type', 'text/csv; charset=utf-8');
+      res.set('Content-Disposition', `attachment; filename="kpis-easyfutbol-${day}.csv"`);
+      return res.send(`\uFEFF${investorReportToCsv(report)}`);
+    }
+    return res.json(report);
+  } catch (error) {
+    return kpiFailure(res, 'informe mensual', error);
+  }
+});
+
+router.get('/marketing-spend', async (_req, res) => {
+  try {
+    return res.json({ ok: true, data: await listMarketingSpend() });
+  } catch (error) {
+    return kpiFailure(res, 'gasto de marketing', error);
+  }
+});
+
+router.put('/marketing-spend', async (req, res) => {
+  try {
+    const { value, error } = parseMarketingSpend(req.body);
+    if (error) return res.status(400).json({ ok: false, msg: error, error });
+    await upsertMarketingSpend(value, req.user?.id);
+    return res.json({ ok: true, data: await listMarketingSpend() });
+  } catch (error) {
+    return kpiFailure(res, 'guardar el gasto', error);
+  }
+});
+
+router.delete('/marketing-spend/:id', async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ ok: false, msg: 'ID inválido' });
+    const deleted = await deleteMarketingSpend(id);
+    if (!deleted) return res.status(404).json({ ok: false, msg: 'Entrada no encontrada' });
+    return res.json({ ok: true, data: await listMarketingSpend() });
+  } catch (error) {
+    return kpiFailure(res, 'borrar el gasto', error);
+  }
+});
+
+/** Lee de Stripe el importe real de las compras pendientes (histórico incluido). */
+router.post('/revenue/sync', syncLimiter, async (req, res) => {
+  const stripe = getStripe();
+  if (!stripe) return res.status(503).json({ ok: false, msg: 'Stripe no está configurado en el servidor' });
+  try {
+    const limit = Math.min(400, Math.max(1, Number(req.body?.limit) || 200));
+    const result = await syncRevenue({ stripe, limit });
+    return res.json({ ok: true, ...result });
+  } catch (error) {
+    return kpiFailure(res, 'sincronizar con Stripe', error);
   }
 });
 

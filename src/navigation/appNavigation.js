@@ -40,6 +40,7 @@ const ROUTES_WITHOUT_PRIMARY_NAV = new Set([
   'PrivacyPolicy',
   'AdminPanel',
   'AdminDashboard',
+  'AdminBusinessKpis',
   'AdminMatches',
   'AdminMatchEdit',
   'AdminCreateMatch',
