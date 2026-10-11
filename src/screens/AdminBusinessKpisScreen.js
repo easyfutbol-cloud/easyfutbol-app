@@ -273,6 +273,14 @@ export function TractionTab({ data }) {
 
 // ---------- pestaña: ingresos ----------
 
+const sedeName = (id) => (String(id) === '1' ? 'Valladolid' : String(id) === '2' ? 'Asturias' : String(id) === '0' ? 'Sin sede' : `Sede ${id}`);
+
+const sedeBreakdown = (byLocation) => {
+  const entries = Object.entries(byLocation || {}).filter(([, cents]) => Number(cents) > 0);
+  if (entries.length < 2) return '';
+  return ` · ${entries.map(([id, cents]) => `${sedeName(id)} ${moneyRound(cents)}`).join(' · ')}`;
+};
+
 export function MoneyTab({ data, onSync, syncing }) {
   const monthly = data?.monthly || [];
   const price = data?.effective_price || {};
@@ -371,13 +379,21 @@ export function MoneyTab({ data, onSync, syncing }) {
 
       {Object.keys(price.by_location || {}).length ? (
         <>
-          <SectionTitle eyebrow="POR SEDE" title="Precio efectivo por EasyPass" />
+          <SectionTitle eyebrow="POR SEDE" title="Ingresos y precio por sede" hint="Packs EasyPass cobrados · las suscripciones no se reparten por sede" />
           {Object.entries(price.by_location).map(([id, stats]) => (
             <View key={id} style={styles.card}>
-              <Text style={styles.cardTitle}>{id === '1' ? 'Valladolid' : id === '2' ? 'Asturias' : `Sede ${id}`}</Text>
-              <View style={styles.cardRow}><Text style={styles.cardKey}>Efectivo (siempre)</Text><Text style={styles.cardVal}>{money(stats.all_time?.paid_per_pass_cents)}</Text></View>
-              <View style={styles.cardRow}><Text style={styles.cardKey}>Efectivo (90 días)</Text><Text style={styles.cardVal}>{money(stats.last_90d?.paid_per_pass_cents)}</Text></View>
-              <View style={styles.cardRow}><Text style={styles.cardKey}>Lista medio</Text><Text style={styles.cardVal}>{money(stats.all_time?.list_per_pass_cents)}</Text></View>
+              <Text style={styles.cardTitle}>{sedeName(id)}</Text>
+              <View style={styles.cardRow}><Text style={styles.cardKey}>Cobrado (siempre)</Text><Text style={styles.cardVal}>{moneyRound(stats.all_time?.revenue_cents)}</Text></View>
+              <View style={styles.cardRow}><Text style={styles.cardKey}>Cobrado (90 días)</Text><Text style={styles.cardVal}>{moneyRound(stats.last_90d?.revenue_cents)}</Text></View>
+              <View style={styles.cardRow}><Text style={styles.cardKey}>Mes en curso</Text><Text style={styles.cardVal}>{moneyRound(stats.current_month?.revenue_cents)}</Text></View>
+              {stats.last_full_month ? (
+                <View style={styles.cardRow}><Text style={styles.cardKey}>{monthLabel(stats.last_full_month.month)}</Text><Text style={styles.cardVal}>{moneyRound(stats.last_full_month.revenue_cents)}</Text></View>
+              ) : null}
+              <View style={styles.cardRow}><Text style={styles.cardKey}>Reembolsado</Text><Text style={styles.cardVal}>{moneyRound(stats.all_time?.refunded_cents)}</Text></View>
+              <View style={styles.cardRow}><Text style={styles.cardKey}>Compradores</Text><Text style={styles.cardVal}>{num(stats.paying_users)}</Text></View>
+              <View style={styles.cardRow}><Text style={styles.cardKey}>Efectivo por EasyPass (siempre)</Text><Text style={styles.cardVal}>{money(stats.all_time?.paid_per_pass_cents)}</Text></View>
+              <View style={styles.cardRow}><Text style={styles.cardKey}>Efectivo por EasyPass (90 días)</Text><Text style={styles.cardVal}>{money(stats.last_90d?.paid_per_pass_cents)}</Text></View>
+              <View style={styles.cardRow}><Text style={styles.cardKey}>Precio de lista medio</Text><Text style={styles.cardVal}>{money(stats.all_time?.list_per_pass_cents)}</Text></View>
               <View style={styles.cardRow}><Text style={styles.cardKey}>Compras · EasyPass</Text><Text style={styles.cardVal}>{num(stats.all_time?.orders)} · {num(stats.all_time?.passes_sold)}</Text></View>
             </View>
           ))}
@@ -407,7 +423,7 @@ export function MoneyTab({ data, onSync, syncing }) {
           max={maxRevenue}
           segments={[{ value: m.pack_revenue_cents, color: ORANGE_LIGHT }, { value: m.subscription_revenue_cents, color: BLUE }]}
           text={moneyRound(m.revenue_cents)}
-          sub={`${num(m.passes_sold)} EasyPass · ${isNone(m.paid_per_pass_cents) ? 'sin precio' : `${money(m.paid_per_pass_cents)}/EasyPass`}${m.partial ? ' · mes en curso' : ''}`}
+          sub={`${num(m.passes_sold)} EasyPass · ${isNone(m.paid_per_pass_cents) ? 'sin precio' : `${money(m.paid_per_pass_cents)}/EasyPass`}${m.partial ? ' · mes en curso' : ''}${sedeBreakdown(m.pack_revenue_by_location)}`}
         />
       ))}
 

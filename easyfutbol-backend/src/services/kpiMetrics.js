@@ -526,6 +526,18 @@ export function computeMonetization({
   addTo(spendTxs, 'spent');
   addTo(refundTxs, 'refunded');
 
+  // Ingresos de packs de cada mes repartidos por sede (siempre de todas, aunque haya filtro de sede).
+  const allPackEvents = paidEvents.filter((e) => e.kind === 'easypass_pack');
+  const byLocationInMonth = (key) => {
+    const out = {};
+    for (const e of allPackEvents) {
+      if (monthKeyOf(asTime(e.paid_at)) !== key) continue;
+      const id = Number(e.location_id) || 0;
+      out[id] = (out[id] || 0) + (Number(e.paid_cents) || 0);
+    }
+    return out;
+  };
+
   const monthly = keys.map((key) => {
     const b = monthlyBuckets.get(key);
     const packs$ = priceStats(b.packEvents);
@@ -537,6 +549,7 @@ export function computeMonetization({
       month: key,
       partial: key === currentKey,
       pack_revenue_cents: packs$.revenue_cents,
+      pack_revenue_by_location: byLocationInMonth(key),
       subscription_revenue_cents: subsRevenue,
       revenue_cents: totalRevenue,
       refunded_cents: packs$.refunded_cents + subsRefunded,
@@ -568,9 +581,13 @@ export function computeMonetization({
   const locationIds = [...new Set(paidEvents.filter((e) => e.kind === 'easypass_pack' && e.location_id).map((e) => Number(e.location_id)))].sort();
   for (const id of locationIds) {
     const scoped = paidEvents.filter((e) => e.kind === 'easypass_pack' && Number(e.location_id) === id);
+    const lastFullKey = keys.length > 1 ? keys[keys.length - 2] : null;
     effective.by_location[id] = {
       all_time: priceStats(scoped),
       last_90d: priceStats(scoped.filter((e) => asTime(e.paid_at) > nowTime - 90 * DAY_MS)),
+      current_month: priceStats(scoped.filter((e) => monthKeyOf(asTime(e.paid_at)) === currentKey)),
+      last_full_month: lastFullKey ? { month: lastFullKey, ...priceStats(scoped.filter((e) => monthKeyOf(asTime(e.paid_at)) === lastFullKey)) } : null,
+      paying_users: new Set(scoped.map((e) => Number(e.user_id))).size,
     };
   }
   const packName = new Map(packs.map((p) => [Number(p.id), p]));

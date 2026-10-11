@@ -384,3 +384,22 @@ test('recuperación: ingreso a 90 días por comprador frente al CAC', () => {
 });
 
 function round4(value) { return Math.round(value * 10000) / 10000; }
+
+test('los ingresos de cada sede salen por separado aunque no haya filtro de sede', () => {
+  const events = [
+    pack({ location_id: 1, user_id: 1, paid_cents: 5000 }),
+    pack({ stripe_ref: 'cs_2', location_id: 2, user_id: 2, paid_cents: 3000, refunded_cents: 1000, credits: 10, list_cents: 3000 }),
+    pack({ stripe_ref: 'cs_3', location_id: 2, user_id: 3, paid_cents: 2000, credits: 5, list_cents: 2000, paid_at: at('2026-10-02T10:00:00Z') }),
+  ];
+  const result = computeMonetization({ revenueEvents: events, passTransactions: [], now: NOW, months: 2 });
+  const [vall, ast] = [result.effective_price.by_location[1], result.effective_price.by_location[2]];
+  assert.equal(vall.all_time.revenue_cents, 5000);
+  assert.equal(ast.all_time.revenue_cents, 5000);
+  assert.equal(ast.all_time.refunded_cents, 1000);
+  assert.equal(ast.paying_users, 2);
+  assert.equal(ast.current_month.revenue_cents, 2000);
+  assert.equal(ast.last_full_month.month, '2026-09');
+  assert.equal(ast.last_full_month.revenue_cents, 3000);
+  const sep = result.monthly.find((m) => m.month === '2026-09');
+  assert.deepEqual(sep.pack_revenue_by_location, { 1: 5000, 2: 3000 });
+});
