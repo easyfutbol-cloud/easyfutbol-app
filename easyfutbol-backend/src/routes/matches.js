@@ -75,7 +75,7 @@ router.get('/matches', async (req, res) => {
               m.status,
               COALESCE(m.has_aftergame, 0) AS has_aftergame,
               (m.capacity - m.spots_taken - (SELECT COUNT(*) FROM match_waitlist mw WHERE mw.match_id=m.id AND mw.status='offered' AND mw.offer_expires_at > NOW())) AS spots_remaining,
-              CASE WHEN m.spots_taken + (SELECT COUNT(*) FROM match_waitlist mw WHERE mw.match_id=m.id AND mw.status='offered' AND mw.offer_expires_at > NOW()) >= m.capacity THEN 1 ELSE 0 END AS is_full,
+              CASE WHEN m.status = 'full' OR m.spots_taken + (SELECT COUNT(*) FROM match_waitlist mw WHERE mw.match_id=m.id AND mw.status='offered' AND mw.offer_expires_at > NOW()) >= m.capacity THEN 1 ELSE 0 END AS is_full,
               f.name AS field_name,
               f.address AS field_address,
               f.maps_url AS field_maps_url,
@@ -84,7 +84,7 @@ router.get('/matches', async (req, res) => {
        FROM matches m
        JOIN fields f ON f.id = m.field_id
        LEFT JOIN locations l ON l.id = m.location_id
-       ${onlyOpen ? "WHERE m.status IN ('scheduled','open')" : ''}
+       ${onlyOpen ? "WHERE m.status IN ('scheduled','open','full')" : ''}
        ORDER BY m.starts_at ASC`
     );
 

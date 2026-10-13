@@ -295,9 +295,11 @@ router.put('/:id', requireAuth, requireAdmin, async (req, res) => {
       return res.status(400).json({ error: 'La fecha y las horas no son válidas' });
     }
 
-    const recalculatedAvailableSlots = parsedTotalSlots - confirmedCount;
     const dbStatus = mapAdminStatusToDbStatus(status || 'open');
-    const autoStatus = recalculatedAvailableSlots <= 0 && dbStatus === 'scheduled' ? 'full' : dbStatus;
+    // "Completo" se calcula a partir de las plazas (is_full), no se guarda como
+    // estado: si se guardara, el partido desaparecería de la app y no se
+    // reabriría al liberarse una plaza.
+    const autoStatus = dbStatus;
 
     await pool.query(
       `
