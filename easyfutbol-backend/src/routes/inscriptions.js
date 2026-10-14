@@ -6,6 +6,7 @@ import Stripe from 'stripe';
 import { sendPushNotification } from '../services/pushService.js';
 import { processWaitlistForMatch } from '../services/waitlistService.js';
 import { addPlusFairPlayWarning, getPlusFairPlayStatus } from '../services/plusFairPlayService.js';
+import { activePlusSql } from '../services/subscriptionService.js';
 import {
   getCancellationPolicy,
   hasMatchStarted,
@@ -83,12 +84,7 @@ router.get('/me/inscriptions', requireAuth, async (req, res) => {
               COALESCE(own_stats.is_mvp, i.is_mvp, 0) AS is_mvp,
               own_stats.result,
               mvp_user.name AS mvp_name,
-              EXISTS(
-                SELECT 1 FROM user_plus_subscriptions ups
-                WHERE ups.user_id = i.user_id
-                  AND ups.status IN ('active', 'trialing')
-                  AND (ups.current_period_end IS NULL OR ups.current_period_end > NOW())
-              ) AS is_plus
+              ${activePlusSql('i.user_id')} AS is_plus
        FROM inscriptions i
        JOIN matches m ON m.id = i.match_id
        JOIN fields  f ON f.id = m.field_id
@@ -391,12 +387,7 @@ router.patch('/inscriptions/:id/cancel', requireAuth, async (req, res) => {
               m.city,
               COALESCE(m.location_id, CASE WHEN LOWER(m.city) IN ('avilés','aviles','oviedo','gijón','gijon','asturias') THEN 2 ELSE 1 END) AS location_id,
               COALESCE(m.easypass_cost, 1) AS easypass_cost
-              ,EXISTS(
-                SELECT 1 FROM user_plus_subscriptions ups
-                WHERE ups.user_id = i.user_id
-                  AND ups.status IN ('active', 'trialing')
-                  AND (ups.current_period_end IS NULL OR ups.current_period_end > NOW())
-              ) AS is_plus
+              ,${activePlusSql('i.user_id')} AS is_plus
        FROM inscriptions i
        JOIN matches m ON m.id = i.match_id
        WHERE i.id = ?
@@ -608,12 +599,7 @@ router.post('/matches/:id/cancel', requireAuth, async (req, res) => {
               m.city,
               COALESCE(m.location_id, CASE WHEN LOWER(m.city) IN ('avilés','aviles','oviedo','gijón','gijon','asturias') THEN 2 ELSE 1 END) AS location_id,
               COALESCE(m.easypass_cost, 1) AS easypass_cost
-              ,EXISTS(
-                SELECT 1 FROM user_plus_subscriptions ups
-                WHERE ups.user_id = i.user_id
-                  AND ups.status IN ('active', 'trialing')
-                  AND (ups.current_period_end IS NULL OR ups.current_period_end > NOW())
-              ) AS is_plus
+              ,${activePlusSql('i.user_id')} AS is_plus
        FROM inscriptions i
        JOIN matches m ON m.id = i.match_id
        WHERE i.user_id=?

@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { pool } from '../config/db.js';
 import { madridWallTimeToUtc, toMysqlUtc } from '../utils/madridDateTime.js';
 import { requireAuth } from '../middlewares/auth.js';
+import { activePlusSql } from '../services/subscriptionService.js';
 
 const router = Router();
 
@@ -94,12 +95,7 @@ router.get('/stats/top-players', async (req, res) => {
         u.id,
         u.name,
         u.avatar_url,
-        MAX(EXISTS(
-          SELECT 1 FROM user_plus_subscriptions ups
-          WHERE ups.user_id = u.id
-            AND ups.status IN ('active', 'trialing')
-            AND (ups.current_period_end IS NULL OR ups.current_period_end > NOW())
-        )) AS is_plus,
+        MAX(${activePlusSql('u.id')}) AS is_plus,
         MAX(COALESCE(m.location_id, CASE WHEN LOWER(m.city) IN ('avilés','aviles','oviedo','gijón','gijon','asturias') THEN 2 ELSE 1 END)) AS location_id,
         MAX(COALESCE(l.name, CASE WHEN LOWER(m.city) IN ('avilés','aviles','oviedo','gijón','gijon','asturias') THEN 'Asturias' ELSE 'Valladolid' END)) AS location_name,
         MAX(COALESCE(l.slug, CASE WHEN LOWER(m.city) IN ('avilés','aviles','oviedo','gijón','gijon','asturias') THEN 'asturias' ELSE 'valladolid' END)) AS location_slug,

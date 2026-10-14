@@ -6,7 +6,7 @@ import multer from 'multer';
 import fs from 'fs';
 import path from 'path';
 import { Expo } from 'expo-server-sdk';
-import { getUserEntitlements } from '../services/subscriptionService.js';
+import { activePlusSql, getUserEntitlements } from '../services/subscriptionService.js';
 import { getPlayerReputation } from '../services/playerReputationService.js';
 import { getBestTeammates } from '../services/socialStatsService.js';
 import { validatePublicName } from '../services/publicNameModerationService.js';
@@ -49,12 +49,7 @@ router.get('/me/profile', requireAuth, async (req, res) => {
     const [[user]] = await pool.query(
       `SELECT u.id, u.name, u.email, u.role, u.created_at, u.avatar_url, u.push_token, u.easypass_balance,
               u.primary_position,u.secondary_position,u.dominant_foot,
-              EXISTS(
-                SELECT 1 FROM user_plus_subscriptions ups
-                WHERE ups.user_id = u.id
-                  AND ups.status IN ('active', 'trialing')
-                  AND (ups.current_period_end IS NULL OR ups.current_period_end > NOW())
-              ) AS is_plus
+              ${activePlusSql('u.id')} AS is_plus
        FROM users u WHERE u.id=? LIMIT 1`,
       [userId]
     );

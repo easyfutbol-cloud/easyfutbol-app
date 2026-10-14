@@ -3,6 +3,7 @@ import { Router } from 'express';
 import crypto from 'crypto';
 import Stripe from 'stripe';
 import { pool } from '../config/db.js';
+import { activePlusSql } from '../services/subscriptionService.js';
 import { requireAuth } from '../middlewares/auth.js';
 
 const stripeSecret = process.env.STRIPE_SECRET_KEY;
@@ -123,6 +124,7 @@ router.get('/matches/:id/attendees', async (req, res) => {
               u.name AS username,
               u.avatar_url,
               u.worldcup_team,
+              ${activePlusSql('u.id')} AS is_plus,
               SUM(CASE WHEN i.ticket_type = 'white' THEN 1 ELSE 0 END) AS white_tickets,
               SUM(CASE WHEN i.ticket_type = 'black' THEN 1 ELSE 0 END) AS black_tickets,
               CASE

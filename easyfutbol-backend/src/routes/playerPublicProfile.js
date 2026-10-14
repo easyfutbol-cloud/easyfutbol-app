@@ -9,6 +9,7 @@ import fs from 'fs';
 import path from 'path';
 import multer from 'multer';
 import { pool } from '../config/db.js';
+import { activePlusSql } from '../services/subscriptionService.js';
 import { requireAuth } from '../middlewares/auth.js';
 import { positiveId } from '../services/socialService.js';
 import { getPlayerReputation, publicReputation } from '../services/playerReputationService.js';
@@ -83,10 +84,13 @@ router.get('/:userId', async (req, res) => {
     if (await isBlocked(req.user.id, targetId)) return fail(res, 403, 'Este perfil no está disponible');
 
     const [[user]] = await pool.query(
-      'SELECT id, name, avatar_url, banner_url, preferred_location, primary_position, dominant_foot FROM users WHERE id=?',
+      `SELECT u.id, u.name, u.avatar_url, u.banner_url, u.preferred_location, u.primary_position, u.dominant_foot,
+              ${activePlusSql('u.id')} AS is_plus
+       FROM users u WHERE u.id=?`,
       [targetId]
     );
     if (!user) return fail(res, 404, 'Usuario no encontrado');
+    user.is_plus = Boolean(Number(user.is_plus));
 
     await pool.query('INSERT IGNORE INTO user_social_privacy(user_id) VALUES (?)', [targetId]);
     const [[privacy]] = await pool.query(

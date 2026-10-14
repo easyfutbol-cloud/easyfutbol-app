@@ -3,6 +3,24 @@ import { getPlusFairPlayStatus } from './plusFairPlayService.js';
 
 const ACTIVE_STATUSES = ['active', 'trialing'];
 
+// Fragmento SQL "¿tiene Plus/Pro activo?" para usar dentro de un SELECT (nombre dorado, badges).
+// Mira las dos tablas: el checkout antiguo escribe en user_plus_subscriptions y el nuevo
+// solo en user_subscriptions; los Plus regalados están en ambas. `userIdExpr` es una
+// columna del propio SQL (p. ej. 'u.id'), nunca un valor que venga del cliente.
+export function activePlusSql(userIdExpr) {
+  return `(EXISTS(
+    SELECT 1 FROM user_plus_subscriptions ups
+    WHERE ups.user_id = ${userIdExpr}
+      AND ups.status IN ('active','trialing')
+      AND (ups.current_period_end IS NULL OR ups.current_period_end > NOW())
+  ) OR EXISTS(
+    SELECT 1 FROM user_subscriptions us JOIN subscription_plans sp ON sp.id = us.plan_id
+    WHERE us.user_id = ${userIdExpr} AND sp.code IN ('plus','pro')
+      AND us.status IN ('active','trialing')
+      AND (us.current_period_end IS NULL OR us.current_period_end > NOW())
+  ))`;
+}
+
 const parseBenefits = (value) => {
   if (!value) return {};
   if (typeof value === 'object') return value;
