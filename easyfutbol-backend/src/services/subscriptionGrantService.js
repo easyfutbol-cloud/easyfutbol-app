@@ -1,6 +1,6 @@
 export async function grantSubscriptionEasyPass(
   db,
-  { userId, planCode, amount, reference }
+  { userId, planCode, amount, reference, locationId = null }
 ) {
   const normalizedAmount = Number(amount);
   if (!userId || !['plus', 'pro'].includes(planCode) || !Number.isInteger(normalizedAmount) || normalizedAmount <= 0 || !reference) {
@@ -14,6 +14,16 @@ export async function grantSubscriptionEasyPass(
   );
   if (!grant.affectedRows) return false;
 
+  // Con sede: va al saldo de esa sede. Sin sede (suscripciones antiguas): queda como saldo universal.
+  const normalizedLocationId = Number(locationId) || null;
+  if (normalizedLocationId) {
+    await db.query(
+      `INSERT INTO user_easypass_balances (user_id, location_id, balance)
+       VALUES (?, ?, ?)
+       ON DUPLICATE KEY UPDATE balance = balance + VALUES(balance)`,
+      [userId, normalizedLocationId, normalizedAmount]
+    );
+  }
   await db.query(
     'UPDATE users SET easypass_balance=COALESCE(easypass_balance,0)+? WHERE id=?',
     [normalizedAmount, userId]

@@ -156,7 +156,7 @@ async function syncPackPurchases({ db, stripe, limit, log }) {
 async function syncSubscriptionInvoices({ db, stripe, log }) {
   const result = { subscriptions_checked: 0, inserted: 0, failed: 0 };
   const [subscriptions] = await db.query(
-    `SELECT us.user_id, us.stripe_subscription_id, sp.code AS plan_code
+    `SELECT us.user_id, us.stripe_subscription_id, us.location_id, sp.code AS plan_code
      FROM user_subscriptions us
      JOIN subscription_plans sp ON sp.id = us.plan_id
      WHERE us.stripe_subscription_id IS NOT NULL`
@@ -171,6 +171,7 @@ async function syncSubscriptionInvoices({ db, stripe, log }) {
           stripe_ref: invoice.id,
           kind: 'subscription',
           user_id: subscription.user_id,
+          location_id: subscription.location_id ?? null,
           plan_code: subscription.plan_code,
           ...mapped,
         });

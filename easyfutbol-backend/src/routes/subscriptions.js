@@ -43,6 +43,13 @@ router.post('/:planCode/checkout', requireAuth, async (req, res) => {
     const [[plan]] = await pool.query('SELECT * FROM subscription_plans WHERE code=? AND is_active=1 LIMIT 1', [planCode]);
     if (!plan) return res.status(404).json({ ok:false, msg:'Plan no encontrado' });
     if (planCode !== 'plus') return res.status(404).json({ ok:false,msg:'Plan no disponible' });
+    // La app actual obliga a elegir sede; las versiones antiguas no la envían y su EasyPass mensual sigue siendo universal.
+    const locationId = Number(req.body?.location_id) || null;
+    let location = null;
+    if (locationId) {
+      [[location]] = await pool.query('SELECT id, name FROM locations WHERE id=? AND active=1 LIMIT 1', [locationId]);
+      if (!location) return res.status(400).json({ ok:false, msg:'Sede no válida' });
+    }
     const priceId = process.env.STRIPE_PLUS_PRICE_ID || plan.stripe_price_id;
     const current = await getUserSubscription(pool, req.user.id);
     if (current) return res.status(409).json({
@@ -54,10 +61,10 @@ router.post('/:planCode/checkout', requireAuth, async (req, res) => {
     const reusableCustomerId = await getReusableStripeCustomerId(previous?.stripe_customer_id);
     const billingConfig=getFirstDayBillingConfig();
     const metadata = {
-      kind:'easyfutbol_subscription', subscriptionPlan:planCode, userId:String(req.user.id),
+      kind:'easyfutbol_subscription', subscriptionPlan:planCode, userId:String(req.user.id), locationId:location ? String(location.id) : '',
       renewalAnchor:billingConfig.renewalAnchor ? String(billingConfig.renewalAnchor) : '',
     };
-    const lineItem=priceId ? { price:priceId,quantity:1 } : { price_data:{ currency:String(plan.currency || 'EUR').toLowerCase(),unit_amount:Number(plan.price_cents),recurring:{ interval:plan.billing_interval || 'month' },product_data:{ name:plan.name,description:`Suscripción mensual ${plan.name}` } },quantity:1 };
+    const lineItem=priceId ? { price:priceId,quantity:1 } : { price_data:{ currency:String(plan.currency || 'EUR').toLowerCase(),unit_amount:Number(plan.price_cents),recurring:{ interval:plan.billing_interval || 'month' },product_data:{ name:plan.name,description:`Suscripción mensual ${plan.name}${location ? ` · ${location.name}` : ''}` } },quantity:1 };
     const session = await stripe.checkout.sessions.create({
       mode:'subscription', customer:reusableCustomerId || undefined,
       customer_email:reusableCustomerId ? undefined : user?.email, client_reference_id:String(req.user.id),

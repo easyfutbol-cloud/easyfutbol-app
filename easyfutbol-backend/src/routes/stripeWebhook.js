@@ -53,18 +53,20 @@ async function upsertPlusSubscription(conn, { userId, customerId, subscription }
   );
 }
 
+const getSubscriptionLocationId = (subscription) => Number(subscription?.metadata?.locationId) || null;
+
 async function upsertGenericSubscription(conn, { userId, customerId, subscription, planCode }) {
   const [[plan]] = await conn.query('SELECT id FROM subscription_plans WHERE code=? LIMIT 1', [planCode]);
   if (!plan) throw new Error(`Plan de suscripción no encontrado: ${planCode}`);
   const period = getSubscriptionPeriod(subscription);
   await conn.query(
     `INSERT INTO user_subscriptions
-       (user_id, plan_id, stripe_customer_id, stripe_subscription_id, status, current_period_start, current_period_end, cancel_at_period_end, started_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, COALESCE(?, NOW()))
-     ON DUPLICATE KEY UPDATE plan_id=VALUES(plan_id), stripe_customer_id=VALUES(stripe_customer_id),
+       (user_id, plan_id, location_id, stripe_customer_id, stripe_subscription_id, status, current_period_start, current_period_end, cancel_at_period_end, started_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE(?, NOW()))
+     ON DUPLICATE KEY UPDATE plan_id=VALUES(plan_id), location_id=COALESCE(VALUES(location_id), location_id), stripe_customer_id=VALUES(stripe_customer_id),
        status=VALUES(status), current_period_start=VALUES(current_period_start), current_period_end=VALUES(current_period_end),
        cancel_at_period_end=VALUES(cancel_at_period_end), ended_at=IF(VALUES(status) IN ('canceled','incomplete_expired'), NOW(), NULL)`,
-    [userId, plan.id, customerId || null, subscription?.id || null, subscription?.status || 'inactive',
+    [userId, plan.id, getSubscriptionLocationId(subscription), customerId || null, subscription?.id || null, subscription?.status || 'inactive',
       unixToMysqlDate(period.start), unixToMysqlDate(period.end), subscription?.cancel_at_period_end ? 1 : 0, unixToMysqlDate(period.start)]
   );
 }
@@ -83,7 +85,7 @@ async function handleGenericSubscriptionEvent(event) {
     try {
       await conn.beginTransaction();
       await upsertGenericSubscription(conn, { userId, customerId:object.customer, subscription, planCode });
-      await grantSubscriptionEasyPass(conn, { userId, planCode, amount, reference:`subscription_checkout:${object.id}` });
+      await grantSubscriptionEasyPass(conn, { userId, planCode, amount, reference:`subscription_checkout:${object.id}`, locationId:getSubscriptionLocationId(subscription) });
       await conn.commit();
     } catch (error) { await conn.rollback(); throw error; } finally { conn.release(); }
     return true;
@@ -97,7 +99,7 @@ async function handleGenericSubscriptionEvent(event) {
     try {
       await conn.beginTransaction();
       await upsertGenericSubscription(conn, { userId, customerId:object.customer, subscription, planCode });
-      await grantSubscriptionEasyPass(conn, { userId, planCode, amount:planCode === 'pro' ? 4 : 1, reference:`subscription_invoice:${object.id}` });
+      await grantSubscriptionEasyPass(conn, { userId, planCode, amount:planCode === 'pro' ? 4 : 1, reference:`subscription_invoice:${object.id}`, locationId:getSubscriptionLocationId(subscription) });
       await conn.commit();
     } catch (error) { await conn.rollback(); throw error; } finally { conn.release(); }
     return true;
