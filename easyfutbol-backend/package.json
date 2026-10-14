@@ -14,7 +14,8 @@
     "migrate:status": "node src/scripts/runMigrations.js --status",
     "migrate:dry-run": "node src/scripts/runMigrations.js --dry-run",
     "migrate:verify": "node src/scripts/runMigrations.js --verify-files",
-    "kpis:sync-revenue": "node src/scripts/syncRevenue.js"
+    "kpis:sync-revenue": "node src/scripts/syncRevenue.js",
+    "plus:gift": "node src/scripts/grantPlusGift.js"
   },
   "dependencies": {
     "bcrypt": "^6.0.0",

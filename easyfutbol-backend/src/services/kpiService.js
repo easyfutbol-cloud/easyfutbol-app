@@ -114,13 +114,14 @@ async function fetchSubscriptionSummary(db) {
     `SELECT sp.code AS plan_code, us.status, COUNT(*) AS count, MAX(sp.price_cents) AS price_cents
      FROM user_subscriptions us
      JOIN subscription_plans sp ON sp.id = us.plan_id
+     WHERE us.stripe_subscription_id IS NOT NULL
      GROUP BY sp.code, us.status`
   );
   return rows;
 }
 
 async function fetchSubscriptionStarts(db) {
-  const [rows] = await db.query('SELECT user_id, started_at FROM user_subscriptions WHERE started_at IS NOT NULL');
+  const [rows] = await db.query('SELECT user_id, started_at FROM user_subscriptions WHERE started_at IS NOT NULL AND stripe_subscription_id IS NOT NULL');
   return rows;
 }
 

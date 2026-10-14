@@ -71,6 +71,9 @@ export default function PlusScreen({ navigation }) {
   };
 
   const renewalDate = formatRenewalDate(currentSubscription?.current_period_end || status?.current_period_end);
+  // Plus regalado: no tiene suscripción de Stripe detrás, así que tiene inicio y fin fijos y no se renueva.
+  const isGift = Boolean(status?.is_gift || (currentSubscription && !currentSubscription.stripe_subscription_id));
+  const giftStartDate = formatRenewalDate(currentSubscription?.current_period_start || status?.current_period_start);
   const displayedPlans = plans.length
     ? plans.filter((plan) => plan.code === 'plus')
     : [{ code:'plus', name:'EasyFutbol Plus', price_cents:999, checkout_available:true, benefits:{ monthly_easypass:1, easypass_discount_percent:10 } }];
@@ -94,18 +97,22 @@ export default function PlusScreen({ navigation }) {
             <ActivityIndicator color="#F4C95D" style={styles.loader} />
           ) : currentPlan || status?.is_plus ? (
             <View style={styles.activeCard}>
-              <View style={styles.activePill}><View style={[styles.activeDot, status?.plus_benefits_suspended && styles.suspendedDot]} /><Text style={styles.activePillText}>{status?.plus_benefits_suspended ? 'VENTAJAS SUSPENDIDAS' : `${String(currentPlan || 'plus').toUpperCase()} ACTIVO`}</Text></View>
+              <View style={styles.activePill}><View style={[styles.activeDot, status?.plus_benefits_suspended && styles.suspendedDot]} /><Text style={styles.activePillText}>{status?.plus_benefits_suspended ? 'VENTAJAS SUSPENDIDAS' : isGift ? 'PLUS DE REGALO' : `${String(currentPlan || 'plus').toUpperCase()} ACTIVO`}</Text></View>
               <Text style={styles.activeText}>
                 {status?.plus_benefits_suspended
                   ? 'Has alcanzado 3 avisos este mes. Hasta el próximo mes podrás jugar comprando EasyPass normales, sin ventajas Plus.'
+                  : isGift
+                  ? `Te hemos regalado un mes de EasyFutbol Plus. Empieza el ${giftStartDate || 'día del regalo'} y termina el ${renewalDate || 'mismo día del mes siguiente'} a las 23:59. No se renueva ni se te cobrará nada.`
                   : currentSubscription?.cancel_at_period_end || status?.cancel_at_period_end
                   ? `Tus ventajas estarán activas hasta ${renewalDate || 'el final del periodo'}.`
                   : `Próxima renovación: ${renewalDate || 'según tu periodo de Stripe'}.`}
               </Text>
               <Text style={styles.warningCounter}>Avisos este mes: {Number(status?.fair_play_warnings || 0)}/3</Text>
-              <TouchableOpacity style={styles.manageButton} onPress={() => openStripeFlow(currentPlan ? '/subscriptions/portal' : '/plus/portal', 'portal_url')} disabled={processing}>
-                <Text style={styles.manageButtonText}>{processing ? 'Abriendo Stripe…' : 'Gestionar suscripción'}</Text>
-              </TouchableOpacity>
+              {!isGift ? (
+                <TouchableOpacity style={styles.manageButton} onPress={() => openStripeFlow(currentPlan ? '/subscriptions/portal' : '/plus/portal', 'portal_url')} disabled={processing}>
+                  <Text style={styles.manageButtonText}>{processing ? 'Abriendo Stripe…' : 'Gestionar suscripción'}</Text>
+                </TouchableOpacity>
+              ) : null}
             </View>
           ) : (
             <TouchableOpacity style={styles.subscribeButton} onPress={() => openStripeFlow('/subscriptions/plus/checkout', 'checkout_url')} disabled={processing} accessibilityRole="button">

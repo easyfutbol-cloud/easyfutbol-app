@@ -10,13 +10,22 @@ const stripe = process.env.STRIPE_SECRET_KEY ? new Stripe(process.env.STRIPE_SEC
 const APP_BASE_URL = String(process.env.APP_BASE_URL || process.env.FRONTEND_URL || 'https://easyfutbol.es').replace(/\/$/, '');
 const ACTIVE_STATUSES = new Set(['active', 'trialing']);
 
+// Un Plus sigue activo solo mientras no haya pasado su fecha de fin (los Plus regalados no tienen Stripe que los caduque).
+const isActivePlusRow = (row) => {
+  if (!ACTIVE_STATUSES.has(String(row?.status || '').toLowerCase())) return false;
+  if (!row?.current_period_end) return true;
+  return new Date(row.current_period_end).getTime() > Date.now();
+};
+
 const serializeSubscription = (row, fairPlay = {}) => {
-  const isActive = ACTIVE_STATUSES.has(String(row?.status || '').toLowerCase());
+  const isActive = isActivePlusRow(row);
   const benefitsActive = isActive && !fairPlay.suspended;
   return {
     is_plus: isActive,
     isPlus: isActive,
-    status: row?.status || 'inactive',
+    status: isActive ? row.status : (row?.status && ACTIVE_STATUSES.has(String(row.status).toLowerCase()) ? 'expired' : row?.status || 'inactive'),
+    is_gift: isActive && !row?.stripe_subscription_id,
+    current_period_start: row?.current_period_start || null,
     current_period_end: row?.current_period_end || null,
     cancel_at_period_end: Boolean(row?.cancel_at_period_end),
     plus_benefits_suspended: Boolean(fairPlay.suspended),
@@ -36,7 +45,7 @@ const serializeSubscription = (row, fairPlay = {}) => {
 router.get('/status', requireAuth, async (req, res) => {
   try {
     const [[subscription]] = await pool.query(
-      `SELECT status, current_period_end, cancel_at_period_end
+      `SELECT status, stripe_subscription_id, current_period_start, current_period_end, cancel_at_period_end
        FROM user_plus_subscriptions
        WHERE user_id = ?
        LIMIT 1`,
@@ -57,11 +66,11 @@ router.post('/checkout', requireAuth, async (req, res) => {
     const userId = req.user.id;
     const [[user]] = await pool.query('SELECT id, name, email FROM users WHERE id = ? LIMIT 1', [userId]);
     const [[existing]] = await pool.query(
-      'SELECT stripe_customer_id, status FROM user_plus_subscriptions WHERE user_id = ? LIMIT 1',
+      'SELECT stripe_customer_id, status, current_period_end FROM user_plus_subscriptions WHERE user_id = ? LIMIT 1',
       [userId]
     );
 
-    if (ACTIVE_STATUSES.has(String(existing?.status || '').toLowerCase())) {
+    if (isActivePlusRow(existing)) {
       return res.status(409).json({ ok: false, msg: 'Ya tienes EasyFutbol Plus activo' });
     }
 
