@@ -3,6 +3,7 @@ import { pool } from '../config/db.js';
 import { requireAuth, requireAdmin } from '../middlewares/auth.js';
 import { areFriends, createSocialNotification, expireMatchInvitations, getFriendshipStatus, positiveId } from '../services/socialService.js';
 import { getBestTeammates, getFrequentPlayers, getPairStats } from '../services/socialStatsService.js';
+import { activePlusSql } from '../services/subscriptionService.js';
 import { getPlayerReputation, publicReputation } from '../services/playerReputationService.js';
 
 const router = Router();
@@ -67,7 +68,7 @@ router.get('/friends', async (req,res) => {
   try {
     const userId=req.user.id,{limit,offset,page}=pageArgs(req.query);
     const [rows]=await pool.query(
-      `SELECT f.id friendship_id,f.created_at friendship_since,u.id,u.name,u.avatar_url,u.preferred_location
+      `SELECT f.id friendship_id,f.created_at friendship_since,u.id,u.name,u.avatar_url,u.preferred_location,${activePlusSql('u.id')} is_plus
        FROM friendships f JOIN users u ON u.id=IF(f.requester_id=?,f.addressee_id,f.requester_id)
        WHERE f.status='accepted' AND (f.requester_id=? OR f.addressee_id=?)
        ORDER BY u.name ASC LIMIT ? OFFSET ?`,[userId,userId,userId,limit,offset]
@@ -81,7 +82,7 @@ router.get('/friends/matches', async (req,res) => {
     const userId=req.user.id;
     const [rows]=await pool.query(
       `SELECT m.id match_id,m.title,m.starts_at,m.capacity,m.spots_taken,
-              u.id friend_id,u.name friend_name,u.avatar_url friend_avatar,i.ticket_type
+              u.id friend_id,u.name friend_name,u.avatar_url friend_avatar,i.ticket_type,${activePlusSql('u.id')} friend_is_plus
        FROM friendships f
        JOIN users u ON u.id=IF(f.requester_id=?,f.addressee_id,f.requester_id)
        LEFT JOIN user_social_privacy usp ON usp.user_id=u.id
@@ -102,7 +103,7 @@ router.get('/friends/stats', async (req,res) => {
   try {
     const userId=req.user.id;
     const [rows]=await pool.query(
-      `SELECT u.id,u.name,u.avatar_url,u.preferred_location,
+      `SELECT u.id,u.name,u.avatar_url,u.preferred_location,MAX(${activePlusSql('u.id')}) is_plus,
               COALESCE(SUM(mps.goals),0) goals,
               COALESCE(SUM(mps.assists),0) assists,
               COALESCE(SUM(mps.result='win'),0) wins
@@ -125,7 +126,7 @@ router.get('/requests/:direction(received|sent)', async (req,res) => {
   try {
     const received=req.params.direction==='received',userId=req.user.id;
     const [rows]=await pool.query(
-      `SELECT f.id friendship_id,f.created_at,u.id,u.name,u.avatar_url,u.preferred_location
+      `SELECT f.id friendship_id,f.created_at,u.id,u.name,u.avatar_url,u.preferred_location,${activePlusSql('u.id')} is_plus
        FROM friendships f JOIN users u ON u.id=${received?'f.requester_id':'f.addressee_id'}
        WHERE f.status='pending' AND ${received?'f.addressee_id':'f.requester_id'}=? ORDER BY f.created_at DESC`,[userId]
     );
@@ -139,7 +140,7 @@ router.get('/users/search', async (req,res) => {
     if (q.length<2) return res.json({ok:true,items:[],page,has_more:false});
     const like=`%${q.replace(/[\\%_]/g,'\\$&')}%`;
     const [rows]=await pool.query(
-      `SELECT u.id,u.name,u.avatar_url,u.preferred_location,
+      `SELECT u.id,u.name,u.avatar_url,u.preferred_location,${activePlusSql('u.id')} is_plus,
         CASE WHEN f.status='accepted' THEN 'friends' WHEN f.status='pending' AND f.requester_id=? THEN 'sent'
              WHEN f.status='pending' THEN 'received' ELSE 'none' END friendship_status,f.id friendship_id
        FROM users u LEFT JOIN friendships f ON f.user_low_id=LEAST(?,u.id) AND f.user_high_id=GREATEST(?,u.id)

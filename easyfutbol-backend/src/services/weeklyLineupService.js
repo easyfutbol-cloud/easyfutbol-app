@@ -4,6 +4,7 @@
 import { pool } from '../config/db.js';
 import { markSchedulerFailure, markSchedulerSuccess, registerScheduler } from './operationalHealthService.js';
 import { madridWallTimeToUtc, toMysqlUtc } from '../utils/madridDateTime.js';
+import { activePlusSql } from './subscriptionService.js';
 
 export const POSITIONS = ['portero', 'defensa', 'centrocampista', 'delantero'];
 // Cuántos gana cada posición (y, a la vez, cuántos tiene que elegir cada
@@ -172,6 +173,7 @@ export async function getPollWithCandidates(pollId) {
 
   const [rows] = await pool.query(
     `SELECT c.id, c.position, c.user_id, u.name, u.avatar_url, u.preferred_location, inferred_loc.location_slug AS inferred_location_slug,
+            ${activePlusSql('u.id')} AS is_plus,
             (SELECT COUNT(*) FROM weekly_lineup_votes v WHERE v.candidate_id=c.id) AS votes
      FROM weekly_lineup_candidates c
      JOIN users u ON u.id = c.user_id
@@ -189,6 +191,7 @@ export async function getPollWithCandidates(pollId) {
       user_id: row.user_id,
       name: row.name,
       avatar_url: row.avatar_url,
+      is_plus: Boolean(Number(row.is_plus)),
       location: resolveLocationLabel(row.preferred_location, row.inferred_location_slug),
       votes: Number(row.votes),
     });

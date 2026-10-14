@@ -1,3 +1,4 @@
+import { activePlusSql } from './subscriptionService.js';
 const daysSince = (value) => value ? Math.max(0,(Date.now()-new Date(value).getTime())/86400000) : 9999;
 
 export function summarizeSocialMatches(rows, friendshipCreatedAt=null) {
@@ -79,7 +80,7 @@ export async function getBestTeammates(db,userId,limit=10) {
 
 export async function getFrequentPlayers(db,userId,limit=20) {
   const [rows]=await db.query(
-    `SELECT u.id,u.name,u.avatar_url,u.preferred_location,COUNT(DISTINCT b.match_id) AS matches_together,
+    `SELECT u.id,u.name,u.avatar_url,u.preferred_location,MAX(${activePlusSql('u.id')}) AS is_plus,COUNT(DISTINCT b.match_id) AS matches_together,
        CASE WHEN f.status='accepted' THEN 'friends'
             WHEN f.status='pending' AND f.requester_id=? THEN 'sent'
             WHEN f.status='pending' THEN 'received' ELSE 'none' END AS friendship_status
