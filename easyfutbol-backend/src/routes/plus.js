@@ -1,7 +1,7 @@
 import express from 'express';
 import Stripe from 'stripe';
 import { pool } from '../config/db.js';
-import { requireAuth } from '../middlewares/auth.js';
+import { requireAdmin, requireAuth } from '../middlewares/auth.js';
 import { getPlusFairPlayStatus } from '../services/plusFairPlayService.js';
 import { getFirstDayBillingConfig } from '../services/subscriptionBillingService.js';
 
@@ -56,6 +56,43 @@ router.get('/status', requireAuth, async (req, res) => {
   } catch (error) {
     console.error('[GET /plus/status]', error);
     return res.status(500).json({ ok: false, msg: 'No se pudo consultar EasyFutbol Plus' });
+  }
+});
+
+// Lista para admin de quién tiene Plus activo ahora mismo. Se leen las dos tablas porque
+// el checkout antiguo escribe en user_plus_subscriptions y el nuevo solo en user_subscriptions.
+router.get('/admin/subscribers', requireAuth, requireAdmin, async (_req, res) => {
+  try {
+    const [rows] = await pool.query(
+      `SELECT u.id, u.name, u.email, u.avatar_url,
+              MAX(s.stripe_subscription_id IS NOT NULL) AS is_paid,
+              MAX(s.cancel_at_period_end) AS cancel_at_period_end,
+              MIN(s.current_period_start) AS current_period_start,
+              MAX(s.current_period_end) AS current_period_end
+       FROM (
+         SELECT user_id, stripe_subscription_id, cancel_at_period_end, current_period_start, current_period_end
+         FROM user_plus_subscriptions
+         WHERE status IN ('active','trialing') AND (current_period_end IS NULL OR current_period_end > NOW())
+         UNION ALL
+         SELECT us.user_id, us.stripe_subscription_id, us.cancel_at_period_end, us.current_period_start, us.current_period_end
+         FROM user_subscriptions us JOIN subscription_plans sp ON sp.id = us.plan_id
+         WHERE sp.code = 'plus' AND us.status IN ('active','trialing') AND (us.current_period_end IS NULL OR us.current_period_end > NOW())
+       ) s
+       JOIN users u ON u.id = s.user_id
+       GROUP BY u.id, u.name, u.email, u.avatar_url
+       ORDER BY is_paid DESC, current_period_end ASC`
+    );
+    const subscribers = rows.map((row) => ({
+      ...row,
+      type: Number(row.is_paid) ? 'paid' : 'gift',
+      is_paid: undefined,
+      cancel_at_period_end: Boolean(Number(row.cancel_at_period_end)),
+    }));
+    const paid = subscribers.filter((row) => row.type === 'paid').length;
+    return res.json({ ok: true, data: { total: subscribers.length, paid, gift: subscribers.length - paid, subscribers } });
+  } catch (error) {
+    console.error('[GET /plus/admin/subscribers]', error);
+    return res.status(500).json({ ok: false, msg: 'No se pudieron cargar los suscriptores Plus' });
   }
 });
 
