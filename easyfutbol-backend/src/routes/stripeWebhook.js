@@ -117,7 +117,7 @@ async function handleGenericSubscriptionEvent(event) {
   return false;
 }
 
-async function grantMonthlyPlusEasyPass(conn, { userId, reference }) {
+async function grantMonthlyPlusEasyPass(conn, { userId, reference, locationId = null }) {
   const [grant] = await conn.query(
     `INSERT IGNORE INTO plus_monthly_grants (user_id, stripe_reference, amount)
      VALUES (?, ?, 1)`,
@@ -125,6 +125,14 @@ async function grantMonthlyPlusEasyPass(conn, { userId, reference }) {
   );
   if (!grant.affectedRows) return false;
 
+  if (locationId) {
+    await conn.query(
+      `INSERT INTO user_easypass_balances (user_id, location_id, balance)
+       VALUES (?, ?, 1)
+       ON DUPLICATE KEY UPDATE balance = balance + 1`,
+      [userId, locationId]
+    );
+  }
   await conn.query(
     'UPDATE users SET easypass_balance = COALESCE(easypass_balance, 0) + 1 WHERE id = ?',
     [userId]
@@ -173,7 +181,7 @@ async function handlePlusEvent(event) {
       await conn.beginTransaction();
       await upsertPlusSubscription(conn, { userId, customerId: object.customer, subscription });
       await upsertGenericSubscription(conn, { userId, customerId: object.customer, subscription, planCode:'plus' });
-      await grantMonthlyPlusEasyPass(conn, { userId, reference: `plus_invoice:${object.id}` });
+      await grantMonthlyPlusEasyPass(conn, { userId, reference: `plus_invoice:${object.id}`, locationId: getSubscriptionLocationId(subscription) });
       await conn.commit();
     } catch (error) {
       await conn.rollback();

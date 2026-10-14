@@ -76,6 +76,25 @@ router.post('/:planCode/checkout', requireAuth, async (req, res) => {
   } catch (error) { console.error('[POST subscription checkout]', error); return res.status(500).json({ ok:false, msg:'No se pudo iniciar la suscripción' }); }
 });
 
+// Cambia la sede a la que va el EasyPass mensual. Se guarda también en Stripe porque cada
+// renovación lee la sede de los metadatos de la suscripción. Lo ya ingresado no se mueve.
+router.patch('/me/location', requireAuth, async (req, res) => {
+  try {
+    if (!stripe) return res.status(503).json({ ok:false, msg:'Stripe no está configurado' });
+    const locationId = Number(req.body?.location_id) || null;
+    const [[location]] = locationId
+      ? await pool.query('SELECT id, name FROM locations WHERE id=? AND active=1 LIMIT 1', [locationId])
+      : [[null]];
+    if (!location) return res.status(400).json({ ok:false, msg:'Sede no válida' });
+    const current = await getUserSubscription(pool, req.user.id);
+    if (!current) return res.status(404).json({ ok:false, msg:'No tienes una suscripción activa' });
+    if (!current.stripe_subscription_id) return res.status(400).json({ ok:false, msg:'Tu Plus de regalo no incluye EasyPass mensual, así que no tiene sede' });
+    await stripe.subscriptions.update(current.stripe_subscription_id, { metadata:{ locationId:String(location.id) } });
+    await pool.query('UPDATE user_subscriptions SET location_id=? WHERE stripe_subscription_id=?', [location.id, current.stripe_subscription_id]);
+    return res.json({ ok:true, data:{ location_id:location.id, location_name:location.name } });
+  } catch (error) { console.error('[PATCH subscription location]', error); return res.status(500).json({ ok:false, msg:'No se pudo cambiar la sede' }); }
+});
+
 router.post('/portal', requireAuth, async (req,res) => {
   try {
     if (!stripe) return res.status(503).json({ ok:false,msg:'Stripe no está configurado' });
