@@ -122,7 +122,7 @@ router.get('/packs', requireAuth, async (req, res) => {
           price_cents: discount.percent ? Math.round(originalPrice * (1 - discount.percent / 100)) : originalPrice,
           plus_discount_applied: discount.isActive,
           campaign_discount_applied: false,
-          promotion_code_available: campaign.active && !discount.isActive,
+          promotion_code_available: campaign.active,
           discount_percent: discount.percent,
           subscription_discount_percent: discount.percent,
         };
@@ -284,7 +284,8 @@ router.post('/packs/:id/checkout', requireAuth, async (req, res) => {
 
     const discount = await getSubscriptionDiscount(userId);
     const campaign = getValladolidPackCampaign(pack);
-    const allowValladolidPromotionCode = campaign.active && !discount.isActive;
+    // Los códigos también valen con Plus: Stripe los aplica sobre el precio ya rebajado por Plus.
+    const allowValladolidPromotionCode = campaign.active;
     const displayedPriceCents = discount.percent
       ? Math.round(Number(pack.price_cents || 0) * (1 - discount.percent / 100))
       : Number(pack.price_cents || 0);
