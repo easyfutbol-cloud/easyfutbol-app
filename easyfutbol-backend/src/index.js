@@ -46,6 +46,9 @@ import { startScheduledMatchPublisher } from './services/scheduledMatchService.j
 import { startNotificationCampaignScheduler } from './services/notificationCampaignService.js';
 
 const app = express();
+// Detrás de nginx (un salto): sin esto req.ip es la de nginx y todos los usuarios
+// comparten el mismo límite de express-rate-limit.
+app.set('trust proxy', 1);
 const PORT = Number(process.env.PORT || 4000);
 
 // Webhook de Stripe (usa express.raw dentro del router). Importante: va ANTES de express.json()
