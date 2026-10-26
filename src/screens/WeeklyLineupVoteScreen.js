@@ -132,7 +132,7 @@ export default function WeeklyLineupVoteScreen({ navigation }) {
                       </View>
                     )}
                     <View style={styles.candidateNameCol}>
-                      <Text style={[styles.candidateName, selected && styles.candidateNameSelected]}>{candidate.name}</Text>
+                      <Text style={[styles.candidateName, selected && styles.candidateNameSelected, candidate.is_plus && styles.plusName]}>{candidate.name}</Text>
                       {candidate.location ? <Text style={styles.candidateLocation}>{candidate.location}</Text> : null}
                     </View>
                     {votingKey === key ? (
@@ -184,6 +184,7 @@ const styles = StyleSheet.create({
   candidateNameCol: { flex: 1 },
   candidateName: { color: '#eee', fontSize: 14, fontWeight: '700' },
   candidateNameSelected: { color: '#fff' },
+  plusName: { color: '#F4C95D' },
   candidateLocation: { color: '#888', fontSize: 11, fontWeight: '600', marginTop: 1 },
   resultButton: { alignItems: 'center', paddingVertical: 14, marginTop: 6 },
   resultButtonText: { color: '#ff8c4d', fontSize: 13, fontWeight: '700' },

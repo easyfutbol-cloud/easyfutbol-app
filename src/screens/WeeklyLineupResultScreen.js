@@ -64,7 +64,7 @@ function PlayerPin({ player, spot, containerWidth }) {
       </View>
       {player ? (
         <View style={styles.pinLabel}>
-          <Text style={[styles.pinName, { fontSize: avatarSize * 0.19 }]} numberOfLines={1}>{player.name}</Text>
+          <Text style={[styles.pinName, player.is_plus && styles.plusName, { fontSize: avatarSize * 0.19 }]} numberOfLines={1}>{player.name}</Text>
           {player.location ? <Text style={[styles.pinLocation, { fontSize: avatarSize * 0.15 }]} numberOfLines={1}>{player.location}</Text> : null}
         </View>
       ) : null}
@@ -214,6 +214,7 @@ const styles = StyleSheet.create({
   avatarInitial: { color: '#fff', fontWeight: '900' },
   pinLabel: { marginTop: 4, backgroundColor: 'rgba(0,0,0,0.72)', borderRadius: 7, paddingHorizontal: 6, paddingVertical: 3, maxWidth: '100%' },
   pinName: { color: '#fff', fontWeight: '800', textAlign: 'center' },
+  plusName: { color: '#F4C95D' },
   pinLocation: { color: 'rgba(255,255,255,0.7)', fontWeight: '700', textAlign: 'center' },
   shareButton: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: '#ff5a00', borderRadius: 14, paddingVertical: 15, marginTop: 20 },
   shareButtonText: { color: '#fff', fontSize: 15, fontWeight: '800' },

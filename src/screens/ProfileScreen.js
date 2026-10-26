@@ -6,6 +6,7 @@ import {
 } from 'react-native';
 import { colors, layout, radii, spacing, typography } from '../theme';
 import { api } from '../api/client';
+import { uploadForm } from '../api/upload';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as ImagePicker from 'expo-image-picker';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -369,7 +370,8 @@ export default function ProfileScreen({ navigation }) {
         mediaTypes: ImagePicker.MediaTypeOptions.Images,
         allowsEditing: true,
         aspect: [1,1],
-        quality: 0.9
+        // Un avatar no necesita más; a 0.9 las fotos del móvil pasan de 1 MB y nginx las corta (413)
+        quality: 0.5
       });
       if (result.canceled) return;
 
@@ -381,8 +383,9 @@ export default function ProfileScreen({ navigation }) {
       const formData = new FormData();
       formData.append('avatar', { uri: localUri, type: 'image/jpeg', name: 'avatar.jpg' });
 
-      const res = await fetch(`${BASE}/me/avatar`, { method: 'POST', headers, body: formData });
+      const res = await uploadForm(`${BASE}/me/avatar`, { method: 'POST', headers, body: formData });
       if (res.status === 401) { setErrMsg('Sesión expirada. Vuelve a iniciar sesión.'); return; }
+      if (res.status === 413) throw new Error('La foto es demasiado grande. Prueba con otra o recórtala más.');
       if (!res.ok) {
         const txt = await res.text().catch(()=> '');
         throw new Error(txt || `Error ${res.status}`);

@@ -295,6 +295,13 @@ export function MoneyTab({ data, onSync, syncing }) {
   const current = monthly[monthly.length - 1];
   const maxRevenue = Math.max(1, ...monthly.map((m) => m.revenue_cents || 0));
   const pending = Number(data?.pending_sync || 0);
+  const syncIso = data?.last_sync?.at || quality.last_ledger_entry_at || null;
+  const syncDate = syncIso ? new Date(syncIso) : null;
+  const syncValid = syncDate && !Number.isNaN(syncDate.getTime());
+  const syncLabel = syncValid
+    ? syncDate.toLocaleString('es-ES', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Madrid' })
+    : 'Todavía no';
+  const stale = !syncValid || Date.now() - syncDate.getTime() > 7 * 24 * 3600 * 1000;
   const incomplete = pending > 0 || (quality.coverage_rate !== null && quality.coverage_rate !== undefined && quality.coverage_rate < 1);
 
   return (
@@ -308,16 +315,32 @@ export function MoneyTab({ data, onSync, syncing }) {
               {num(quality.purchases_in_ledger)} de {num(quality.purchases_with_stripe_ref)} compras tienen su importe real{pending > 0 ? ` · ${num(pending)} por leer` : ''}.
               Hasta sincronizarlas, el precio efectivo y los ingresos se quedan cortos.
             </Text>
-            {data?.stripe_configured === false ? (
-              <Text style={styles.noticeText}>Stripe no está configurado en el servidor.</Text>
-            ) : (
-              <TouchableOpacity style={styles.noticeButton} onPress={onSync} disabled={syncing}>
-                {syncing ? <ActivityIndicator color={colors.black} /> : <Text style={styles.noticeButtonText}>Sincronizar con Stripe</Text>}
-              </TouchableOpacity>
-            )}
           </View>
         </View>
       ) : null}
+
+      <View style={styles.card}>
+        <Text style={styles.cardTitle}>Sincronización con Stripe</Text>
+        <View style={styles.cardRow}>
+          <Text style={styles.cardKey}>{data?.last_sync ? 'Última sincronización' : 'Último importe leído'}</Text>
+          <Text style={styles.cardVal}>{syncLabel}</Text>
+        </View>
+        {data?.last_sync ? (
+          <View style={styles.cardRow}>
+            <Text style={styles.cardKey}>Compras nuevas · reembolsos corregidos</Text>
+            <Text style={styles.cardVal}>{num(data.last_sync.packs_inserted)} · {num(data.last_sync.refunds_updated)}</Text>
+          </View>
+        ) : null}
+        {stale ? <Text style={styles.footnote}>Hace más de una semana que no se sincroniza: pulsa el botón para poner los ingresos al día.</Text> : null}
+        {data?.stripe_configured === false ? (
+          <Text style={styles.footnote}>Stripe no está configurado en el servidor.</Text>
+        ) : (
+          <TouchableOpacity style={styles.noticeButton} onPress={onSync} disabled={syncing} accessibilityRole="button" accessibilityLabel="Sincronizar con Stripe">
+            {syncing ? <ActivityIndicator color={colors.black} /> : <Text style={styles.noticeButtonText}>Sincronizar con Stripe</Text>}
+          </TouchableOpacity>
+        )}
+        <Text style={styles.footnote}>Trae las compras nuevas, los reembolsos de los últimos 60 días y las facturas de suscripción. También se hace sola cada 6 horas.</Text>
+      </View>
 
       <SectionTitle eyebrow="PRECIO" title="Precio efectivo por EasyPass" />
       <View style={styles.kpiGrid}>
@@ -674,7 +697,7 @@ export default function AdminBusinessKpisScreen({ navigation }) {
       const result = response.data || {};
       Alert.alert(
         'Sincronización terminada',
-        `Compras leídas: ${result.packs?.checked ?? 0}. Con importe real: ${result.packs?.inserted ?? 0}.${result.packs?.failed ? ` Con error: ${result.packs.failed}.` : ''}\n${result.remaining > 0 ? `Quedan ${result.remaining} por leer: vuelve a pulsar.` : 'No queda nada pendiente.'}`
+        `Compras nuevas leídas: ${result.packs?.inserted ?? 0}.${result.packs?.failed ? ` Con error: ${result.packs.failed}.` : ''}\nReembolsos actualizados: ${result.refunds?.updated ?? 0}.\n${result.remaining > 0 ? `Quedan ${result.remaining} por leer: vuelve a pulsar.` : 'Todo al día.'}`
       );
       await load(true);
     } catch (requestError) {

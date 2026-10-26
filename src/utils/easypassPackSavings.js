@@ -12,11 +12,15 @@ export function getPackSavings(pack, packs) {
   const singles = packs.filter((candidate) => amount(candidate) === 1
     && location(candidate) === location(pack)
     && Number.isInteger(price(candidate)) && price(candidate) > 0);
-  const separatePriceCents = singles.length ? Math.min(...singles.map(price)) * credits : null;
+  const singlePriceCents = singles.length ? Math.min(...singles.map(price)) : null;
+  const separatePriceCents = singlePriceCents !== null ? singlePriceCents * credits : null;
+  const savingsCents = credits > 1 && separatePriceCents !== null
+    ? Math.max(0, separatePriceCents - total) : 0;
   return {
     unitPriceCents: total / credits,
+    singlePriceCents,
     separatePriceCents,
-    savingsCents: credits > 1 && separatePriceCents !== null
-      ? Math.max(0, separatePriceCents - total) : 0,
+    savingsCents,
+    savingsPercent: savingsCents > 0 ? Math.round((savingsCents / separatePriceCents) * 100) : 0,
   };
 }

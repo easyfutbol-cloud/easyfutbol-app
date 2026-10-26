@@ -17,6 +17,7 @@ import { Picker } from '@react-native-picker/picker';
 import * as ImagePicker from 'expo-image-picker';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { api } from '../api/client';
+import { uploadForm } from '../api/upload';
 
 const BASE = String(api?.defaults?.baseURL || '').replace(/\/+$/, '');
 const PUBLIC_BASE = BASE.replace(/\/api\/?$/, '');
@@ -150,7 +151,7 @@ export default function AdminFieldEditScreen({ navigation, route }) {
       const formData = new FormData();
       formData.append('photo', { uri: localUri, type: 'image/jpeg', name: 'field.jpg' });
 
-      const res = await fetch(`${BASE}/admin/fields/${currentId}/photo`, {
+      const res = await uploadForm(`${BASE}/admin/fields/${currentId}/photo`, {
         method: 'POST',
         headers,
         body: formData,

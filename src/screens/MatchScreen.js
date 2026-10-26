@@ -153,6 +153,7 @@ export default function MatchScreen({ route, navigation }) {
         worldcupTeam,
         flag: getWorldCupFlag(worldcupTeam),
         isFriend: matchFriends.some((friend) => Number(friend.id) === Number(userId)),
+        isPlus: Boolean(Number(a.is_plus || 0)),
       });
     });
 
@@ -804,7 +805,7 @@ export default function MatchScreen({ route, navigation }) {
                   </View>
                 )}
               </View>
-              <Text style={styles.attendeeName} numberOfLines={1}>
+              <Text style={[styles.attendeeName, p.isPlus && styles.attendeeNamePlus]} numberOfLines={1}>
                 {p.username}
               </Text>
               {p.isFriend?<Text style={{color:colors.orange,fontSize:9,fontWeight:'900'}}>AMIGO</Text>:null}
@@ -1486,4 +1487,5 @@ attendeesSectionTitle: {
     textAlign: 'center',
     maxWidth: 86,
   },
+  attendeeNamePlus: { color: '#F4C95D' },
 });

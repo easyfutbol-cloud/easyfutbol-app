@@ -1,19 +1,142 @@
-import React, { useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { LeagueHeader, leagueScreenStyles as base } from '../../components/leagues/LeagueUI';
+import React, { useEffect, useRef, useState } from 'react';
+import { StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { leagueMatches, playedLeagueMatches } from '../../data/leaguePreviewData';
-export default function LeagueCalendarScreen({ navigation }) {
-  const [mode, setMode] = useState('upcoming');
-  const [round, setRound] = useState(1);
-  return <View style={base.screen}><ScrollView contentContainerStyle={base.content}>
-    <LeagueHeader title="Calendario" subtitle="Consulta todos los partidos jornada a jornada." />
-    <View style={styles.modeTabs}><Pressable onPress={()=>setMode('upcoming')} style={[styles.modeTab,mode==='upcoming'&&styles.modeActive]}><Text style={[styles.modeText,mode==='upcoming'&&styles.activeText]}>Próximos</Text></Pressable><Pressable onPress={()=>setMode('played')} style={[styles.modeTab,mode==='played'&&styles.modeActive]}><Text style={[styles.modeText,mode==='played'&&styles.activeText]}>Resultados</Text></Pressable></View>
-    {mode === 'upcoming' ? <>
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.rounds}>{[1,2,3,4].map(n => <Pressable key={n} onPress={() => setRound(n)} style={[styles.round, round === n && styles.activeRound]}><Text style={[styles.roundText, round === n && styles.activeText]}>Jornada {n}</Text></Pressable>)}</ScrollView>
-      {leagueMatches.filter(m => m.round === round).map(m => <View key={m.id} style={base.card}><Text style={styles.date}>{m.date}</Text><View style={styles.match}><Text style={styles.team}>{m.home}</Text><Text style={styles.vs}>VS</Text><Text style={[styles.team, { textAlign: 'right' }]}>{m.away}</Text></View><Text style={styles.venue}>{m.venue}</Text></View>)}
-      {!leagueMatches.some(m => m.round === round) && <View style={base.card}><Text style={styles.empty}>Jornada pendiente de publicación</Text><Text style={base.muted}>El calendario se completará cuando estén confirmados los equipos.</Text></View>}
-    </> : playedLeagueMatches.map(m => <Pressable key={m.id} onPress={()=>navigation.navigate('LeagueMatchDetail',{matchId:m.id})} style={styles.resultCard}><Text style={styles.date}>JORNADA {m.round} · {m.date}</Text><View style={styles.match}><Text style={styles.team}>{m.home}</Text><View style={styles.score}><Text style={styles.scoreText}>{m.homeScore} - {m.awayScore}</Text></View><Text style={[styles.team,{textAlign:'right'}]}>{m.away}</Text></View><View style={styles.resultFooter}><Text style={styles.venue}>{m.venue}</Text><View style={styles.detailLink}><Text style={styles.detailText}>Ficha del partido</Text><Ionicons name="chevron-forward" size={14} color="#ff6a17"/></View></View></Pressable>)}
-  </ScrollView></View>;
+import { Card, Chips, Crest, Divider, L, LeagueScreen, MatchRow, PageTitle, withLiveLeague } from '../../components/leagues/LeagueUI';
+import { getTeam } from '../../data/leaguePreviewData';
+import { useLeague } from '../../data/leagueCity';
+import { useTeamProfiles } from '../../data/leagueTeamProfiles';
+
+const FINAL_FOUR = 'ff';
+
+function LeagueCalendarScreen({ navigation, route, league }) {
+  useTeamProfiles();
+  const { nextRound, playedRounds, totalRounds, roundWeekend } = league;
+  const [round, setRound] = useState(route.params?.round || nextRound);
+  useEffect(() => { if (route.params?.round) setRound(route.params.round); }, [route.params?.round]);
+  // Al cambiar de ciudad, vuelve a su próxima jornada.
+  const cityRef = useRef(league.id);
+  useEffect(() => {
+    if (cityRef.current !== league.id) {
+      cityRef.current = league.id;
+      setRound(nextRound);
+    }
+  }, [league.id, nextRound]);
+
+  const options = [
+    ...Array.from({ length: totalRounds }, (_, index) => {
+      const number = index + 1;
+      return [number, `J${number}`, number <= playedRounds ? 'Jugada' : number === nextRound ? 'Próxima' : roundWeekend(number).split(' ')[0]];
+    }),
+    [FINAL_FOUR, 'Final Four', league.finalFourWeekend],
+  ];
+
+  return (
+    <LeagueScreen>
+      <PageTitle title="Calendario" subtitle={`${totalRounds} jornadas · sábados y domingos a las 20:00 y 21:00`} />
+      <Chips options={options} value={round} onChange={setRound} />
+      <View style={styles.body}>
+        {round === FINAL_FOUR ? <FinalFour /> : <Round round={round} onOpen={(match) => navigation.navigate('LeagueMatchDetail', { matchId: match.id })} />}
+      </View>
+    </LeagueScreen>
+  );
 }
-const styles = StyleSheet.create({ modeTabs:{flexDirection:'row',padding:4,borderRadius:14,backgroundColor:'#111319',marginBottom:14},modeTab:{flex:1,alignItems:'center',paddingVertical:9,borderRadius:10},modeActive:{backgroundColor:'#20232b'},modeText:{color:'#747780',fontSize:12,fontWeight:'900'}, rounds: { marginBottom: 16 }, round: { paddingHorizontal: 14, paddingVertical: 9, borderRadius: 12, backgroundColor: '#13151b', marginRight: 8, borderWidth: 1, borderColor: '#252831' }, activeRound: { backgroundColor: 'rgba(255,90,0,.08)', borderColor: 'rgba(255,90,0,.38)' }, roundText: { color: '#8b8b92', fontSize: 12, fontWeight: '800' }, activeText: { color: '#ff6a17' }, date: { color: '#ff6a17', fontSize: 10, fontWeight: '900' }, match: { flexDirection: 'row', alignItems: 'center', marginVertical: 16 }, team: { flex: 1, color: '#fff', fontSize: 14, fontWeight: '900' }, vs: { color: '#65656c', fontSize: 11, fontWeight: '900', marginHorizontal: 10 }, score:{paddingHorizontal:10,paddingVertical:7,borderRadius:10,backgroundColor:'#252832',marginHorizontal:8},scoreText:{color:'#fff',fontSize:17,fontWeight:'900'}, venue: { color: '#77777e', fontSize: 11 }, empty: { color: '#fff', fontSize: 16, fontWeight: '900', marginBottom: 7 },resultCard:{padding:16,marginBottom:10,borderRadius:18,backgroundColor:'#12141a',borderWidth:1,borderColor:'#20232b'},resultFooter:{flexDirection:'row',alignItems:'center',justifyContent:'space-between'},detailLink:{flexDirection:'row',alignItems:'center',gap:3},detailText:{color:'#c6c8ce',fontSize:11,fontWeight:'800'} });
+
+function Round({ round, onOpen }) {
+  const { roundMatches, playedRounds, nextRound, venue } = useLeague();
+  const games = roundMatches(round);
+  const days = [...new Set(games.map((match) => match.day))];
+  const played = round <= playedRounds;
+  return (
+    <>
+      <View style={styles.roundHead}>
+        <Text style={styles.roundTitle}>Jornada {round}</Text>
+        <View style={[styles.status, played ? styles.statusDone : round === nextRound && styles.statusNext]}>
+          <Text style={[styles.statusText, round === nextRound && !played && { color: L.accent }]}>{played ? 'Finalizada' : round === nextRound ? 'Próxima' : 'Programada'}</Text>
+        </View>
+      </View>
+      {days.map((day) => (
+        <View key={day} style={styles.day}>
+          <Text style={styles.dayLabel}>{day.toUpperCase()} · {venue.toUpperCase()}</Text>
+          <Card style={styles.list}>
+            {games.filter((match) => match.day === day).map((match, index) => (
+              <View key={match.id}>
+                {index > 0 && <Divider />}
+                <MatchRow match={match} onPress={() => onOpen(match)} showMeta={false} />
+              </View>
+            ))}
+          </Card>
+        </View>
+      ))}
+      <View style={styles.note}>
+        <Ionicons name="videocam-outline" size={15} color={L.muted} />
+        <Text style={styles.noteText}>{played ? 'Todos los partidos de esta jornada están disponibles en YouTube.' : 'Todos los partidos se graban y se publican en YouTube.'}</Text>
+      </View>
+    </>
+  );
+}
+
+function FinalFour() {
+  const { standings, finalFourDays } = useLeague();
+  const seeds = standings.slice(0, 4);
+  const pairs = [[seeds[0], seeds[3]], [seeds[1], seeds[2]]];
+  return (
+    <>
+      <View style={styles.roundHead}>
+        <Text style={styles.roundTitle}>Final Four</Text>
+        <View style={styles.status}><Text style={styles.statusText}>Provisional</Text></View>
+      </View>
+      <Text style={styles.ffIntro}>Los cuatro primeros al terminar la fase regular se juegan el título en un fin de semana. Cruces según la clasificación actual.</Text>
+      {pairs.map((pair, index) => (
+        <View key={index} style={styles.day}>
+          <Text style={styles.dayLabel}>SEMIFINAL {index + 1} · {finalFourDays[0]} · {index === 0 ? '20:00' : '21:00'}</Text>
+          <Card style={styles.list}>
+            {pair.map((row, rowIndex) => (
+              <View key={row.teamId}>
+                {rowIndex > 0 && <Divider />}
+                <View style={styles.seed}>
+                  <Text style={styles.seedPos}>{row.position}º</Text>
+                  <Crest teamId={row.teamId} size={28} />
+                  <Text style={styles.seedName}>{getTeam(row.teamId).name}</Text>
+                  <Text style={styles.seedPts}>{row.points} pts</Text>
+                </View>
+              </View>
+            ))}
+          </Card>
+        </View>
+      ))}
+      <View style={styles.day}>
+        <Text style={styles.dayLabel}>FINAL · {finalFourDays[1]} · 21:00</Text>
+        <Card style={styles.final}>
+          <Ionicons name="trophy" size={28} color={L.gold} />
+          <Text style={styles.finalTitle}>Ganador SF1 vs Ganador SF2</Text>
+          <Text style={styles.finalText}>Partido retransmitido y con entrega de trofeos al terminar.</Text>
+        </Card>
+      </View>
+    </>
+  );
+}
+
+export default withLiveLeague(LeagueCalendarScreen);
+
+const styles = StyleSheet.create({
+  body: { marginTop: 20 },
+  roundHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 },
+  roundTitle: { color: L.text, fontSize: 20, fontWeight: '800', letterSpacing: -0.3 },
+  status: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 999, backgroundColor: L.raised },
+  statusDone: { backgroundColor: 'rgba(52,211,153,0.12)' },
+  statusNext: { backgroundColor: L.accentSoft },
+  statusText: { color: L.soft, fontSize: 11, fontWeight: '800' },
+  day: { marginBottom: 18 },
+  dayLabel: { color: L.subtle, fontSize: 10, fontWeight: '800', letterSpacing: 0.8, marginBottom: 8 },
+  list: { paddingVertical: 2, paddingHorizontal: 14 },
+  note: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 4 },
+  noteText: { flex: 1, color: L.muted, fontSize: 12, lineHeight: 17 },
+  ffIntro: { color: L.muted, fontSize: 13, lineHeight: 19, marginBottom: 18 },
+  seed: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 12 },
+  seedPos: { width: 24, color: L.accent, fontSize: 13, fontWeight: '800' },
+  seedName: { flex: 1, color: L.text, fontSize: 14, fontWeight: '700' },
+  seedPts: { color: L.muted, fontSize: 12, fontWeight: '700' },
+  final: { alignItems: 'center', paddingVertical: 22, borderColor: 'rgba(251,191,36,0.25)' },
+  finalTitle: { color: L.text, fontSize: 16, fontWeight: '800', marginTop: 10 },
+  finalText: { color: L.muted, fontSize: 12, marginTop: 4, textAlign: 'center' },
+});

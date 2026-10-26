@@ -5,6 +5,7 @@ import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { api } from '../api/client';
+import { uploadForm } from '../api/upload';
 import { AppPopupCard, resolvePopupImage } from '../components/AppPopupHost';
 import { FREQUENCY_LABELS } from './AdminPopupsScreen';
 
@@ -191,7 +192,7 @@ export default function AdminPopupEditScreen({ navigation, route }) {
           const headers = await getAuthHeader();
           const formData = new FormData();
           formData.append('image', { uri: pendingImageUri, type: 'image/jpeg', name: 'popup.jpg' });
-          const upload = await fetch(`${BASE}/admin/popups/${id}/image`, { method: 'POST', headers, body: formData });
+          const upload = await uploadForm(`${BASE}/admin/popups/${id}/image`, { method: 'POST', headers, body: formData });
           if (!upload.ok) throw new Error(`Error ${upload.status}`);
         } else if (removeImage && id) {
           await api.delete(`/admin/popups/${id}/image`);

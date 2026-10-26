@@ -19,6 +19,13 @@ const SECTIONS = [
     ],
   },
   {
+    title: 'Proyectos',
+    items: [
+      { label: 'EasyFutbol League', description: 'Demo de la liga para presentar', icon: 'trophy-outline', route: 'LeagueHome' },
+      { label: 'Perfiles de la liga', description: 'Aprobar cambios de equipos y jugadores', icon: 'color-palette-outline', route: 'LeagueTeamRequests' },
+    ],
+  },
+  {
     title: 'Estadísticas',
     items: [
       { label: 'Estadísticas', description: 'Rendimiento de partido', icon: 'stats-chart-outline', route: 'AdminMatchStats' },
@@ -30,6 +37,7 @@ const SECTIONS = [
     items: [
       { label: 'Usuarios', description: 'Perfiles y permisos', icon: 'people-outline', route: 'AdminUsers' },
       { label: 'EasyPass', description: 'Saldos y movimientos', icon: 'ticket-outline', route: 'AdminEasyPass' },
+      { label: 'Suscriptores Plus', description: 'Quién tiene Plus, de pago o regalo', icon: 'star-outline', route: 'AdminPlusSubscribers' },
       { label: 'Avisos', description: 'Notificaciones a jugadores', icon: 'notifications-outline', route: 'AdminNotify' },
       { label: 'Popups', description: 'Mensajes al abrir la app', icon: 'chatbox-ellipses-outline', route: 'AdminPopups' },
       { label: 'Denuncias', description: 'Seguridad de la comunidad', icon: 'flag-outline', route: 'AdminReports' },

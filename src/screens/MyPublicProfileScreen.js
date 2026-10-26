@@ -5,6 +5,7 @@ import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { api } from '../api/client';
+import { uploadForm } from '../api/upload';
 import ScreenHeader from '../components/ScreenHeader';
 import { resolveSocialAvatarUrl } from '../components/social/SocialComponents';
 
@@ -104,7 +105,7 @@ export default function MyPublicProfileScreen({ navigation }) {
       const formData = new FormData();
       formData.append('banner', { uri: result.assets[0].uri, type: 'image/jpeg', name: 'banner.jpg' });
 
-      const res = await fetch(`${BASE}/player-profile/me/banner`, { method: 'POST', headers, body: formData });
+      const res = await uploadForm(`${BASE}/player-profile/me/banner`, { method: 'POST', headers, body: formData });
       if (!res.ok) throw new Error(`Error ${res.status}`);
       const json = await res.json();
       setBannerUrl(json.banner_url);
@@ -148,7 +149,7 @@ export default function MyPublicProfileScreen({ navigation }) {
       formData.append('photo', { uri: pendingPhotoUri, type: 'image/jpeg', name: 'photo.jpg' });
       if (matchId) formData.append('match_id', String(matchId));
 
-      const res = await fetch(`${BASE}/player-profile/me/photos`, { method: 'POST', headers, body: formData });
+      const res = await uploadForm(`${BASE}/player-profile/me/photos`, { method: 'POST', headers, body: formData });
       if (!res.ok) throw new Error(`Error ${res.status}`);
       const json = await res.json();
       setPhotos((prev) => [json.data, ...prev]);

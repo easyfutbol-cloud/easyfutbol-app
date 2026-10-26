@@ -59,6 +59,7 @@ const ROUTES_WITHOUT_PRIMARY_NAV = new Set([
   'AdminNotify',
   'AdminReports',
   'AdminEasyPass',
+  'AdminPlusSubscribers',
 ]);
 
 export function getActiveTab(routeName) {

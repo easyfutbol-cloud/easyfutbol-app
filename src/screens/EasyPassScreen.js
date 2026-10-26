@@ -27,7 +27,8 @@ function ScreenBackdrop({ children }) {
 export default function EasyPassScreen() {
   const [packs, setPacks] = useState([]);
   const [locations, setLocations] = useState([]);
-  const [selectedLocationId, setSelectedLocationId] = useState(1);
+  // Sin ciudad hasta que el jugador la elija: se pregunta cada vez que entra para evitar compras en la sede equivocada.
+  const [selectedLocationId, setSelectedLocationId] = useState(null);
   const [easyPassBalance, setEasyPassBalance] = useState(0);
   const [balances, setBalances] = useState([]);
   const [history, setHistory] = useState([]);
@@ -45,17 +46,25 @@ export default function EasyPassScreen() {
   const purchaseInProgressRef = useRef(false);
 
   const selectedLocation = locations.find((item) => Number(item.id) === Number(selectedLocationId));
-  const selectedLocationName = selectedLocation?.name || 'Valladolid';
+  const selectedLocationName = selectedLocation?.name || '';
   const selectedBalance = Number(balances.find((item) => Number(item.locationId ?? item.location_id) === Number(selectedLocationId))?.balance || 0);
 
-  const displayPacks = packs.map((pack) => ({
+  // El ahorro de los packs se compara con el precio normal del individual, no con
+  // el 50% puntual del primer EasyPass.
+  const regularPricedPacks = packs.map((pack) => ({
     ...pack,
-    savings: getPackSavings(pack, packs),
+    price_cents: pack?.regular_price_cents ?? pack?.price_cents,
+  }));
+  const displayPacks = packs.map((pack, index) => ({
+    ...pack,
+    savings: getPackSavings(regularPricedPacks[index], regularPricedPacks),
     displayAmount: Number(pack?.easyPassAmount ?? pack?.credits ?? 0),
     displayName: `${Number(pack?.easyPassAmount ?? pack?.credits ?? 0)} EasyPass`,
     displayPriceCents: Number(pack?.price_cents || pack?.priceCents || 0),
     displayOriginalPriceCents: Number(pack?.original_price_cents || pack?.price_cents || pack?.priceCents || 0),
   }));
+
+  const firstPackOffer = displayPacks.find((pack) => pack.first_pack_discount_applied);
 
   const BASE = (api?.defaults?.baseURL || '').replace(/\/+$/, '');
 
@@ -138,17 +147,17 @@ export default function EasyPassScreen() {
       const nextLocations = Array.isArray(jLocations?.data) ? jLocations.data : [];
       setLocations(nextLocations);
 
-      const validSelectedLocation = nextLocations.some((item) => Number(item.id) === Number(selectedLocationId));
-      const locationIdToUse = validSelectedLocation ? selectedLocationId : Number(nextLocations?.[0]?.id || 1);
+      const validSelectedLocation = selectedLocationId !== null && nextLocations.some((item) => Number(item.id) === Number(selectedLocationId));
+      if (!validSelectedLocation && selectedLocationId !== null) setSelectedLocationId(null);
 
-      if (!validSelectedLocation && Number(locationIdToUse) !== Number(selectedLocationId)) {
-        setSelectedLocationId(locationIdToUse);
+      // packs por sede (solo cuando ya ha elegido ciudad)
+      if (validSelectedLocation) {
+        const r2 = await fetch(`${BASE}/easypass/packs?location_id=${selectedLocationId}`, { method: 'GET', headers });
+        const j2 = await r2.json().catch(() => ({}));
+        setPacks(Array.isArray(j2?.data) ? j2.data : []);
+      } else {
+        setPacks([]);
       }
-
-      // packs por sede
-      const r2 = await fetch(`${BASE}/easypass/packs?location_id=${locationIdToUse}`, { method: 'GET', headers });
-      const j2 = await r2.json().catch(() => ({}));
-      setPacks(Array.isArray(j2?.data) ? j2.data : []);
 
       const rHistory=await fetch(`${BASE}/me/credits/history`,{method:'GET',headers});
       const jHistory=await rHistory.json().catch(()=>({}));
@@ -164,6 +173,8 @@ export default function EasyPassScreen() {
 
   useEffect(() => { load(); }, [load]);
   useFocusEffect(useCallback(() => { load(false); }, [load]));
+  // Al salir de la pantalla se olvida la ciudad (ir a Stripe no cuenta: la app solo pasa a segundo plano).
+  useFocusEffect(useCallback(() => () => setSelectedLocationId(null), []));
 
   const buyPack = async (pack) => {
     try {
@@ -268,6 +279,45 @@ export default function EasyPassScreen() {
     );
   }
 
+  if (selectedLocationId === null) {
+    return (
+      <ScreenBackdrop>
+        <ScrollView contentContainerStyle={styles.content}>
+          <ScreenHeader
+            eyebrow="EASYPASS"
+            title="¿Dónde vas a jugar?"
+            description="Elige tu ciudad antes de continuar. Cada EasyPass solo sirve en la ciudad donde lo compras."
+          />
+          <View style={styles.cityGate}>
+            {locations.map((location) => {
+              const balance = Number(balances.find((item) => Number(item.locationId ?? item.location_id) === Number(location.id))?.balance || 0);
+              return (
+                <TouchableOpacity
+                  key={location.id}
+                  style={styles.cityGateBtn}
+                  onPress={() => setSelectedLocationId(Number(location.id))}
+                  activeOpacity={0.85}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Elegir ${location.name}`}
+                >
+                  <View style={styles.cityGateIcon}><Ionicons name="location" color={ORANGE} size={24} /></View>
+                  <View style={styles.cityGateCopy}>
+                    <Text style={styles.cityGateName}>{location.name}</Text>
+                    <Text style={styles.cityGateBalance}>{balance} EasyPass disponibles</Text>
+                  </View>
+                  <Ionicons name="chevron-forward" color="#777" size={22} />
+                </TouchableOpacity>
+              );
+            })}
+            {!locations.length && (
+              <Text style={{ color:'#aaa', textAlign:'center', marginTop: 20 }}>No se pudieron cargar las ciudades. Vuelve a intentarlo.</Text>
+            )}
+          </View>
+        </ScrollView>
+      </ScreenBackdrop>
+    );
+  }
+
   return (
     <ScreenBackdrop>
       <ScrollView contentContainerStyle={styles.content}>
@@ -299,6 +349,32 @@ export default function EasyPassScreen() {
 
         {selectedBalance <= 1 && <View style={styles.lowBalanceCard}><Ionicons name="alert-circle" color="#f4c95d" size={22}/><View style={{flex:1}}><Text style={styles.lowBalanceTitle}>{selectedBalance===0?'No tienes EasyPass en esta ciudad':'Te queda un solo EasyPass'}</Text><Text style={styles.lowBalanceText}>Compra un pack antes de reservar tu próximo partido en {selectedLocationName}.</Text></View></View>}
 
+        {firstPackOffer ? (
+          <View style={styles.firstPackBanner}>
+            <View style={styles.firstPackBannerHeader}>
+              <Ionicons name="gift" color={ORANGE} size={20} />
+              <Text style={styles.firstPackBannerEyebrow}>OFERTA DE PRIMERA COMPRA</Text>
+            </View>
+            <Text style={styles.firstPackBannerTitle}>
+              −{firstPackOffer.first_pack_discount_percent}% en tu primer EasyPass
+            </Text>
+            <Text style={styles.firstPackBannerText}>
+              Compra 1 EasyPass por {formatEuro(firstPackOffer.displayPriceCents)} en vez de {formatEuro(firstPackOffer.displayOriginalPriceCents)}. Solo se aplica una vez por usuario.
+            </Text>
+            <TouchableOpacity
+              style={[styles.firstPackBannerBtn, buyingPackId !== null && styles.buyBtnDisabled]}
+              onPress={() => buyPack(firstPackOffer)}
+              activeOpacity={0.85}
+              disabled={buyingPackId !== null}
+              accessibilityRole="button"
+            >
+              <Text style={styles.buyText}>
+                {buyingPackId === firstPackOffer.id ? 'Abriendo pago...' : `Comprar por ${formatEuro(firstPackOffer.displayPriceCents)}`}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        ) : null}
+
         <Text style={styles.plusSectionLabel}>EASYPASS PLUS</Text>
         <TouchableOpacity style={styles.plusCard} onPress={() => navigation.navigate('Plus')} activeOpacity={0.86} accessibilityRole="button" accessibilityLabel="Abrir EasyFutbol Plus">
           <View style={styles.plusIcon}><Text style={styles.plusIconText}>★</Text></View>
@@ -321,34 +397,17 @@ export default function EasyPassScreen() {
         ) : null}
 
         <View style={styles.locationCard}>
-          <Text style={styles.locationEyebrow}>Elige ciudad</Text>
-          <Text style={styles.locationTitle}>¿Dónde vas a jugar?</Text>
-          <Text style={styles.locationHint}>
-            Cada EasyPass solo sirve para la localización en la que lo compres. Revisa bien la ciudad antes de pagar.
-          </Text>
-
-          <View style={styles.locationGrid}>
-            {locations.map((location) => {
-              const isSelected = Number(location.id) === Number(selectedLocationId);
-              return (
-                <TouchableOpacity
-                  key={location.id}
-                  style={[styles.locationBtn, isSelected && styles.locationBtnActive]}
-                  onPress={() => setSelectedLocationId(Number(location.id))}
-                  activeOpacity={0.85}
-                  accessibilityRole="radio"
-                  accessibilityState={{ selected: isSelected }}
-                >
-                  <Text style={[styles.locationBtnText, isSelected && styles.locationBtnTextActive]}>
-                    {location.name}
-                  </Text>
-                  <Text style={[styles.locationBtnSubText, isSelected && styles.locationBtnSubTextActive]}>
-                    {isSelected ? 'Seleccionada' : 'Tocar para elegir'}
-                  </Text>
-                </TouchableOpacity>
-              );
-            })}
+          <Text style={styles.locationEyebrow}>Ciudad elegida</Text>
+          <View style={styles.locationRow}>
+            <Ionicons name="location" color={ORANGE} size={20} />
+            <Text style={styles.locationTitle}>{selectedLocationName}</Text>
           </View>
+          <Text style={styles.locationHint}>
+            Los packs que compres aquí solo sirven para partidos de {selectedLocationName}.
+          </Text>
+          <TouchableOpacity style={styles.changeCityBtn} onPress={() => setSelectedLocationId(null)} activeOpacity={0.85} accessibilityRole="button">
+            <Text style={styles.changeCityText}>Cambiar ciudad</Text>
+          </TouchableOpacity>
         </View>
 
         <Text style={styles.section}>Packs para {selectedLocationName}</Text>
@@ -361,7 +420,7 @@ export default function EasyPassScreen() {
         </View>
 
         {displayPacks.map((p) => (
-          <View key={p.id} style={styles.packCard}>
+          <View key={p.id} style={[styles.packCard, p.first_pack_discount_applied && styles.packCardHighlighted]}>
             <View style={styles.packMain}>
             <View style={styles.packAmountBadge}>
               <Text style={styles.packAmount}>{p.displayAmount}</Text>
@@ -376,8 +435,10 @@ export default function EasyPassScreen() {
             </View>
 
             <View style={{ alignItems:'flex-end' }}>
-              {p.plus_discount_applied ? <Text style={styles.plusDiscount}>PLUS · −10%</Text> : null}
-              {p.plus_discount_applied ? <Text style={styles.packOriginalPrice}>{formatEuro(p.displayOriginalPriceCents)}</Text> : null}
+              {p.first_pack_discount_applied ? (
+                <Text style={styles.firstPackDiscount}>−{p.first_pack_discount_percent}% TU PRIMER EASYPASS</Text>
+              ) : p.plus_discount_applied ? <Text style={styles.plusDiscount}>PLUS · −{p.discount_percent}%</Text> : null}
+              {p.plus_discount_applied || p.first_pack_discount_applied ? <Text style={styles.packOriginalPrice}>{formatEuro(p.displayOriginalPriceCents)}</Text> : null}
               <Text style={styles.packPrice}>{formatEuro(p.displayPriceCents)}</Text>
               <TouchableOpacity
                 style={[styles.buyBtn, buyingPackId === p.id && styles.buyBtnDisabled]}
@@ -393,11 +454,22 @@ export default function EasyPassScreen() {
               </TouchableOpacity>
             </View>
             </View>
+            {p.first_pack_discount_applied ? (
+              <View style={styles.firstPackNote}>
+                <Ionicons name="gift-outline" color={ORANGE} size={14} />
+                <Text style={styles.firstPackNoteText}>Precio especial de primera compra · solo una vez</Text>
+              </View>
+            ) : null}
             {p.savings?.savingsCents > 0 ? (
               <View style={styles.packSavings}>
-                <Text style={styles.packSavingsAmount}>Ahorras {formatEuro(p.savings.savingsCents)}</Text>
+                <View style={styles.packSavingsHeader}>
+                  <Text style={styles.packSavingsAmount}>Ahorras {formatEuro(p.savings.savingsCents)}</Text>
+                  <View style={styles.packSavingsBadge}>
+                    <Text style={styles.packSavingsBadgeText}>−{p.savings.savingsPercent}%</Text>
+                  </View>
+                </View>
                 <Text style={styles.packSavingsReference}>
-                  Por separado: {formatEuro(p.savings.separatePriceCents)}
+                  vs {p.displayAmount} sueltos a {formatEuro(p.savings.singlePriceCents)} ({formatEuro(p.savings.separatePriceCents)})
                 </Text>
               </View>
             ) : null}
@@ -472,6 +544,7 @@ const styles = StyleSheet.create({
   plusText:{ color:colors.textMuted, ...typography.caption, marginTop:2 },
   plusArrow:{ color:'#F4C95D', fontSize:30, lineHeight:32 },
   plusDiscount:{ color:'#F4C95D', fontSize:9, fontWeight:'900', letterSpacing:0.8 },
+  firstPackDiscount:{ color:colors.orange, fontSize:9, fontWeight:'900', letterSpacing:0.8 },
   packOriginalPrice:{ color:colors.textSubtle, fontSize:12, textDecorationLine:'line-through', marginTop:2 },
 
   loginRequiredCard:{
@@ -525,26 +598,17 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   locationEyebrow:{ color:ORANGE, fontSize:12, fontWeight:'900', textTransform:'uppercase', letterSpacing:0.5 },
-  locationTitle:{ color:'#fff', fontSize:19, fontWeight:'900', marginTop: 4 },
+  locationTitle:{ color:'#fff', fontSize:19, fontWeight:'900' },
   locationHint:{ color:'#bdbdbd', fontSize:12, fontWeight:'700', lineHeight:18, marginTop: 8 },
-  locationGrid:{ flexDirection:'row', flexWrap:'wrap', gap:10, marginTop:14 },
-  locationBtn:{
-    flex:1,
-    backgroundColor:'#171717',
-    borderWidth:1,
-    borderColor:'rgba(255,255,255,0.12)',
-    minWidth:140,
-    minHeight:72,
-    borderRadius:radii.medium,
-    paddingVertical:13,
-    paddingHorizontal:10,
-    alignItems:'center',
-  },
-  locationBtnActive:{ backgroundColor:ORANGE, borderColor:ORANGE },
-  locationBtnText:{ color:'#fff', fontSize:15, fontWeight:'900' },
-  locationBtnTextActive:{ color:'#000' },
-  locationBtnSubText:{ color:'#9f9f9f', fontSize:10, fontWeight:'800', marginTop: 4 },
-  locationBtnSubTextActive:{ color:'#281000' },
+  locationRow:{ flexDirection:'row', alignItems:'center', gap:6, marginTop:4 },
+  changeCityBtn:{ alignSelf:'flex-start', minHeight:40, justifyContent:'center', marginTop:12, paddingHorizontal:14, borderRadius:radii.medium, backgroundColor:'#26262a', borderWidth:1, borderColor:'rgba(255,255,255,0.12)' },
+  changeCityText:{ color:'#fff', fontSize:12, fontWeight:'900' },
+  cityGate:{ gap:12, marginTop:spacing(1) },
+  cityGateBtn:{ minHeight:88, flexDirection:'row', alignItems:'center', gap:14, backgroundColor:'rgba(17,17,17,0.96)', borderRadius:radii.large, borderWidth:1, borderColor:'rgba(255,90,0,0.35)', padding:16 },
+  cityGateIcon:{ width:48, height:48, borderRadius:15, backgroundColor:'rgba(255,90,0,0.12)', alignItems:'center', justifyContent:'center' },
+  cityGateCopy:{ flex:1 },
+  cityGateName:{ color:'#fff', fontSize:20, fontWeight:'900' },
+  cityGateBalance:{ color:'#9f9f9f', fontSize:12, fontWeight:'800', marginTop:4 },
 
   warningCard:{
     backgroundColor:'rgba(255,90,0,0.10)',
@@ -565,10 +629,29 @@ const styles = StyleSheet.create({
     borderColor:colors.border,
     marginBottom: 12
   },
+  packCardHighlighted:{ borderColor:ORANGE, borderWidth:1.5 },
+  firstPackNote:{ flexDirection:'row', alignItems:'center', gap:6, marginTop:12, paddingTop:10, borderTopWidth:1, borderTopColor:'rgba(255,90,0,0.25)' },
+  firstPackNoteText:{ color:ORANGE, fontSize:12, fontWeight:'800' },
+  firstPackBanner:{
+    backgroundColor:'rgba(255,90,0,0.12)',
+    borderWidth:1.5,
+    borderColor:ORANGE,
+    borderRadius:radii.large,
+    padding:16,
+    marginBottom:14,
+  },
+  firstPackBannerHeader:{ flexDirection:'row', alignItems:'center', gap:8 },
+  firstPackBannerEyebrow:{ color:ORANGE, fontSize:11, fontWeight:'900', letterSpacing:0.8 },
+  firstPackBannerTitle:{ color:'#fff', fontSize:20, fontWeight:'900', marginTop:8 },
+  firstPackBannerText:{ color:'#f1f1f1', fontSize:13, fontWeight:'700', lineHeight:19, marginTop:6 },
+  firstPackBannerBtn:{ backgroundColor:ORANGE, borderRadius:radii.medium, paddingVertical:12, alignItems:'center', marginTop:14 },
   packMain:{flexDirection:'row',alignItems:'center',gap:12},
   packUnitPrice:{color:'#ddd',fontSize:12,fontWeight:'700',marginTop:6},
   packSavings:{flexDirection:'row',flexWrap:'wrap',alignItems:'center',justifyContent:'space-between',gap:6,marginTop:14,paddingTop:12,borderTopWidth:1,borderTopColor:'rgba(77,187,120,.25)'},
+  packSavingsHeader:{flexDirection:'row',alignItems:'center',gap:8},
   packSavingsAmount:{color:'#75dc9b',fontSize:14,fontWeight:'900'},
+  packSavingsBadge:{backgroundColor:'rgba(77,187,120,.18)',borderRadius:6,paddingHorizontal:6,paddingVertical:2},
+  packSavingsBadgeText:{color:'#75dc9b',fontSize:11,fontWeight:'900'},
   packSavingsReference:{color:'#bdbdbd',fontSize:12},
   packAmountBadge:{ width:58, height:58, borderRadius:radii.medium, backgroundColor:'rgba(255,90,0,0.14)', borderWidth:1, borderColor:'rgba(255,90,0,0.42)', alignItems:'center', justifyContent:'center' },
   packAmount:{ color:colors.white, fontSize:22, fontWeight:'900', lineHeight:26 },

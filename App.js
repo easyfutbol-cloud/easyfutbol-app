@@ -64,6 +64,7 @@ import AdminNotifyScreen from './src/screens/AdminNotifyScreen';
 import AdminEasyPassScreen from './src/screens/admineasypassscreen';
 import AdminDashboardScreen from './src/screens/AdminDashboardScreen';
 import AdminBusinessKpisScreen from './src/screens/AdminBusinessKpisScreen';
+import AdminPlusSubscribersScreen from './src/screens/AdminPlusSubscribersScreen';
 import AdminPanelScreen from './src/screens/AdminPanelScreen';
 import AdminFieldsScreen from './src/screens/AdminFieldsScreen';
 import AdminFieldEditScreen from './src/screens/AdminFieldEditScreen';
@@ -93,7 +94,12 @@ import LeaguesHomeScreen from './src/screens/leagues/LeaguesHomeScreen';
 import LeagueCalendarScreen from './src/screens/leagues/LeagueCalendarScreen';
 import LeagueStandingsScreen from './src/screens/leagues/LeagueStandingsScreen';
 import LeagueStatsScreen from './src/screens/leagues/LeagueStatsScreen';
-import MyTeamScreen from './src/screens/leagues/MyTeamScreen';
+import LeagueTeamScreen from './src/screens/leagues/LeagueTeamScreen';
+import LeagueInfoScreen from './src/screens/leagues/LeagueInfoScreen';
+import LeagueTeamEditScreen from './src/screens/leagues/LeagueTeamEditScreen';
+import LeagueTeamRequestsScreen from './src/screens/leagues/LeagueTeamRequestsScreen';
+import LeaguePlayerScreen from './src/screens/leagues/LeaguePlayerScreen';
+import LeaguePlayerEditScreen from './src/screens/leagues/LeaguePlayerEditScreen';
 import LeagueMatchDetailScreen from './src/screens/leagues/LeagueMatchDetailScreen';
 
 // Notificaciones (opcional)
@@ -641,8 +647,8 @@ function AppMenu({ currentRouteName }) {
 
   return (
     <>
-      {/* Botón flotante: oculto en Home para que no tape el avatar */}
-      {currentRouteName !== 'Home' && (
+      {/* Botón flotante: oculto en Home (tapa el avatar) y en la liga (tiene su propia barra) */}
+      {currentRouteName !== 'Home' && !isLeagueRoute(currentRouteName) && (
         <View
           pointerEvents="box-none"
           style={[
@@ -762,7 +768,12 @@ function AppShell({ currentRouteName }) {
         <Stack.Screen name="LeagueCalendar" component={LeagueCalendarScreen} />
         <Stack.Screen name="LeagueStandings" component={LeagueStandingsScreen} />
         <Stack.Screen name="LeagueRankings" component={LeagueStatsScreen} />
-        <Stack.Screen name="LeagueMyTeam" component={MyTeamScreen} />
+        <Stack.Screen name="LeagueAbout" component={LeagueInfoScreen} />
+        <Stack.Screen name="LeagueTeam" component={LeagueTeamScreen} />
+        <Stack.Screen name="LeagueTeamEdit" component={LeagueTeamEditScreen} />
+        <Stack.Screen name="LeagueTeamRequests" component={LeagueTeamRequestsScreen} />
+        <Stack.Screen name="LeaguePlayer" component={LeaguePlayerScreen} />
+        <Stack.Screen name="LeaguePlayerEdit" component={LeaguePlayerEditScreen} />
         <Stack.Screen name="LeagueMatchDetail" component={LeagueMatchDetailScreen} />
         <Stack.Screen name="HomeTournament" component={HomeTournamentScreen} />
         <Stack.Screen name="TournamentDetail" component={TournamentDetailScreen} />
@@ -773,6 +784,7 @@ function AppShell({ currentRouteName }) {
         <Stack.Screen name="AdminPanel" component={AdminPanelScreen} />
         <Stack.Screen name="AdminDashboard" component={AdminDashboardScreen} />
         <Stack.Screen name="AdminBusinessKpis" component={AdminBusinessKpisScreen} />
+        <Stack.Screen name="AdminPlusSubscribers" component={AdminPlusSubscribersScreen} />
         <Stack.Screen name="AdminMatches" component={AdminMatchesScreen} />
         <Stack.Screen name="AdminMatchEdit" component={AdminMatchEditScreen} />
         <Stack.Screen name="AdminCreateMatch" component={AdminCreateMatchScreen} />

@@ -30,14 +30,19 @@ export default function PlusScreen({ navigation }) {
   const [currentSubscription, setCurrentSubscription] = useState(null);
   const [loading, setLoading] = useState(true);
   const [processing, setProcessing] = useState(false);
+  const [locations, setLocations] = useState([]);
+  // Sede a la que irá el EasyPass mensual: hay que elegirla siempre antes de suscribirse.
+  const [selectedLocationId, setSelectedLocationId] = useState(null);
 
   const loadStatus = useCallback(async () => {
     try {
-      const [legacyResult, plansResult, subscriptionResult] = await Promise.allSettled([
+      const [legacyResult, plansResult, subscriptionResult, locationsResult] = await Promise.allSettled([
         api.get('/plus/status'),
         api.get('/subscriptions/plans'),
         api.get('/subscriptions/me'),
+        api.get('/easypass/locations'),
       ]);
+      if (locationsResult.status === 'fulfilled') setLocations(locationsResult.value.data?.data || []);
       if (legacyResult.status === 'fulfilled') setStatus(legacyResult.value.data?.data || null);
       if (plansResult.status === 'fulfilled') setPlans(plansResult.value.data?.data || []);
       if (subscriptionResult.status === 'fulfilled') {
@@ -56,10 +61,10 @@ export default function PlusScreen({ navigation }) {
 
   useFocusEffect(useCallback(() => { loadStatus(); }, [loadStatus]));
 
-  const openStripeFlow = async (path, urlKey) => {
+  const openStripeFlow = async (path, urlKey, body) => {
     try {
       setProcessing(true);
-      const { data } = await api.post(path);
+      const { data } = await api.post(path, body);
       const url = data?.[urlKey];
       if (!url) throw new Error('Stripe no devolvió un enlace válido');
       await Linking.openURL(url);
@@ -70,9 +75,38 @@ export default function PlusScreen({ navigation }) {
     }
   };
 
+  const changeLocation = () => {
+    const options = locations.filter((item) => Number(item.id) !== Number(currentSubscription?.location_id));
+    if (!options.length) return;
+    Alert.alert(
+      subscriptionLocationName ? 'Cambiar sede' : 'Elegir sede',
+      `${subscriptionLocationName ? `Ahora tu EasyPass mensual va a ${subscriptionLocationName}. ` : ''}A partir de la próxima renovación irá a la sede que elijas. Los EasyPass que ya tienes no se mueven.`,
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        ...options.map((location) => ({
+          text: location.name,
+          onPress: async () => {
+            try {
+              setProcessing(true);
+              await api.patch('/subscriptions/me/location', { location_id: Number(location.id) });
+              await loadStatus();
+              Alert.alert('Sede actualizada', `Tu próximo EasyPass mensual irá a ${location.name}.`);
+            } catch (error) {
+              Alert.alert('No se pudo cambiar', error?.response?.data?.msg || 'Inténtalo de nuevo.');
+            } finally {
+              setProcessing(false);
+            }
+          },
+        })),
+      ]
+    );
+  };
+
   const renewalDate = formatRenewalDate(currentSubscription?.current_period_end || status?.current_period_end);
   // Plus regalado: no tiene suscripción de Stripe detrás, así que tiene inicio y fin fijos y no se renueva.
   const isGift = Boolean(status?.is_gift || (currentSubscription && !currentSubscription.stripe_subscription_id));
+  const subscriptionLocationName = locations.find((item) => Number(item.id) === Number(currentSubscription?.location_id))?.name;
+  const selectedLocationName = locations.find((item) => Number(item.id) === Number(selectedLocationId))?.name;
   const giftStartDate = formatRenewalDate(currentSubscription?.current_period_start || status?.current_period_start);
   const displayedPlans = plans.length
     ? plans.filter((plan) => plan.code === 'plus')
@@ -107,6 +141,17 @@ export default function PlusScreen({ navigation }) {
                   ? `Tus ventajas estarán activas hasta ${renewalDate || 'el final del periodo'}.`
                   : `Próxima renovación: ${renewalDate || 'según tu periodo de Stripe'}.`}
               </Text>
+              {!isGift && currentSubscription ? (
+                <View style={styles.locationRow}>
+                  <Text style={[styles.warningCounter, styles.locationText]}>
+                    {subscriptionLocationName ? `Sede: ${subscriptionLocationName} · tu EasyPass mensual se suma a esta ciudad` : 'Sin sede: tu EasyPass mensual vale en cualquier ciudad'}
+                  </Text>
+                  <TouchableOpacity style={styles.changeLocationButton} onPress={changeLocation} disabled={processing || !locations.length} accessibilityRole="button">
+                    <Ionicons name="location" size={14} color="#F4C95D" />
+                    <Text style={styles.changeLocationText}>{subscriptionLocationName ? 'Cambiar sede' : 'Elegir sede'}</Text>
+                  </TouchableOpacity>
+                </View>
+              ) : null}
               <Text style={styles.warningCounter}>Avisos este mes: {Number(status?.fair_play_warnings || 0)}/3</Text>
               {!isGift ? (
                 <TouchableOpacity style={styles.manageButton} onPress={() => openStripeFlow(currentPlan ? '/subscriptions/portal' : '/plus/portal', 'portal_url')} disabled={processing}>
@@ -115,10 +160,41 @@ export default function PlusScreen({ navigation }) {
               ) : null}
             </View>
           ) : (
-            <TouchableOpacity style={styles.subscribeButton} onPress={() => openStripeFlow('/subscriptions/plus/checkout', 'checkout_url')} disabled={processing} accessibilityRole="button">
-              <Text style={styles.subscribeButtonText}>{processing ? 'Abriendo Stripe…' : 'Hazte Plus'}</Text>
-              {!processing ? <Ionicons name="arrow-forward" size={20} color="#161109" /> : null}
-            </TouchableOpacity>
+            <View>
+              <Text style={styles.cityLabel}>¿EN QUÉ SEDE JUEGAS?</Text>
+              <View style={styles.cityRow}>
+                {locations.map((location) => {
+                  const isSelected = Number(location.id) === Number(selectedLocationId);
+                  return (
+                    <TouchableOpacity
+                      key={location.id}
+                      style={[styles.cityButton, isSelected && styles.cityButtonActive]}
+                      onPress={() => setSelectedLocationId(Number(location.id))}
+                      accessibilityRole="radio"
+                      accessibilityState={{ selected: isSelected }}
+                    >
+                      <Ionicons name="location" size={16} color={isSelected ? '#161109' : '#F4C95D'} />
+                      <Text style={[styles.cityButtonText, isSelected && styles.cityButtonTextActive]}>{location.name}</Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+              <Text style={styles.cityHint}>
+                {selectedLocationName
+                  ? `Tu EasyPass mensual se añadirá a tu saldo de ${selectedLocationName}.`
+                  : 'Elige tu sede: tu EasyPass mensual solo servirá en esa ciudad.'}
+              </Text>
+              <TouchableOpacity
+                style={[styles.subscribeButton, !selectedLocationId && styles.subscribeButtonDisabled]}
+                onPress={() => openStripeFlow('/subscriptions/plus/checkout', 'checkout_url', { location_id: selectedLocationId })}
+                disabled={processing || !selectedLocationId}
+                accessibilityRole="button"
+                accessibilityState={{ disabled: processing || !selectedLocationId }}
+              >
+                <Text style={styles.subscribeButtonText}>{processing ? 'Abriendo Stripe…' : selectedLocationName ? `Hazte Plus en ${selectedLocationName}` : 'Elige tu sede'}</Text>
+                {!processing && selectedLocationId ? <Ionicons name="arrow-forward" size={20} color="#161109" /> : null}
+              </TouchableOpacity>
+            </View>
           )}
         </LinearGradient>
 
@@ -213,6 +289,18 @@ const styles = StyleSheet.create({
   subtitle: { color: colors.textMuted, ...typography.body, maxWidth: 560, marginTop: spacing(0.75) },
   loader: { marginVertical: spacing(2) },
   subscribeButton: { minHeight: 54, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: spacing(0.75), backgroundColor: '#F4C95D', borderRadius: radii.medium, paddingHorizontal: spacing(2), marginTop: spacing(2) },
+  subscribeButtonDisabled: { opacity: 0.45 },
+  locationRow: { flexDirection: 'row', alignItems: 'center', gap: spacing(1), marginTop: spacing(0.5) },
+  locationText: { flex: 1, marginTop: 0 },
+  changeLocationButton: { minHeight: 36, flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 11, borderRadius: radii.medium, borderWidth: 1, borderColor: 'rgba(244,201,93,0.38)' },
+  changeLocationText: { color: '#F4C95D', fontSize: 12, fontWeight: '900' },
+  cityLabel: { color: '#F4C95D', ...typography.overline, marginTop: spacing(2) },
+  cityRow: { flexDirection: 'row', gap: spacing(1), marginTop: spacing(1) },
+  cityButton: { flex: 1, minHeight: 52, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, borderRadius: radii.medium, borderWidth: 1, borderColor: 'rgba(244,201,93,0.38)', backgroundColor: 'rgba(0,0,0,0.25)' },
+  cityButtonActive: { backgroundColor: '#F4C95D', borderColor: '#F4C95D' },
+  cityButtonText: { color: colors.white, fontWeight: '900', fontSize: 15 },
+  cityButtonTextActive: { color: '#161109' },
+  cityHint: { color: colors.textMuted, ...typography.caption, marginTop: spacing(1) },
   subscribeButtonText: { color: '#161109', ...typography.bodyStrong, fontWeight: '900' },
   activeCard: { backgroundColor: 'rgba(244,201,93,0.10)', borderWidth: 1, borderColor: 'rgba(244,201,93,0.26)', borderRadius: radii.medium, padding: spacing(1.5), marginTop: spacing(2) },
   activePill: { flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-start', gap: spacing(0.6) },
