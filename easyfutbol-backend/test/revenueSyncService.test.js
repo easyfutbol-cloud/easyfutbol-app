@@ -21,6 +21,13 @@ test('el descuento Plus ya viene aplicado en el precio: se reconstruye el precio
   assert.equal(mapped.paid_cents, 4500);
 });
 
+test('el 50% del primer EasyPass cuenta como promoción y no como Plus', () => {
+  const mapped = mapCheckoutSession(session({ amount_subtotal: 300, amount_total: 300, metadata: { subscriptionDiscountPercent: '0', firstPackDiscount: '1', firstPackDiscountPercent: '50' } }));
+  assert.equal(mapped.list_cents, 600);
+  assert.equal(mapped.promo_discount_cents, 300);
+  assert.equal(mapped.plus_discount_cents, 0);
+});
+
 test('el código promocional se lee de total_details y el cobrado es lo que pagó de verdad', () => {
   const mapped = mapCheckoutSession(session({ amount_subtotal: 8000, amount_total: 7200, total_details: { amount_discount: 800 } }));
   assert.equal(mapped.promo_discount_cents, 800);

@@ -5,7 +5,7 @@ import * as authMiddleware from '../middlewares/auth.js';
 import { getPlusFairPlayStatus } from '../services/plusFairPlayService.js';
 import { getUserEntitlements } from '../services/subscriptionService.js';
 import { createSocialNotification } from '../services/socialService.js';
-import { getValladolidPackCampaign } from '../services/easypassCampaignService.js';
+import { getPackPricing, getValladolidPackCampaign } from '../services/easypassCampaignService.js';
 
 const requireAuth =
   authMiddleware.default ||
@@ -34,6 +34,20 @@ async function getSubscriptionDiscount(userId) {
   } catch {
     const status=await getPlusFairPlayStatus(pool,userId);
     return { percent:status.eligible ? 10 : 0,plan:status.eligible ? 'plus' : null,isActive:status.eligible };
+  }
+}
+
+async function getFirstPackDiscountRow(userId) {
+  try {
+    const [[row]] = await pool.query(
+      'SELECT stripe_session_id, status FROM easypass_first_pack_discounts WHERE user_id=? LIMIT 1',
+      [userId]
+    );
+    return { row: row || null, used: row?.status === 'used' };
+  } catch (e) {
+    // Sin la tabla (migración pendiente) no podemos limitarlo a una vez: no lo ofrecemos.
+    console.error('[FIRST PACK DISCOUNT]', e?.message || e);
+    return { row: null, used: true };
   }
 }
 
@@ -69,6 +83,7 @@ router.get('/locations', requireAuth, async (req, res) => {
 router.get('/packs', requireAuth, async (req, res) => {
   try {
     const discount = await getSubscriptionDiscount(req.user.id);
+    const firstPack = await getFirstPackDiscountRow(req.user.id);
     const requestedLocationId = Number(req.query.location_id || req.query.locationId || 1);
     const locationId = Number.isInteger(requestedLocationId) && requestedLocationId > 0
       ? requestedLocationId
@@ -110,7 +125,7 @@ router.get('/packs', requireAuth, async (req, res) => {
       discount_percent:discount.percent,
       data: rows.map((row) => {
         const campaign = getValladolidPackCampaign(row);
-        const originalPrice = Number(row.price_cents || 0);
+        const pricing = getPackPricing(row, { subscriptionPercent: discount.percent, firstPackDiscountUsed: firstPack.used });
         return {
           ...row,
           id: Number(row.id),
@@ -118,11 +133,14 @@ router.get('/packs', requireAuth, async (req, res) => {
           locationId: Number(row.location_id),
           easyPassAmount: Number(row.easyPassAmount || 0),
           credits: Number(row.easyPassAmount || 0),
-          original_price_cents: originalPrice,
-          price_cents: discount.percent ? Math.round(originalPrice * (1 - discount.percent / 100)) : originalPrice,
-          plus_discount_applied: discount.isActive,
+          original_price_cents: pricing.originalPriceCents,
+          regular_price_cents: pricing.regularPriceCents,
+          price_cents: pricing.priceCents,
+          plus_discount_applied: pricing.subscriptionDiscountApplied,
+          first_pack_discount_applied: pricing.firstPackDiscountApplied,
+          first_pack_discount_percent: pricing.firstPackDiscountPercent,
           campaign_discount_applied: false,
-          promotion_code_available: campaign.active,
+          promotion_code_available: campaign.active && !pricing.firstPackDiscountApplied,
           discount_percent: discount.percent,
           subscription_discount_percent: discount.percent,
         };
@@ -284,11 +302,31 @@ router.post('/packs/:id/checkout', requireAuth, async (req, res) => {
 
     const discount = await getSubscriptionDiscount(userId);
     const campaign = getValladolidPackCampaign(pack);
-    // Los códigos también valen con Plus: Stripe los aplica sobre el precio ya rebajado por Plus.
-    const allowValladolidPromotionCode = campaign.active;
-    const displayedPriceCents = discount.percent
-      ? Math.round(Number(pack.price_cents || 0) * (1 - discount.percent / 100))
-      : Number(pack.price_cents || 0);
+    const firstPack = await getFirstPackDiscountRow(userId);
+    let pricing = getPackPricing(pack, { subscriptionPercent: discount.percent, firstPackDiscountUsed: firstPack.used });
+
+    // Un solo checkout abierto con el descuento por usuario: caducamos el anterior
+    // para que no se puedan pagar dos a mitad de precio. Si el anterior ya se
+    // pagó (webhook aún en camino), el descuento está gastado.
+    const previousSessionId = firstPack.row?.status === 'pending' ? firstPack.row.stripe_session_id : null;
+    if (pricing.firstPackDiscountApplied && previousSessionId) {
+      try {
+        const previous = await stripe.checkout.sessions.retrieve(previousSessionId);
+        if (previous.status === 'complete') {
+          pricing = getPackPricing(pack, { subscriptionPercent: discount.percent, firstPackDiscountUsed: true });
+        } else if (previous.status === 'open') {
+          await stripe.checkout.sessions.expire(previousSessionId);
+        }
+      } catch (e) {
+        console.error('[FIRST PACK DISCOUNT expire]', e?.message || e);
+      }
+    }
+
+    // Los códigos también valen con Plus (Stripe los aplica sobre el precio ya
+    // rebajado), pero no sobre el 50% del primer EasyPass.
+    const allowValladolidPromotionCode = campaign.active && !pricing.firstPackDiscountApplied;
+    const displayedPriceCents = pricing.priceCents;
+    const appliedSubscriptionPercent = pricing.subscriptionDiscountApplied ? discount.percent : 0;
 
     const baseUrl = String(APP_BASE_URL || 'https://easyfutbol.es').replace(/\/$/, '');
     const successUrl = `${baseUrl}/pago-ok/?session_id={CHECKOUT_SESSION_ID}`;
@@ -319,14 +357,25 @@ router.post('/packs/:id/checkout', requireAuth, async (req, res) => {
         locationSlug: String(pack.locationSlug || 'valladolid'),
         kind: 'easypass_pack',
         subscriptionPlan:discount.plan || '',
-        subscriptionDiscountPercent:String(discount.percent),
-        plusDiscountPercent:String(discount.percent),
+        subscriptionDiscountPercent:String(appliedSubscriptionPercent),
+        plusDiscountPercent:String(appliedSubscriptionPercent),
+        firstPackDiscount: pricing.firstPackDiscountApplied ? '1' : '',
+        firstPackDiscountPercent: String(pricing.firstPackDiscountPercent),
         campaign: allowValladolidPromotionCode ? 'valladolid_promotion_code' : '',
         campaignDiscountPercent: allowValladolidPromotionCode ? String(campaign.percent) : '0',
       },
       success_url: successUrl,
       cancel_url: cancelUrl,
     });
+
+    if (pricing.firstPackDiscountApplied) {
+      await pool.query(
+        `INSERT INTO easypass_first_pack_discounts (user_id, stripe_session_id, status)
+         VALUES (?, ?, 'pending')
+         ON DUPLICATE KEY UPDATE stripe_session_id = IF(status = 'pending', VALUES(stripe_session_id), stripe_session_id)`,
+        [userId, session.id]
+      );
+    }
 
     return res.json({
       ok: true,
@@ -341,14 +390,17 @@ router.post('/packs/:id/checkout', requireAuth, async (req, res) => {
         name: pack.name,
         easyPassAmount: Number(pack.easyPassAmount || 0),
         credits: Number(pack.easyPassAmount || 0),
-        original_price_cents: Number(pack.price_cents || 0),
+        original_price_cents: pricing.originalPriceCents,
+        regular_price_cents: pricing.regularPriceCents,
         price_cents: displayedPriceCents,
-        plus_discount_applied:discount.isActive,
+        plus_discount_applied:pricing.subscriptionDiscountApplied,
+        first_pack_discount_applied:pricing.firstPackDiscountApplied,
+        first_pack_discount_percent:pricing.firstPackDiscountPercent,
         campaign_discount_applied:false,
         promotion_code_available:allowValladolidPromotionCode,
         subscription_plan:discount.plan,
-        subscription_discount_percent:discount.percent,
-        discount_percent:discount.percent,
+        subscription_discount_percent:appliedSubscriptionPercent,
+        discount_percent:appliedSubscriptionPercent,
       },
     });
   } catch (e) {

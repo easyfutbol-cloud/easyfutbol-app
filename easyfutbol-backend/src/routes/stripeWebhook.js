@@ -369,6 +369,15 @@ webhookRouter.post('/webhook', express.raw({ type: 'application/json' }), async 
       [paymentId]
     );
 
+    if (metadata.firstPackDiscount === '1') {
+      await conn.query(
+        `INSERT INTO easypass_first_pack_discounts (user_id, stripe_session_id, status, used_at)
+         VALUES (?, ?, 'used', NOW())
+         ON DUPLICATE KEY UPDATE stripe_session_id=VALUES(stripe_session_id), status='used', used_at=NOW()`,
+        [userId, session.id]
+      );
+    }
+
     const referralResult = await qualifyReferralFromPurchase(conn, {
       referredUserId: userId,
       paymentReference: session.id,

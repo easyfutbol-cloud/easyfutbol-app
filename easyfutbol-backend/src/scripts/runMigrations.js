@@ -43,6 +43,7 @@ const migrationOrder = [
   '20261007_public_player_profile.sql',
   '20261010_kpi_foundation.sql',
   '20261014_subscription_location.sql',
+  '20261029_first_pack_discount.sql',
 ];
 
 const currentFile = fileURLToPath(import.meta.url);

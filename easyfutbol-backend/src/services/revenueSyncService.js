@@ -22,7 +22,7 @@ const toInt = (value) => (Number.isFinite(Number(value)) ? Math.round(Number(val
 export function mapCheckoutSession(session) {
   const paid = toInt(session?.amount_total);
   const subtotal = session?.amount_subtotal === null || session?.amount_subtotal === undefined ? paid : toInt(session.amount_subtotal);
-  const promoDiscount = toInt(session?.total_details?.amount_discount);
+  let promoDiscount = toInt(session?.total_details?.amount_discount);
 
   // El descuento Plus ya viene aplicado en el precio de la sesión; el porcentaje
   // se guardó en los metadatos al crearla, así que se puede reconstruir el precio de lista.
@@ -33,6 +33,12 @@ export function mapCheckoutSession(session) {
   if (plusPercent > 0 && plusPercent < 100) {
     list = Math.round(subtotal / (1 - plusPercent / 100));
     plusDiscount = list - subtotal;
+  }
+  // El 50% del primer EasyPass también viene ya en el precio; lo contamos como promoción.
+  const firstPackPercent = Number(metadata.firstPackDiscountPercent ?? 0);
+  if (metadata.firstPackDiscount === '1' && firstPackPercent > 0 && firstPackPercent < 100) {
+    list = Math.round(subtotal / (1 - firstPackPercent / 100));
+    promoDiscount += list - subtotal;
   }
 
   let status = 'paid';
