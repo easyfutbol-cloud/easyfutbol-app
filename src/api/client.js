@@ -2,8 +2,11 @@ import axios from 'axios';
 import { Alert } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
+// EXPO_PUBLIC_API_URL permite probar contra un backend local
+// (EXPO_PUBLIC_API_URL=http://<ip-del-mac>:4000/api npx expo start). Se
+// incrusta al empaquetar, así que las builds y OTA sin ella van a producción.
 const api = axios.create({
-  baseURL: 'https://api.easyfutbol.es/api',
+  baseURL: process.env.EXPO_PUBLIC_API_URL || 'https://api.easyfutbol.es/api',
   timeout: 20000,
 });
 

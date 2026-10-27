@@ -27,6 +27,8 @@ const ROUTE_TAB = {
   Stats: 'profile',
   MySeason: 'profile',
   Achievements: 'profile',
+  Challenges: 'profile',
+  EasyPointsShop: 'profile',
   EasyPass: 'profile',
   Plus: 'profile',
   Faq: 'profile',

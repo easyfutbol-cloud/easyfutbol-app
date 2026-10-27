@@ -12,6 +12,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useFocusEffect, CommonActions } from '@react-navigation/native';
 import ScreenHeader from '../components/ScreenHeader';
+import { FramedAvatar, PlayerTitleBadge } from '../components/engagement/Cosmetics';
 import { Ionicons } from '@expo/vector-icons';
 
 const HERMINIA_LOGO = require('../../assets/La herminia.png');
@@ -41,6 +42,8 @@ export default function ProfileScreen({ navigation }) {
   const [activeCollaboration, setActiveCollaboration] = useState('herminia');
   const [referralData, setReferralData] = useState(null);
   const [socialSummary, setSocialSummary] = useState(null);
+  const [engagement, setEngagement] = useState(null);
+  const [profileViews, setProfileViews] = useState(null);
 
   const BASE = (api?.defaults?.baseURL || '').replace(/\/+$/, '');
   // BASE suele ser https://.../api. Para assets (/uploads/...) necesitamos el origen sin /api
@@ -210,6 +213,16 @@ export default function ProfileScreen({ navigation }) {
     }
   };
 
+  const loadProfileViews = async () => {
+    try { const response = await api.get('/player-profile/me/views'); setProfileViews(response.data?.views || null); }
+    catch (error) { console.log('Error cargando visitas:', error?.message || error); }
+  };
+
+  const loadEngagement = async () => {
+    try { const response = await api.get('/easypoints/me'); setEngagement(response.data || null); }
+    catch (error) { console.log('Error cargando retos:', error?.message || error); }
+  };
+
   const loadSocialSummary = async () => {
     try { const response = await api.get('/social/summary'); setSocialSummary(response.data || null); }
     catch (error) { console.log('Error cargando comunidad:', error?.message || error); }
@@ -278,6 +291,8 @@ export default function ProfileScreen({ navigation }) {
     loadEasyPass();
     loadReferrals();
     loadSocialSummary();
+    loadEngagement();
+    loadProfileViews();
   }, []));
 
   const logout = async () => {
@@ -493,27 +508,29 @@ export default function ProfileScreen({ navigation }) {
 
           {/* Avatar simple */}
           <View style={styles.avatarWrapper}>
+            <FramedAvatar frame={engagement?.equipped?.frame} size={128} ring={6}>
             <TouchableOpacity onPress={pickImage} disabled={uploading} activeOpacity={0.85} accessibilityRole="button" accessibilityLabel="Cambiar foto de perfil" accessibilityState={{ disabled: uploading, busy: uploading }}>
               {avatarPreviewUri ? (
                 <Image
                   key={`preview-${avatarNonce}`}
                   source={{ uri: avatarPreviewUri }}
-                  style={styles.avatarImage}
+                  style={[styles.avatarImage, engagement?.equipped?.frame && styles.avatarFramed]}
                 />
               ) : avatarUrl ? (
                 <Image
                   key={`remote-${avatarNonce}`}
                   source={{ uri: avatarUrl, cache: 'reload' }}
-                  style={styles.avatarImage}
+                  style={[styles.avatarImage, engagement?.equipped?.frame && styles.avatarFramed]}
                 />
               ) : (
-                <View style={styles.avatarPlaceholder}>
+                <View style={[styles.avatarPlaceholder, engagement?.equipped?.frame && styles.avatarFramed]}>
                   <Text style={styles.avatarInitial}>
                     {(user?.name || 'Jugador')[0].toUpperCase()}
                   </Text>
                 </View>
               )}
             </TouchableOpacity>
+            </FramedAvatar>
             <Text style={styles.tapHint}>
               {uploading ? 'Subiendo foto...' : 'Toca la foto para cambiarla'}
             </Text>
@@ -521,8 +538,31 @@ export default function ProfileScreen({ navigation }) {
               <Text style={[styles.profileHeroName, hasGoldenName && styles.plusName]}>{user?.name || 'Jugador EasyFutbol'}</Text>
               {hasSubscription ? <View style={styles.plusBadge}><Text style={styles.plusBadgeText}>PLUS</Text></View> : null}
             </View>
+            <PlayerTitleBadge title={engagement?.equipped?.title} />
             <Text style={styles.profileHeroMeta}>Jugador #{user?.id || '—'}</Text>
           </View>
+
+          {engagement ? (
+            <TouchableOpacity
+              style={[styles.communityCard, { borderColor:'rgba(255,90,0,.35)', borderWidth:1 }]}
+              onPress={() => navigation.navigate('Challenges')}
+              activeOpacity={0.84}
+              accessibilityRole="button"
+            >
+              <View style={{ flexDirection:'row', alignItems:'center', gap:12 }}>
+                <View style={{ width:46,height:46,borderRadius:15,backgroundColor:'rgba(255,90,0,.14)',alignItems:'center',justifyContent:'center' }}>
+                  <Ionicons name="flame" size={23} color={ORANGE} />
+                </View>
+                <View style={{ flex:1 }}>
+                  <Text style={[styles.section,{color:ORANGE}]}>RACHA Y RETOS</Text>
+                  <Text style={[styles.communityText,{marginBottom:0}]}>
+                    {engagement.streak.current} {engagement.streak.current === 1 ? 'semana seguida' : 'semanas seguidas'} · {engagement.balance} EasyPoints para personalizar tu perfil
+                  </Text>
+                </View>
+                <Ionicons name="chevron-forward" color="#888" size={22}/>
+              </View>
+            </TouchableOpacity>
+          ) : null}
 
           <LinearGradient
             colors={hasSubscription ? ['rgba(67,49,11,0.98)', 'rgba(17,21,27,0.98)'] : ['rgba(32,20,13,0.98)', 'rgba(17,21,27,0.98)']}
@@ -574,6 +614,25 @@ export default function ProfileScreen({ navigation }) {
           </LinearGradient>
 
           <TouchableOpacity
+            style={[styles.communityCard, { borderColor:'rgba(86,122,255,.30)', borderWidth:1 }]}
+            onPress={() => navigation.navigate('MyPublicProfile')}
+            activeOpacity={0.84}
+            accessibilityRole="button"
+          >
+            <View style={{ flexDirection:'row', alignItems:'center', gap:12 }}>
+              <View style={{ width:46,height:46,borderRadius:15,backgroundColor:'rgba(86,122,255,.14)',alignItems:'center',justifyContent:'center' }}>
+                <Ionicons name="person-circle" size={23} color="#7892ff" />
+              </View>
+              <View style={{ flex:1 }}>
+                <Text style={[styles.section,{color:'#7892ff'}]}>MI PERFIL PÚBLICO</Text>
+                {profileViews?.last_7_days ? <Text style={[styles.communityText,{marginBottom:2,color:'#fff',fontWeight:'800'}]}>👁 {profileViews.last_7_days} {profileViews.last_7_days === 1 ? 'visita' : 'visitas'} esta semana</Text> : null}
+                <Text style={[styles.communityText,{marginBottom:0}]}>Portada, fotos de partidos, qué estadísticas enseñas y comentarios.</Text>
+              </View>
+              <Ionicons name="chevron-forward" color="#888" size={22}/>
+            </View>
+          </TouchableOpacity>
+
+          <TouchableOpacity
             style={[styles.communityCard, { borderColor:'rgba(255,90,0,.35)', borderWidth:1 }]}
             onPress={() => navigation.navigate('Social')}
             activeOpacity={0.84}
@@ -605,24 +664,6 @@ export default function ProfileScreen({ navigation }) {
               <View style={{ flex:1 }}>
                 <Text style={[styles.section,{color:'#7892ff'}]}>DISPONIBILIDAD</Text>
                 <Text style={[styles.communityText,{marginBottom:0}]}>Elige días, horarios, sedes y posiciones para recibir mejores recomendaciones.</Text>
-              </View>
-              <Ionicons name="chevron-forward" color="#888" size={22}/>
-            </View>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={[styles.communityCard, { borderColor:'rgba(86,122,255,.30)', borderWidth:1 }]}
-            onPress={() => navigation.navigate('MyPublicProfile')}
-            activeOpacity={0.84}
-            accessibilityRole="button"
-          >
-            <View style={{ flexDirection:'row', alignItems:'center', gap:12 }}>
-              <View style={{ width:46,height:46,borderRadius:15,backgroundColor:'rgba(86,122,255,.14)',alignItems:'center',justifyContent:'center' }}>
-                <Ionicons name="person-circle" size={23} color="#7892ff" />
-              </View>
-              <View style={{ flex:1 }}>
-                <Text style={[styles.section,{color:'#7892ff'}]}>MI PERFIL PÚBLICO</Text>
-                <Text style={[styles.communityText,{marginBottom:0}]}>Portada, fotos de partidos, qué estadísticas enseñas y comentarios.</Text>
               </View>
               <Ionicons name="chevron-forward" color="#888" size={22}/>
             </View>
@@ -961,6 +1002,7 @@ const styles = StyleSheet.create({
     borderColor: ORANGE,
     backgroundColor: colors.surface,
   },
+  avatarFramed: { borderWidth: 0 },
   avatarPlaceholder: {
     width: 128,
     height: 128,

@@ -46,6 +46,8 @@ import MatchsScreen from './src/screens/MatchsScreen';
 import MyMatchesScreen from './src/screens/MyMatchesScreen';
 import MisPartidosScreen from './src/screens/MisPartidosScreen';
 import PostMatchSummaryScreen from './src/screens/PostMatchSummaryScreen';
+import ChallengesScreen from './src/screens/ChallengesScreen';
+import EasyPointsShopScreen from './src/screens/EasyPointsShopScreen';
 import StatsScreen from './src/screens/StatsScreen';
 import MySeasonScreen from './src/screens/MySeasonScreen';
 import ProfileScreen from './src/screens/ProfileScreen';
@@ -64,6 +66,7 @@ import AdminNotifyScreen from './src/screens/AdminNotifyScreen';
 import AdminEasyPassScreen from './src/screens/admineasypassscreen';
 import AdminDashboardScreen from './src/screens/AdminDashboardScreen';
 import AdminBusinessKpisScreen from './src/screens/AdminBusinessKpisScreen';
+import AdminRetentionScreen from './src/screens/AdminRetentionScreen';
 import AdminPlusSubscribersScreen from './src/screens/AdminPlusSubscribersScreen';
 import AdminPanelScreen from './src/screens/AdminPanelScreen';
 import AdminFieldsScreen from './src/screens/AdminFieldsScreen';
@@ -128,12 +131,13 @@ const navTheme = {
 // === Navigation Ref para navegar desde fuera de las screens ===
 export const navigationRef = createNavigationContainerRef();
 
-// === Enlaces para reclamar una entrada (easyfutbol://claim/<token>) ===
+// === Enlaces: reclamar entrada (easyfutbol://claim/<token>) y perfil (easyfutbol://jugador/<slug>) ===
 const linking = {
   prefixes: [ExpoLinking.createURL('/'), 'easyfutbol://'],
   config: {
     screens: {
       ClaimTicket: 'claim/:token',
+      PlayerSocialProfile: 'jugador/:slug',
     },
   },
 };
@@ -629,6 +633,7 @@ function AppMenu({ currentRouteName }) {
   const baseItems = [
     ...(isLogged ? [{ label: 'Notificaciones', screen: 'Notifications', icon:'notifications-outline', badge:unreadNotifications }] : []),
     { label: 'Torneos', screen: 'HomeTournament' },
+    ...(isLogged ? [{ label: 'Racha y retos', screen: 'Challenges' }] : []),
     { label: 'Estadísticas', screen: 'Stats' },
     { label: 'Logros', screen: 'Achievements' },
     { label: 'Preguntas frecuentes', screen: 'Faq' },
@@ -751,6 +756,8 @@ function AppShell({ currentRouteName }) {
         <Stack.Screen name="MyMatches" component={MyMatchesScreen} />
         <Stack.Screen name="MisPartidos" component={MisPartidosScreen} />
         <Stack.Screen name="PostMatchSummary" component={PostMatchSummaryScreen} />
+        <Stack.Screen name="Challenges" component={ChallengesScreen} />
+        <Stack.Screen name="EasyPointsShop" component={EasyPointsShopScreen} />
         <Stack.Screen name="Stats" component={StatsScreen} />
         <Stack.Screen name="MySeason" component={MySeasonScreen} />
         <Stack.Screen name="Profile" component={ProfileScreen} />
@@ -784,6 +791,7 @@ function AppShell({ currentRouteName }) {
         <Stack.Screen name="AdminPanel" component={AdminPanelScreen} />
         <Stack.Screen name="AdminDashboard" component={AdminDashboardScreen} />
         <Stack.Screen name="AdminBusinessKpis" component={AdminBusinessKpisScreen} />
+        <Stack.Screen name="AdminRetention" component={AdminRetentionScreen} />
         <Stack.Screen name="AdminPlusSubscribers" component={AdminPlusSubscribersScreen} />
         <Stack.Screen name="AdminMatches" component={AdminMatchesScreen} />
         <Stack.Screen name="AdminMatchEdit" component={AdminMatchEditScreen} />

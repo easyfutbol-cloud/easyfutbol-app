@@ -14,7 +14,7 @@ import {
   View,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { useFocusEffect } from '@react-navigation/native';
+import { useFocusEffect, useIsFocused } from '@react-navigation/native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -25,6 +25,9 @@ import { menuController } from '../navigation/menuController';
 import { publishUnreadNotifications, subscribeUnreadNotifications } from '../utils/notificationEvents';
 import { syncNotificationBadge } from '../utils/notifications';
 import AppPopupHost from '../components/AppPopupHost';
+import PostMatchCardHost from '../components/PostMatchCardHost';
+import StreakStrip from '../components/engagement/StreakStrip';
+import MatchFeedbackPrompt from '../components/retention/MatchFeedbackPrompt';
 import {
   colors,
   gradients,
@@ -68,6 +71,9 @@ export default function HomeScreen({ navigation }) {
   const [showWhatsAppPrompt, setShowWhatsAppPrompt] = useState(false);
   const [whatsAppPromptChecked, setWhatsAppPromptChecked] = useState(false);
   const whatsAppPromptCheckedRef = useRef(false);
+  const [postMatchSettled, setPostMatchSettled] = useState(false);
+  const handlePostMatchSettled = useCallback(() => setPostMatchSettled(true), []);
+  const isFocused = useIsFocused();
 
   useEffect(() => {
     if (!isLogged || whatsAppPromptCheckedRef.current) return;
@@ -329,6 +335,9 @@ export default function HomeScreen({ navigation }) {
             </View>
           </View>
 
+          <StreakStrip navigation={navigation} enabled={isLogged} />
+          <MatchFeedbackPrompt enabled={isLogged} />
+
           {isAdmin ? (
             <View style={styles.adminSection}>
               <Text style={styles.sectionLabel}>GESTIÓN</Text>
@@ -370,7 +379,8 @@ export default function HomeScreen({ navigation }) {
         </View>
       </ScrollView>
 
-      <AppPopupHost navigation={navigation} enabled={isLogged && whatsAppPromptChecked && !showWhatsAppPrompt} />
+      <PostMatchCardHost navigation={navigation} enabled={isFocused && isLogged && whatsAppPromptChecked && !showWhatsAppPrompt} onSettled={handlePostMatchSettled} />
+      <AppPopupHost navigation={navigation} enabled={isLogged && whatsAppPromptChecked && !showWhatsAppPrompt && postMatchSettled} />
       <Modal visible={showWhatsAppPrompt} transparent animationType="fade" onRequestClose={dismissWhatsAppPrompt}>
         <View style={styles.whatsappOverlay}>
           <View style={styles.whatsappCard}>

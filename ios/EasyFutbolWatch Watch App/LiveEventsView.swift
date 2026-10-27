@@ -3,14 +3,18 @@ import SwiftUI
 private enum PickerMode: Identifiable {
     case goalScorer
     case goalAssist(scorer: TeamPlayer)
+    case goalMinute(scorer: TeamPlayer, assist: TeamPlayer?)
     case save
+    case saveMinute(player: TeamPlayer)
     case mvp
 
     var id: String {
         switch self {
         case .goalScorer: return "goalScorer"
         case .goalAssist: return "goalAssist"
+        case .goalMinute: return "goalMinute"
         case .save: return "save"
+        case .saveMinute: return "saveMinute"
         case .mvp: return "mvp"
         }
     }
@@ -94,15 +98,22 @@ struct LiveEventsView: View {
                     }
                 case .goalAssist(let scorer):
                     PlayerPickerView(title: "¿Asistencia?", players: players, showSkip: true, onSkip: {
-                        logEvent(type: .goal, userId: scorer.userId, assistUserId: nil, teamColor: scorer.color)
-                        pickerMode = nil
+                        pickerMode = .goalMinute(scorer: scorer, assist: nil)
                     }) { assist in
-                        logEvent(type: .goal, userId: scorer.userId, assistUserId: assist.userId, teamColor: scorer.color)
+                        pickerMode = .goalMinute(scorer: scorer, assist: assist)
+                    }
+                case .goalMinute(let scorer, let assist):
+                    MinutePickerView(title: "¿En qué minuto?", minute: currentMinute(now: Date())) { minute in
+                        logEvent(type: .goal, userId: scorer.userId, assistUserId: assist?.userId, teamColor: scorer.color, minute: minute)
                         pickerMode = nil
                     }
                 case .save:
                     PlayerPickerView(title: "¿Quién para?", players: players, showSkip: false, onSkip: nil) { player in
-                        logEvent(type: .save, userId: player.userId, assistUserId: nil, teamColor: player.color)
+                        pickerMode = .saveMinute(player: player)
+                    }
+                case .saveMinute(let player):
+                    MinutePickerView(title: "¿En qué minuto?", minute: currentMinute(now: Date())) { minute in
+                        logEvent(type: .save, userId: player.userId, assistUserId: nil, teamColor: player.color, minute: minute)
                         pickerMode = nil
                     }
                 case .mvp:

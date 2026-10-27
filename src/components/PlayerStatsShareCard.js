@@ -1,14 +1,11 @@
-import React, { useRef, useState } from 'react';
-import { View, Text, Image, StyleSheet, Modal, useWindowDimensions, TouchableOpacity, ActivityIndicator, Share, Alert } from 'react-native';
+import React, { useState } from 'react';
+import { View, Text, Image, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { captureRef } from 'react-native-view-shot';
-import * as Sharing from 'expo-sharing';
 import { resolveSocialAvatarUrl } from './social/SocialComponents';
+import ShareCardModal, { CARD_HEIGHT as TEMPLATE_HEIGHT, CARD_WIDTH as TEMPLATE_WIDTH } from './ShareCardModal';
 
 const TEMPLATE_IMAGE = require('../../assets/tarjetaresumen.png');
 const APP_LOGO = require('../../assets/Logo.png');
-const TEMPLATE_WIDTH = 1080;
-const TEMPLATE_HEIGHT = 1920;
 
 // Todas las medidas están en píxeles de la plantilla (1080x1920) y se
 // escalan al ancho real con `k`, así la tarjeta queda igual en cualquier móvil.
@@ -20,7 +17,6 @@ const DATE_BOX = { centerY: 1622, width: 840, height: 120 };
 const MVP_STAMP = { centerX: 790, centerY: 985, width: 250, height: 116 };
 
 const OUTLINE = '#1a1a1a';
-
 function formatCardDate(value) {
   if (!value) return '';
   const date = new Date(value);
@@ -116,72 +112,34 @@ export function PlayerStatsCard({ name, avatarUrl, goals, assists, isMvp, date, 
   );
 }
 
-// Ventana con la vista previa de la tarjeta y el botón de compartir como imagen.
-export default function PlayerStatsShareModal({ visible, onClose, name, avatarUrl, goals, assists, isMvp, date }) {
-  const cardRef = useRef(null);
-  const [sharing, setSharing] = useState(false);
-  const { width: winWidth, height: winHeight } = useWindowDimensions();
-  // Cabe en pantalla sin deformarse: limitado por el ancho o por el alto libre.
-  const cardWidth = Math.floor(Math.min(winWidth - 32, (winHeight - 230) * (TEMPLATE_WIDTH / TEMPLATE_HEIGHT)));
-
-  const handleShare = async () => {
-    try {
-      setSharing(true);
-      if (!(await Sharing.isAvailableAsync())) {
-        await Share.share({ message: `⚽ ${name}: ${goals} goles y ${assists} asistencias con EasyFutbol` });
-        return;
-      }
-      const uri = await captureRef(cardRef, {
-        format: 'png',
-        quality: 1,
-        width: TEMPLATE_WIDTH,
-        height: TEMPLATE_HEIGHT,
-      });
-      await Sharing.shareAsync(uri, { mimeType: 'image/png', dialogTitle: 'Compartir mis estadísticas' });
-    } catch (e) {
-      Alert.alert('Error', 'No se pudo preparar la tarjeta para compartir');
-    } finally {
-      setSharing(false);
-    }
-  };
-
+// Ventana con la vista previa de la tarjeta y los botones de Instagram,
+// descargar y compartir como imagen.
+export default function PlayerStatsShareModal({ visible, onClose, name, avatarUrl, goals, assists, isMvp, date, title, footer }) {
   return (
-    <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
-      <View style={styles.screen}>
-        <TouchableOpacity style={styles.closeButton} onPress={onClose} accessibilityRole="button" accessibilityLabel="Cerrar">
-          <Ionicons name="close" size={22} color="#fff" />
-        </TouchableOpacity>
-
-        <View style={styles.previewWrap}>
-          <PlayerStatsCard
-            cardRef={cardRef}
-            cardWidth={cardWidth}
-            name={name}
-            avatarUrl={avatarUrl}
-            goals={goals}
-            assists={assists}
-            isMvp={isMvp}
-            date={date}
-          />
-        </View>
-
-        <TouchableOpacity style={styles.shareButton} onPress={handleShare} disabled={sharing}>
-          {sharing ? <ActivityIndicator color="#fff" /> : (
-            <>
-              <Ionicons name="share-outline" size={19} color="#fff" />
-              <Text style={styles.shareButtonText}>Compartir tarjeta</Text>
-            </>
-          )}
-        </TouchableOpacity>
-      </View>
-    </Modal>
+    <ShareCardModal
+      visible={visible}
+      onClose={onClose}
+      title={title}
+      footer={footer}
+      dialogTitle="Compartir mis estadísticas"
+      fallbackMessage={`⚽ ${name}: ${goals} goles y ${assists} asistencias con EasyFutbol`}
+      renderCard={(cardRef, cardWidth) => (
+        <PlayerStatsCard
+          cardRef={cardRef}
+          cardWidth={cardWidth}
+          name={name}
+          avatarUrl={avatarUrl}
+          goals={goals}
+          assists={assists}
+          isMvp={isMvp}
+          date={date}
+        />
+      )}
+    />
   );
 }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: '#0a0a0a', paddingTop: 56, paddingBottom: 32, paddingHorizontal: 16 },
-  closeButton: { alignSelf: 'flex-end', width: 40, height: 40, borderRadius: 20, backgroundColor: '#1c1c1c', alignItems: 'center', justifyContent: 'center', marginBottom: 10 },
-  previewWrap: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   card: { width: '100%', aspectRatio: TEMPLATE_WIDTH / TEMPLATE_HEIGHT, backgroundColor: '#000', overflow: 'hidden' },
   template: { position: 'absolute', width: '100%', height: '100%' },
   avatarRing: { borderColor: '#fdf6e9', backgroundColor: '#000', overflow: 'hidden' },
@@ -192,6 +150,4 @@ const styles = StyleSheet.create({
   stamp: { width: '100%', height: '100%', backgroundColor: '#ff5a00', borderColor: OUTLINE, flexDirection: 'row', alignItems: 'center', justifyContent: 'center' },
   stampText: { color: '#fdf6e9', fontWeight: '900', letterSpacing: 2 },
   date: { color: OUTLINE, fontWeight: '900', textAlign: 'center' },
-  shareButton: { marginTop: 16, height: 54, borderRadius: 14, backgroundColor: '#ff5a00', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
-  shareButtonText: { color: '#fff', fontSize: 15, fontWeight: '800' },
 });

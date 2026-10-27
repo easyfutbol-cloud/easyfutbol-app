@@ -40,7 +40,7 @@ function formatWeek(weekStart, weekEnd) {
   return `${start} - ${end}`;
 }
 
-function PlayerPin({ player, spot, containerWidth }) {
+function PlayerPin({ player, spot, containerWidth, onOpen }) {
   if (!containerWidth) return null;
 
   const avatarSize = containerWidth * AVATAR_RATIO;
@@ -54,7 +54,7 @@ function PlayerPin({ player, spot, containerWidth }) {
   const avatarStyle = { width: avatarSize, height: avatarSize, borderRadius: avatarSize / 2 };
 
   return (
-    <View style={[styles.pin, pinStyle]}>
+    <TouchableOpacity style={[styles.pin, pinStyle]} activeOpacity={0.8} disabled={!player?.user_id} onPress={() => onOpen(player.user_id)} accessibilityRole="button" accessibilityLabel={player ? `Ver perfil de ${player.name}` : undefined}>
       <View style={[styles.avatarRing, avatarStyle]}>
         {player?.avatar_url ? (
           <Image source={{ uri: resolveSocialAvatarUrl(player.avatar_url) }} style={styles.avatarImage} />
@@ -68,7 +68,7 @@ function PlayerPin({ player, spot, containerWidth }) {
           {player.location ? <Text style={[styles.pinLocation, { fontSize: avatarSize * 0.15 }]} numberOfLines={1}>{player.location}</Text> : null}
         </View>
       ) : null}
-    </View>
+    </TouchableOpacity>
   );
 }
 
@@ -178,6 +178,7 @@ export default function WeeklyLineupResultScreen({ navigation }) {
               player={(winners[position] || [])[index]}
               spot={spot}
               containerWidth={containerWidth}
+              onOpen={(userId) => navigation.navigate('PlayerSocialProfile', { userId })}
             />
           ))
         )}

@@ -11,6 +11,7 @@ const SECTIONS = [
     items: [
       { label: 'Dashboard', description: 'Actividad y KPIs', icon: 'analytics-outline', route: 'AdminDashboard' },
       { label: 'KPIs de negocio', description: 'Retención, MAU, precio por EasyPass y CAC', icon: 'trending-up-outline', route: 'AdminBusinessKpis' },
+      { label: 'Retención', description: 'Repetir, avisos automáticos y valoraciones', icon: 'repeat-outline', route: 'AdminRetention' },
       { label: 'Partidos', description: 'Gestionar calendario', icon: 'football-outline', route: 'AdminMatches' },
       { label: 'Crear partido', description: 'Nueva convocatoria', icon: 'add-circle-outline', route: 'AdminCreateMatch' },
       { label: 'Programados', description: 'Publicaciones automáticas', icon: 'time-outline', route: 'AdminScheduledMatches' },
