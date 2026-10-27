@@ -40,7 +40,9 @@ router.get('/me', requireAuth, async (req, res) => {
         points: item.points,
         target: item.target,
         progress,
-        unlocked: unlockedSet.has(item.code),
+        // El progreso manda: si ya llegó al objetivo se ve conseguido aunque
+        // el desbloqueo (y sus puntos) aún no se haya registrado.
+        unlocked: unlockedSet.has(item.code) || rawProgress >= item.target,
       };
     });
 

@@ -4,6 +4,7 @@
 // no nulo): las estadísticas en directo pueden corregirse hasta entonces.
 import { pool } from '../config/db.js';
 import { createSocialNotification } from './socialService.js';
+import { syncUserAchievements } from './achievementsService.js';
 import {
   CHALLENGES,
   computeStreak,
@@ -88,6 +89,12 @@ export async function syncEngagementAfterMatch(matchId) {
   const [players] = await pool.query('SELECT user_id FROM match_player_stats WHERE match_id = ? AND result IS NOT NULL', [matchId]);
   let rewarded = 0;
   for (const { user_id: userId } of players) {
+    // Logros: independiente de los retos, un fallo aquí no debe frenar los EasyPoints.
+    try {
+      await syncUserAchievements(userId);
+    } catch (error) {
+      console.error('[syncEngagementAfterMatch] logros', { userId, matchId, error: error?.message || error });
+    }
     try {
       const { awarded } = await syncEngagement(userId);
       if (!awarded.length) continue;

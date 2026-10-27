@@ -4,7 +4,6 @@ import { pool } from '../config/db.js';
 import { requireAuth, requireAdmin } from '../middlewares/auth.js';
 import { addPlusFairPlayWarning, getPlusFairPlayStatus } from '../services/plusFairPlayService.js';
 import { syncEngagementAfterMatch } from '../services/engagementService.js';
-// import { checkAndUnlockAchievements, awardReward } from '../services/achievementsService.js';
 
 
 const router = Router();
