@@ -4,6 +4,7 @@ import { colors, spacing } from '../theme';
 import { api } from '../api/client';
 import { Picker } from '@react-native-picker/picker';
 import DateTimePicker from '@react-native-community/datetimepicker';
+import OrganizerPicker from '../components/OrganizerPicker';
 
 // Helper: evita duplicar /api si tu api.defaults.baseURL ya termina en /api
 const apiPath = (p) => {
@@ -104,6 +105,7 @@ export default function AdminCreateMatchScreen({ navigation }) {
   const [fields, setFields] = useState([]);
   const [fieldId, setFieldId] = useState('');
   const [fieldName, setFieldName] = useState(''); // alternativo si no eliges uno existente
+  const [organizerId, setOrganizerId] = useState('');
 
   const [title, setTitle] = useState('');
   const [date, setDate] = useState(new Date(Date.now() + 2 * 24 * 3600 * 1000)); // por defecto +2 días
@@ -262,6 +264,7 @@ export default function AdminCreateMatchScreen({ navigation }) {
         capacity: capacityNum,
         duration_min: durationNum,
         has_aftergame: hasAftergame ? 1 : 0,
+        organizer_id: organizerId ? Number(organizerId) : null,
       };
 
       if (fieldId) {
@@ -424,6 +427,14 @@ export default function AdminCreateMatchScreen({ navigation }) {
             )}
           </>
         ) : null}
+
+        <OrganizerPicker
+          value={organizerId}
+          onChange={setOrganizerId}
+          navigation={navigation}
+          pickerStyle={styles.picker}
+          labelStyle={styles.label}
+        />
 
         <Text style={styles.label}>Fecha</Text>
         <TouchableOpacity style={styles.btnSmall} onPress={() => setShowDate(true)}>

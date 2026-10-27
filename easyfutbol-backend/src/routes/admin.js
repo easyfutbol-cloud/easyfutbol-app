@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { pool } from '../config/db.js';
 import { requireAuth, requireAdmin } from '../middlewares/auth.js';
 import { madridWallTimeToUtc, toMysqlUtc } from '../utils/madridDateTime.js';
+import { resolveOrganizerId } from './adminOrganizers.js';
 
 const router = Router();
 
@@ -78,7 +79,8 @@ router.post('/admin/matches', requireAuth, requireAdmin, async (req, res) => {
       easypass_cost = 1,
       location_id,
       locationId,
-      location_slug
+      location_slug,
+      organizer_id
     } = req.body || {};
 
     // Validaciones básicas
@@ -115,6 +117,11 @@ router.post('/admin/matches', requireAuth, requireAdmin, async (req, res) => {
     // Validar que es futuro
     if (startsAtDate.getTime() < Date.now() - 60_000) {
       return res.status(400).json({ ok:false, msg:'La fecha/hora debe ser futura' });
+    }
+
+    const organizerId = await resolveOrganizerId(conn, organizer_id);
+    if (organizerId === false) {
+      return res.status(400).json({ ok:false, msg:'El organizador no existe o está desactivado' });
     }
 
     await conn.beginTransaction();
@@ -169,9 +176,9 @@ router.post('/admin/matches', requireAuth, requireAdmin, async (req, res) => {
     // Crear el partido
     const [ins] = await conn.query(
       `INSERT INTO matches
-       (title, field_id, city, location_id, starts_at, duration_min, price_eur, easypass_cost, capacity, spots_taken, status)
-       VALUES (?,?,?,?,?,?,?,?,?,0,'scheduled')`, // 'scheduled' => visible y pagable en /matches
-      [title, fieldId, city, matchLocationId, startsAt, dur, price, easyPassCost, cap]
+       (title, field_id, city, location_id, starts_at, duration_min, price_eur, easypass_cost, capacity, spots_taken, status, organizer_id)
+       VALUES (?,?,?,?,?,?,?,?,?,0,'scheduled',?)`, // 'scheduled' => visible y pagable en /matches
+      [title, fieldId, city, matchLocationId, startsAt, dur, price, easyPassCost, cap, organizerId]
     );
 
     await conn.commit();

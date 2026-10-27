@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { pool } from '../config/db.js';
 import { requireAuth, requireAdmin } from '../middlewares/auth.js';
+import { resolveOrganizerId } from './adminOrganizers.js';
 
 const router = Router();
 const toMysql = (date) => date.toISOString().slice(0, 19).replace('T', ' ');
@@ -39,6 +40,10 @@ router.post('/batch', requireAuth, requireAdmin, async (req, res) => {
     if (startsAt <= new Date() || publishAt >= startsAt || capacity < 1 || capacity > 50 || duration < 1 || duration > 240) {
       return res.status(400).json({ ok: false, msg: 'Revisa fecha de publicación, capacidad y duración' });
     }
+    const organizerId = await resolveOrganizerId(pool, item.organizer_id ?? null);
+    if (organizerId === false) {
+      return res.status(400).json({ ok: false, msg: 'Hay un partido con un organizador que no existe o está desactivado' });
+    }
     values.push([
       item.title,
       item.city,
@@ -53,13 +58,14 @@ router.post('/batch', requireAuth, requireAdmin, async (req, res) => {
       capacity,
       Number(item.has_aftergame) === 1 ? 1 : 0,
       req.user.id,
+      organizerId,
     ]);
   }
 
   try {
     const [result] = await pool.query(
       `INSERT INTO scheduled_match_publications
-       (title, city, location_id, field_id, field_name, starts_at, publish_at, duration_min, price_eur, easypass_cost, capacity, has_aftergame, created_by)
+       (title, city, location_id, field_id, field_name, starts_at, publish_at, duration_min, price_eur, easypass_cost, capacity, has_aftergame, created_by, organizer_id)
        VALUES ?`,
       [values]
     );

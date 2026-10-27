@@ -49,6 +49,7 @@ import { startNotificationCampaignScheduler } from './services/notificationCampa
 import { startRetentionScheduler } from './services/retentionService.js';
 import { startFriendJoinedScheduler } from './services/teammateService.js';
 import retention from './routes/retention.js';
+import adminOrganizers from './routes/adminOrganizers.js';
 
 const app = express();
 // Detrás de nginx (un salto): sin esto req.ip es la de nginx y todos los usuarios
@@ -165,6 +166,7 @@ app.use('/api', waitlist);
 app.use('/api/referrals', referrals);
 app.use('/api/admin/scheduled-matches', scheduledMatches);
 app.use('/api/admin/fields', adminFields);
+app.use('/api/admin/organizers', adminOrganizers);
 app.use('/api/admin/matches', adminMatches);
 app.use('/api/admin/matches/:matchId/events', adminMatchEvents);
 app.use('/api/admin/weekly-lineup', adminWeeklyLineup);

@@ -49,6 +49,7 @@ const migrationOrder = [
   '20261029_first_pack_discount.sql',
   '20261030_retention.sql',
   '20261031_friend_joined.sql',
+  '20261101_match_organizers.sql',
 ];
 
 const currentFile = fileURLToPath(import.meta.url);

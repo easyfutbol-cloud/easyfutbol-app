@@ -193,10 +193,13 @@ router.get('/matches/:id', async (req, res) => {
               f.address AS field_address,
               f.maps_url AS field_maps_url,
               f.image_url AS field_image_url,
-              f.arrival_instructions AS field_arrival_instructions
+              f.arrival_instructions AS field_arrival_instructions,
+              CONCAT(mo.first_name, ' ', mo.last_name) AS organizer_name,
+              mo.photo_url AS organizer_photo_url
        FROM matches m
        JOIN fields f ON f.id = m.field_id
        LEFT JOIN locations l ON l.id = m.location_id
+       LEFT JOIN match_organizers mo ON mo.id = m.organizer_id
        WHERE m.id=?`,
       [id]
     );

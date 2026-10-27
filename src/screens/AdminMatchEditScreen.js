@@ -12,6 +12,7 @@ import {
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import OrganizerPicker from '../components/OrganizerPicker';
 
 const API_BASE_URL = 'https://api.easyfutbol.es';
 
@@ -59,6 +60,7 @@ export default function AdminMatchEditScreen({ route, navigation }) {
   const [easyPassRequired, setEasyPassRequired] = useState('1');
   const [shirtColor, setShirtColor] = useState('');
   const [hasAftergame, setHasAftergame] = useState(false);
+  const [organizerId, setOrganizerId] = useState('');
   const [confirmedCount, setConfirmedCount] = useState(0);
   const [availableSlots, setAvailableSlots] = useState(0);
 
@@ -117,6 +119,7 @@ export default function AdminMatchEditScreen({ route, navigation }) {
         data?.aftergame_enabled === true ||
         data?.aftergame_enabled === 1
       );
+      setOrganizerId(data?.organizer_id ? String(data.organizer_id) : '');
       setConfirmedCount(Number(data?.confirmed_count ?? 0));
       setAvailableSlots(Number(data?.available_slots ?? 0));
     } catch (err) {
@@ -273,6 +276,7 @@ export default function AdminMatchEditScreen({ route, navigation }) {
           easypass_required: Number(easyPassRequired),
           shirt_color: shirtColor || null,
           has_aftergame: hasAftergame ? 1 : 0,
+          organizer_id: organizerId ? Number(organizerId) : null,
           time_zone: 'Europe/Madrid',
         }),
       });
@@ -409,6 +413,14 @@ export default function AdminMatchEditScreen({ route, navigation }) {
           placeholderTextColor="#777"
           value={fieldName}
           onChangeText={setFieldName}
+        />
+
+        <OrganizerPicker
+          value={organizerId}
+          onChange={setOrganizerId}
+          navigation={navigation}
+          pickerStyle={styles.picker}
+          labelStyle={styles.label}
         />
       </View>
 
@@ -682,6 +694,12 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 15,
     marginBottom: 14,
+  },
+  picker: {
+    backgroundColor: '#181818',
+    borderRadius: 12,
+    color: '#fff',
+    marginBottom: 6,
   },
   textArea: {
     minHeight: 110,

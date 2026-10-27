@@ -643,6 +643,12 @@ export default function MatchScreen({ route, navigation }) {
       ? Math.max(capacity - spotsTaken, 0)
       : null;
 
+  const organizerPhoto = match?.organizer_photo_url
+    ? (/^https?:\/\//i.test(match.organizer_photo_url)
+      ? match.organizer_photo_url
+      : `${String(api?.defaults?.baseURL || '').replace(/\/api\/?$/, '')}${match.organizer_photo_url}`)
+    : null;
+
   return (
     <ImageBackground
       source={SCREEN_BACKGROUND}
@@ -714,6 +720,20 @@ export default function MatchScreen({ route, navigation }) {
           <Text style={styles.summaryUnit}>de {capacity ?? '—'}</Text>
         </View>
       </View>
+      {!!match.organizer_name && (
+        <View style={styles.organizerCard}>
+          {organizerPhoto ? (
+            <Image source={{ uri: organizerPhoto }} style={styles.organizerPhoto} accessibilityIgnoresInvertColors />
+          ) : (
+            <View style={[styles.organizerPhoto, styles.organizerPhotoEmpty]}><Ionicons name="person" size={24} color={colors.textSubtle} /></View>
+          )}
+          <View style={styles.practicalCopy}>
+            <Text style={styles.practicalEyebrow}>ORGANIZADO POR</Text>
+            <Text style={styles.organizerName}>{match.organizer_name}</Text>
+            <Text style={styles.practicalCity}>Gestiona el partido y te recibe en el campo</Text>
+          </View>
+        </View>
+      )}
       <View style={styles.practicalCard}>
         <View style={styles.practicalHeader}>
           <View style={styles.practicalIcon}><Ionicons name="location-outline" size={21} color={colors.orange} /></View>
@@ -1303,6 +1323,10 @@ const styles = StyleSheet.create({
   waitlistPrimaryText:{ color:colors.black, ...typography.bodyStrong, fontWeight:'900', textAlign:'center' },
   waitlistSecondaryButton:{ minHeight:layout.minTouchTarget, alignItems:'center', justifyContent:'center', borderWidth:1, borderColor:colors.border, borderRadius:radii.medium, paddingHorizontal:spacing(1.5), marginTop:spacing(1.5) },
   waitlistSecondaryText:{ color:colors.white, ...typography.bodyStrong },
+  organizerCard:{ marginTop:spacing(2),padding:spacing(2),borderRadius:radii.large,backgroundColor:'#14171C',borderWidth:1,borderColor:colors.border,flexDirection:'row',alignItems:'center',gap:14 },
+  organizerPhoto:{ width:56,height:56,borderRadius:28,backgroundColor:'#1d2128',borderWidth:2,borderColor:colors.orange },
+  organizerPhotoEmpty:{ alignItems:'center',justifyContent:'center' },
+  organizerName:{ color:colors.white,fontSize:17,fontWeight:'900',marginTop:2 },
   practicalCard:{ marginTop:spacing(2),padding:spacing(2),borderRadius:radii.large,backgroundColor:'#14171C',borderWidth:1,borderColor:colors.border },
   practicalHeader:{ flexDirection:'row',alignItems:'center',gap:spacing(1) },
   practicalIcon:{ width:42,height:42,borderRadius:14,alignItems:'center',justifyContent:'center',backgroundColor:'rgba(255,90,0,.11)' },

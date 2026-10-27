@@ -36,9 +36,9 @@ async function publishNextScheduledMatch() {
 
     const [match] = await conn.query(
       `INSERT INTO matches
-       (title, field_id, city, location_id, starts_at, duration_min, price_eur, easypass_cost, capacity, spots_taken, status, has_aftergame)
-       VALUES (?,?,?,?,?,?,?,?,?,0,'scheduled',?)`,
-      [job.title, fieldId, job.city, job.location_id, job.starts_at, job.duration_min, job.price_eur, job.easypass_cost, job.capacity, job.has_aftergame]
+       (title, field_id, city, location_id, starts_at, duration_min, price_eur, easypass_cost, capacity, spots_taken, status, has_aftergame, organizer_id)
+       VALUES (?,?,?,?,?,?,?,?,?,0,'scheduled',?,?)`,
+      [job.title, fieldId, job.city, job.location_id, job.starts_at, job.duration_min, job.price_eur, job.easypass_cost, job.capacity, job.has_aftergame, job.organizer_id || null]
     );
 
     await conn.query(

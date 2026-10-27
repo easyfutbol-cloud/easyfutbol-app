@@ -3,6 +3,7 @@ import { pool } from '../config/db.js';
 import { requireAuth, requireAdmin } from '../middlewares/auth.js';
 import { formatMadridAdminDateTime, madridWallTimeToUtc, toMysqlUtc } from '../utils/madridDateTime.js';
 import { createSocialNotification } from '../services/socialService.js';
+import { resolveOrganizerId } from './adminOrganizers.js';
 
 const router = express.Router();
 
@@ -165,7 +166,7 @@ router.post('/:id/duplicate', requireAuth, requireAdmin, async (req,res) => {
   try {
     const [[source]]=await pool.query('SELECT * FROM matches WHERE id=?',[Number(req.params.id)]);if(!source)return res.status(404).json({error:'Partido no encontrado'});
     const startsAt=req.body?.starts_at?new Date(req.body.starts_at):new Date(new Date(source.starts_at).getTime()+7*86400000);if(Number.isNaN(startsAt.getTime()))return res.status(400).json({error:'Fecha no válida'});
-    const[result]=await pool.query(`INSERT INTO matches(title,field_id,city,location_id,starts_at,duration_min,price_eur,easypass_cost,capacity,spots_taken,status,has_aftergame) VALUES (?,?,?,?,?,?,?,?,?,0,'scheduled',?)`,[source.title,source.field_id,source.city,source.location_id,startsAt,source.duration_min,source.price_eur,source.easypass_cost,source.capacity,source.has_aftergame||0]);
+    const[result]=await pool.query(`INSERT INTO matches(title,field_id,city,location_id,starts_at,duration_min,price_eur,easypass_cost,capacity,spots_taken,status,has_aftergame,organizer_id) VALUES (?,?,?,?,?,?,?,?,?,0,'scheduled',?,?)`,[source.title,source.field_id,source.city,source.location_id,startsAt,source.duration_min,source.price_eur,source.easypass_cost,source.capacity,source.has_aftergame||0,source.organizer_id||null]);
     res.status(201).json({ok:true,id:result.insertId,starts_at:startsAt});
   }catch(error){console.error('[ADMIN DUPLICATE MATCH]',error);res.status(500).json({error:'No se pudo duplicar el partido'});}
 });
@@ -199,6 +200,7 @@ router.get('/:id', requireAuth, requireAdmin, async (req, res) => {
           1 AS easypass_required,
           NULL AS shirt_color,
           COALESCE(has_aftergame, 0) AS has_aftergame,
+          organizer_id,
           created_at,
           created_at AS updated_at
         FROM matches
@@ -244,6 +246,7 @@ router.put('/:id', requireAuth, requireAdmin, async (req, res) => {
       easypass_required,
       has_aftergame,
       time_zone,
+      organizer_id,
     } = req.body;
 
     const [existingRows] = await pool.query(
@@ -295,6 +298,12 @@ router.put('/:id', requireAuth, requireAdmin, async (req, res) => {
       return res.status(400).json({ error: 'La fecha y las horas no son válidas' });
     }
 
+    // Sin organizer_id en el body (versiones antiguas de la app) se conserva el actual.
+    const organizerId = organizer_id === undefined ? undefined : await resolveOrganizerId(pool, organizer_id);
+    if (organizerId === false) {
+      return res.status(400).json({ error: 'El organizador no existe o está desactivado' });
+    }
+
     const dbStatus = mapAdminStatusToDbStatus(status || 'open');
     // "Completo" se calcula a partir de las plazas (is_full), no se guarda como
     // estado: si se guardara, el partido desaparecería de la app y no se
@@ -313,7 +322,8 @@ router.put('/:id', requireAuth, requireAdmin, async (req, res) => {
           capacity = ?,
           spots_taken = ?,
           status = ?,
-          has_aftergame = ?
+          has_aftergame = ?,
+          organizer_id = IF(?, ?, organizer_id)
         WHERE id = ?
       `,
       [
@@ -326,6 +336,8 @@ router.put('/:id', requireAuth, requireAdmin, async (req, res) => {
         confirmedCount,
         autoStatus,
         parsedHasAftergame,
+        organizerId !== undefined ? 1 : 0,
+        organizerId ?? null,
         id,
       ]
     );
