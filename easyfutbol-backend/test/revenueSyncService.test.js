@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { mapCheckoutSession, mapInvoice } from '../src/services/revenueSyncService.js';
+import { mapCheckoutSession, mapInvoice, refreshRecentRefunds } from '../src/services/revenueSyncService.js';
 
 const session = (over = {}) => ({
   payment_status: 'paid', livemode: true, currency: 'eur', amount_subtotal: 5000, amount_total: 5000,
@@ -78,4 +78,36 @@ test('factura de suscripción: descuentos sumados y fecha de pago convertida', (
 test('una factura de prueba gratuita no tiene fecha de pago aprovechable', () => {
   assert.equal(mapInvoice({ amount_paid: 0 }).paid_at, null);
   assert.equal(mapInvoice({ amount_paid: 500, livemode: false, created: 1788000000 }).status, 'test');
+});
+
+test('refrescar reembolsos actualiza solo los que han cambiado en Stripe', async () => {
+  const updates = [];
+  const db = {
+    async query(sql, params) {
+      if (sql.startsWith('SELECT')) {
+        return [[
+          { id: 1, stripe_ref: 'cs_a', paid_cents: 5000, refunded_cents: 0 },
+          { id: 2, stripe_ref: 'cs_b', paid_cents: 3000, refunded_cents: 0 },
+          { id: 3, stripe_ref: 'cs_c', paid_cents: 2000, refunded_cents: 500 },
+          { id: 4, stripe_ref: 'cs_d', paid_cents: 1000, refunded_cents: 0 },
+        ]];
+      }
+      updates.push(params);
+      return [{ affectedRows: 1 }];
+    },
+  };
+  const charges = { cs_a: 5000, cs_b: 0, cs_c: 500 };
+  const stripe = {
+    checkout: {
+      sessions: {
+        async retrieve(ref) {
+          if (ref === 'cs_d') throw new Error('timeout');
+          return session({ amount_total: 5000, payment_intent: { latest_charge: { amount_refunded: charges[ref] } } });
+        },
+      },
+    },
+  };
+  const result = await refreshRecentRefunds({ db, stripe, log: { error() {} } });
+  assert.deepEqual(result, { checked: 4, updated: 1, failed: 1 });
+  assert.deepEqual(updates, [[5000, 1]]);
 });

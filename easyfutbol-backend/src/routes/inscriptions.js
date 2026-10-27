@@ -5,6 +5,7 @@ import { requireAuth } from '../middlewares/auth.js';
 import Stripe from 'stripe';
 import { sendPushNotification } from '../services/pushService.js';
 import { processWaitlistForMatch } from '../services/waitlistService.js';
+import { findNextSimilarMatch } from '../services/retentionService.js';
 import { addPlusFairPlayWarning, getPlusFairPlayStatus } from '../services/plusFairPlayService.js';
 import { activePlusSql } from '../services/subscriptionService.js';
 import {
@@ -174,7 +175,24 @@ router.get('/matches/:id/post-match', requireAuth, async (req, res) => {
     const personal = normalized.find((player) => Number(player.user_id) === Number(req.user.id)) || null;
     const mvp = normalized.find((player) => player.is_mvp) || null;
 
-    return res.json({ ok: true, data: { match, score, mvp, personal, teams: { white, black, pending } } });
+    // "Repetir la semana que viene" y la valoración rápida: si fallan, el acta se sirve igual.
+    const nextMatch = await findNextSimilarMatch(pool, { matchId, userId: req.user.id }).catch((error) => {
+      console.error('[POST MATCH NEXT]', error?.message || error);
+      return null;
+    });
+    const [[feedbackRow]] = await pool.query(
+      'SELECT 1 AS found FROM match_feedback WHERE match_id=? AND user_id=? LIMIT 1',
+      [matchId, req.user.id]
+    ).catch(() => [[{ found: 1 }]]);
+
+    return res.json({
+      ok: true,
+      data: {
+        match, score, mvp, personal, teams: { white, black, pending },
+        next_match: nextMatch,
+        feedback_pending: !feedbackRow,
+      },
+    });
   } catch (error) {
     console.error('[POST MATCH SUMMARY]', error);
     return res.status(500).json({ ok: false, msg: 'No se pudo cargar el resumen' });

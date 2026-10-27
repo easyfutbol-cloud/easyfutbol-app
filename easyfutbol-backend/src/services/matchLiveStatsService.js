@@ -4,6 +4,8 @@
 // evento; el MVP es exclusivo (solo puede haber uno por partido).
 import { pool } from '../config/db.js';
 import { createSocialNotification } from './socialService.js';
+import { findNextSimilarMatch } from './retentionService.js';
+import { buildRepeatSuffix } from './retentionRules.js';
 
 const STAT_COLUMN_BY_TYPE = { goal: 'goals', save: 'saves' };
 
@@ -127,14 +129,17 @@ export async function notifyMatchResultToPlayers(matchId) {
   let sent = 0;
   await Promise.all(stats.map(async (stat) => {
     try {
+      // "¿Repites el jueves?" si ya está publicado el partido de la semana que viene.
+      const next = await findNextSimilarMatch(pool, { matchId, userId: stat.user_id }).catch(() => null);
+      const body = buildResultNotificationBody(stat);
       const ok = await createSocialNotification(pool, {
         userId: stat.user_id,
         type: 'post_match_summary',
         entityType: 'match',
         entityId: matchId,
         title: `⚽ ${match.title || 'Resumen del partido'}`,
-        body: buildResultNotificationBody(stat),
-        data: { type: 'post_match_summary', screen: 'PostMatchSummary', matchId },
+        body: next ? `${body}\n${buildRepeatSuffix(next)}`.slice(0, 255) : body,
+        data: { type: 'post_match_summary', screen: 'PostMatchSummary', matchId, ...(next ? { nextMatchId: next.id } : {}) },
         dedupeKey: `post-match-summary:${matchId}:${stat.user_id}`,
       });
       if (ok) sent += 1;

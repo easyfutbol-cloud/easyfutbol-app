@@ -3,6 +3,7 @@ import { Router } from 'express';
 import { pool } from '../config/db.js';
 import { requireAuth, requireAdmin } from '../middlewares/auth.js';
 import { addPlusFairPlayWarning, getPlusFairPlayStatus } from '../services/plusFairPlayService.js';
+import { syncEngagementAfterMatch } from '../services/engagementService.js';
 // import { checkAndUnlockAchievements, awardReward } from '../services/achievementsService.js';
 
 
@@ -255,6 +256,7 @@ router.post(
       }
 
       await conn.commit();
+      syncEngagementAfterMatch(matchId).catch((error) => console.error('[adminStats] retos', error?.message || error));
       return res.json({
         ok: true,
         msg: `Estadísticas de ${normalized.length} jugadores importadas`,

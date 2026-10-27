@@ -13,7 +13,7 @@ import {
   parseMarketingSpend,
   upsertMarketingSpend,
 } from '../services/kpiService.js';
-import { syncRevenue, countUnsyncedPurchases } from '../services/revenueSyncService.js';
+import { syncRevenue, countUnsyncedPurchases, getRevenueSyncStatus } from '../services/revenueSyncService.js';
 import { getStripe } from '../services/stripeClient.js';
 
 const router = express.Router();
@@ -214,7 +214,7 @@ router.get('/monetization', async (req, res) => {
   try {
     const { locationId } = getLocationFilter(req.query);
     const data = await getMonetizationKpis({ locationId, fresh: req.query.fresh === '1' });
-    return res.json({ ...data, pending_sync: await countUnsyncedPurchases(dbModule.pool), stripe_configured: Boolean(getStripe()) });
+    return res.json({ ...data, pending_sync: await countUnsyncedPurchases(dbModule.pool), stripe_configured: Boolean(getStripe()), last_sync: getRevenueSyncStatus() });
   } catch (error) {
     return kpiFailure(res, 'monetización', error);
   }
@@ -282,7 +282,7 @@ router.post('/revenue/sync', syncLimiter, async (req, res) => {
   if (!stripe) return res.status(503).json({ ok: false, msg: 'Stripe no está configurado en el servidor' });
   try {
     const limit = Math.min(400, Math.max(1, Number(req.body?.limit) || 200));
-    const result = await syncRevenue({ stripe, limit });
+    const result = await syncRevenue({ stripe, limit, refundLimit: 150 });
     return res.json({ ok: true, ...result });
   } catch (error) {
     return kpiFailure(res, 'sincronizar con Stripe', error);

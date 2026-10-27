@@ -22,6 +22,8 @@ import adminWeeklyLineup from './routes/adminWeeklyLineup.js';
 import adminPopups from './routes/adminPopups.js';
 import claimLink from './routes/claimLink.js';
 import playerPublicProfile from './routes/playerPublicProfile.js';
+import easypoints from './routes/easypoints.js';
+import publicProfileLink from './routes/publicProfileLink.js';
 import { startRevenueSyncScheduler } from './services/revenueSyncService.js';
 import { getStripe } from './services/stripeClient.js';
 import popups from './routes/popups.js';
@@ -44,6 +46,8 @@ import { startMatchReminderScheduler, startUnclaimedTicketReminderScheduler } fr
 import { startWaitlistScheduler } from './services/waitlistService.js';
 import { startScheduledMatchPublisher } from './services/scheduledMatchService.js';
 import { startNotificationCampaignScheduler } from './services/notificationCampaignService.js';
+import { startRetentionScheduler } from './services/retentionService.js';
+import retention from './routes/retention.js';
 
 const app = express();
 // Detrás de nginx (un salto): sin esto req.ip es la de nginx y todos los usuarios
@@ -167,7 +171,10 @@ app.use('/api/weekly-lineup', weeklyLineup);
 app.use('/api/admin/popups', adminPopups);
 app.use('/api/popups', popups);
 app.use('/', claimLink);
+app.use('/', publicProfileLink);
 app.use('/api/player-profile', playerPublicProfile);
+app.use('/api/easypoints', easypoints);
+app.use('/api', retention);
 
 // estáticos para avatares
 app.use('/uploads', express.static('uploads'));
@@ -187,6 +194,7 @@ app.get('/', (_req, res) => res.send('EasyFutbol Backend up'));
       startPushReceiptScheduler();
       startNotificationCampaignScheduler();
       startWeeklyLineupScheduler();
+      startRetentionScheduler();
     });
   } catch (e) {
     console.error('❌ DB no responde:', e.message);

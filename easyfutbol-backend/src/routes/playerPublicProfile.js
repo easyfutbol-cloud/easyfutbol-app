@@ -13,6 +13,9 @@ import { activePlusSql } from '../services/subscriptionService.js';
 import { requireAuth } from '../middlewares/auth.js';
 import { positiveId } from '../services/socialService.js';
 import { getPlayerReputation, publicReputation } from '../services/playerReputationService.js';
+import { equippedCosmetics } from '../services/engagementRules.js';
+import { getProfileShowcase, getProfileViews, recordProfileView } from '../services/profileShowcaseService.js';
+import { ensureProfileSlug, getProfileStreak, getSeasonStats, getRecentForm, isValidSlug, profileShareUrl } from '../services/profileShareService.js';
 
 const router = Router();
 router.use(requireAuth);
@@ -28,25 +31,6 @@ async function isBlocked(userId, otherId) {
     [userId, otherId, otherId, userId]
   );
   return Boolean(row);
-}
-
-async function getSeasonStats(userId) {
-  const [[row]] = await pool.query(
-    `SELECT COUNT(*) AS matches_played, COALESCE(SUM(goals),0) AS goals, COALESCE(SUM(assists),0) AS assists,
-            COALESCE(SUM(saves),0) AS saves, COALESCE(SUM(is_mvp),0) AS mvp_count,
-            COALESCE(SUM(result='win'),0) AS wins, COALESCE(SUM(result='loss'),0) AS losses, COALESCE(SUM(result='draw'),0) AS draws
-     FROM match_player_stats WHERE user_id=?`,
-    [userId]
-  );
-  const decided = Number(row.wins) + Number(row.losses) + Number(row.draws);
-  return {
-    matches_played: Number(row.matches_played),
-    goals: Number(row.goals),
-    assists: Number(row.assists),
-    saves: Number(row.saves),
-    mvp_count: Number(row.mvp_count),
-    win_rate: decided ? Math.round((Number(row.wins) / decided) * 100) : 0,
-  };
 }
 
 // --- almacenamiento de banners ---
@@ -85,12 +69,17 @@ router.get('/:userId', async (req, res) => {
 
     const [[user]] = await pool.query(
       `SELECT u.id, u.name, u.avatar_url, u.banner_url, u.preferred_location, u.primary_position, u.dominant_foot,
-              ${activePlusSql('u.id')} AS is_plus
+              u.equipped_frame, u.equipped_title, u.public_slug, ${activePlusSql('u.id')} AS is_plus
        FROM users u WHERE u.id=?`,
       [targetId]
     );
     if (!user) return fail(res, 404, 'Usuario no encontrado');
     user.is_plus = Boolean(Number(user.is_plus));
+    user.cosmetics = equippedCosmetics(user.equipped_frame, user.equipped_title);
+    delete user.equipped_frame;
+    delete user.equipped_title;
+    const shareUrl = profileShareUrl(user.public_slug);
+    delete user.public_slug;
 
     await pool.query('INSERT IGNORE INTO user_social_privacy(user_id) VALUES (?)', [targetId]);
     const [[privacy]] = await pool.query(
@@ -101,7 +90,7 @@ router.get('/:userId', async (req, res) => {
     const commentsEnabled = Boolean(Number(privacy?.comments_enabled ?? 1));
 
     const isOwner = req.user.id === targetId;
-    const seasonStats = await getSeasonStats(targetId);
+    const seasonStats = await getSeasonStats(pool, targetId);
     const stats = {};
     for (const key of visibleStats) stats[key] = seasonStats[key];
 
@@ -118,6 +107,18 @@ router.get('/:userId', async (req, res) => {
        WHERE c.profile_user_id=? ORDER BY c.created_at DESC LIMIT 50`,
       [targetId]
     );
+
+    const recentForm = await getRecentForm(pool, targetId, {
+      showGoals: isOwner || visibleStats.includes('goals'),
+      showAssists: isOwner || visibleStats.includes('assists'),
+    });
+    const streak = await getProfileStreak(pool, targetId);
+    const showcase = await getProfileShowcase(pool, targetId, isOwner ? null : visibleStats);
+    if (!isOwner) {
+      // Contar la visita nunca debe impedir ver el perfil.
+      await recordProfileView(pool, targetId, req.user.id).catch((error) => console.error('[profile view]', error?.message || error));
+    }
+    const views = isOwner ? await getProfileViews(pool, targetId) : undefined;
 
     let myMatchesPlayed = seasonStats.matches_played;
     if (!isOwner) {
@@ -137,6 +138,11 @@ router.get('/:userId', async (req, res) => {
       can_comment: !isOwner && commentsEnabled && myMatchesPlayed >= MIN_MATCHES_TO_COMMENT,
       min_matches_to_comment: MIN_MATCHES_TO_COMMENT,
       reputation: publicReputation(await getPlayerReputation(pool, targetId)),
+      streak,
+      recent_form: recentForm,
+      share_url: shareUrl,
+      showcase,
+      views,
       photos: photos.map((p) => ({
         id: p.id,
         image_url: p.image_url,
@@ -156,6 +162,41 @@ router.get('/:userId', async (req, res) => {
   } catch (error) {
     console.error('[GET /player-profile/:userId]', error);
     fail(res, 500, 'No se pudo cargar el perfil');
+  }
+});
+
+/** GET /api/player-profile/me/share — enlace público de mi perfil (lo crea si hace falta) */
+router.get('/me/share', async (req, res) => {
+  try {
+    const slug = await ensureProfileSlug(pool, req.user.id);
+    res.json({ ok: true, slug, url: profileShareUrl(slug) });
+  } catch (error) {
+    console.error('[GET /player-profile/me/share]', error);
+    fail(res, 500, 'No se pudo crear el enlace');
+  }
+});
+
+/** GET /api/player-profile/me/views — visitas de mi perfil (solo el número) */
+router.get('/me/views', async (req, res) => {
+  try {
+    res.json({ ok: true, views: await getProfileViews(pool, req.user.id) });
+  } catch (error) {
+    console.error('[GET /player-profile/me/views]', error);
+    fail(res, 500, 'No se pudieron cargar las visitas');
+  }
+});
+
+/** GET /api/player-profile/by-slug/:slug — para abrir en la app un enlace /jugador/<slug> */
+router.get('/by-slug/:slug', async (req, res) => {
+  try {
+    if (!isValidSlug(req.params.slug)) return fail(res, 404, 'Perfil no encontrado');
+    const [[row]] = await pool.query('SELECT id FROM users WHERE public_slug = ?', [req.params.slug]);
+    if (!row) return fail(res, 404, 'Perfil no encontrado');
+    if (await isBlocked(req.user.id, row.id)) return fail(res, 403, 'Este perfil no está disponible');
+    res.json({ ok: true, user_id: row.id });
+  } catch (error) {
+    console.error('[GET /player-profile/by-slug/:slug]', error);
+    fail(res, 500, 'No se pudo abrir el perfil');
   }
 });
 

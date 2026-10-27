@@ -5,6 +5,7 @@ import express from 'express';
 import { pool } from '../config/db.js';
 import { requireAuth, requireAdmin } from '../middlewares/auth.js';
 import { applyEventStatDelta, setMvp, clearMvp, applyMatchResult, notifyMatchResultToPlayers } from '../services/matchLiveStatsService.js';
+import { syncEngagementAfterMatch } from '../services/engagementService.js';
 
 const router = express.Router({ mergeParams: true });
 
@@ -302,6 +303,13 @@ router.post('/result', requireAuth, requireAdmin, async (req, res) => {
       notified = (await notifyMatchResultToPlayers(matchId)).sent;
     } catch (notifyError) {
       console.error('[POST /admin/matches/:matchId/events/result] aviso', notifyError?.message || notifyError);
+    }
+
+    // Retos y racha: mismo criterio, el acta ya está guardada pase lo que pase.
+    try {
+      await syncEngagementAfterMatch(matchId);
+    } catch (engagementError) {
+      console.error('[POST /admin/matches/:matchId/events/result] retos', engagementError?.message || engagementError);
     }
 
     res.json({ ok: true, msg: `Resultado aplicado a ${updated} jugador(es)`, notified });

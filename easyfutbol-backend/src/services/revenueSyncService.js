@@ -192,15 +192,65 @@ async function syncSubscriptionInvoices({ db, stripe, log }) {
 }
 
 /**
+ * Vuelve a leer de Stripe las compras recientes ya guardadas para recoger reembolsos
+ * hechos después de la primera lectura. Solo actualiza `refunded_cents`.
+ */
+export async function refreshRecentRefunds({ db = pool, stripe, days = 60, limit = 300, log = console } = {}) {
+  const result = { checked: 0, updated: 0, failed: 0 };
+  const [events] = await db.query(
+    `SELECT id, stripe_ref, paid_cents, refunded_cents
+     FROM revenue_events
+     WHERE kind = 'easypass_pack' AND status = 'paid' AND paid_at >= DATE_SUB(UTC_TIMESTAMP(), INTERVAL ? DAY)
+     ORDER BY paid_at DESC
+     LIMIT ?`,
+    [Number(days), Number(limit)]
+  );
+  for (const event of events) {
+    result.checked += 1;
+    try {
+      const session = await stripe.checkout.sessions.retrieve(event.stripe_ref, { expand: ['payment_intent.latest_charge'] });
+      const refunded = mapCheckoutSession(session).refunded_cents;
+      if (refunded !== Number(event.refunded_cents)) {
+        await db.query('UPDATE revenue_events SET refunded_cents = ? WHERE id = ?', [refunded, event.id]);
+        result.updated += 1;
+      }
+    } catch (error) {
+      if (!isMissing(error)) {
+        result.failed += 1;
+        log.error?.('[REVENUE SYNC] No se pudo refrescar', event.stripe_ref, error?.message || error);
+      }
+    }
+  }
+  return result;
+}
+
+let lastSync = null;
+
+/** Última sincronización ejecutada desde que arrancó el servidor (manual o automática). */
+export function getRevenueSyncStatus() {
+  return lastSync;
+}
+
+/**
  * Ejecuta una sincronización. `limit` acota las compras de packs por pasada
  * (cada una es una llamada a Stripe); si quedan más, `remaining` lo indica.
  */
-export async function syncRevenue({ db = pool, stripe, limit = 200, includeSubscriptions = true, log = console } = {}) {
+export async function syncRevenue({ db = pool, stripe, limit = 200, refundLimit = 300, includeSubscriptions = true, log = console } = {}) {
   if (!stripe) throw new Error('Stripe no está configurado');
   const packs = await syncPackPurchases({ db, stripe, limit, log });
   const subscriptions = includeSubscriptions ? await syncSubscriptionInvoices({ db, stripe, log }) : null;
+  const refunds = await refreshRecentRefunds({ db, stripe, limit: refundLimit, log });
   clearKpiCache();
-  return { packs, subscriptions, remaining: await countUnsyncedPurchases(db) };
+  const remaining = await countUnsyncedPurchases(db);
+  lastSync = {
+    at: new Date().toISOString(),
+    packs_inserted: packs.inserted,
+    subscriptions_inserted: subscriptions?.inserted ?? 0,
+    refunds_updated: refunds.updated,
+    failed: packs.failed + (subscriptions?.failed ?? 0) + refunds.failed,
+    remaining,
+  };
+  return { packs, subscriptions, refunds, remaining };
 }
 
 // ---------- ejecución automática ----------
@@ -223,7 +273,7 @@ export function startRevenueSyncScheduler({ stripe, intervalHours = 6, log = con
     try {
       const result = await syncRevenue({ stripe, limit: 300, log });
       markSchedulerSuccess('revenue-sync');
-      if (result.packs.checked || result.subscriptions?.inserted) log.log?.('[REVENUE SYNC]', JSON.stringify(result));
+      if (result.packs.checked || result.subscriptions?.inserted || result.refunds?.updated) log.log?.('[REVENUE SYNC]', JSON.stringify(result));
     } catch (error) {
       markSchedulerFailure('revenue-sync', error);
       log.error?.('[REVENUE SYNC]', error?.message || error);
