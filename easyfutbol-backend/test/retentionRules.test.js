@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  buildFriendJoinedMessage,
   buildIdleBalanceMessage,
   buildReactivationMessage,
   buildRepeatSuffix,
@@ -79,6 +80,10 @@ test('los textos incluyen plazas, campo y saldo cuando los hay', () => {
   );
   assert.equal(buildReactivationMessage(30, { ...match, field_name: null, spots_left: 0 }, { now }).body,
     'Hace un mes que no te vemos por aquí. Hay partido el jueves a las 21:00.');
+  assert.deepEqual(buildFriendJoinedMessage('Pablo García', match, now), {
+    title: 'Pablo se ha apuntado',
+    body: 'Juega el jueves a las 21:00 en Ribera de Castilla. Quedan 5 plazas. ¿Te vienes?',
+  });
   assert.equal(buildIdleBalanceMessage(1, null).title, 'Tienes 1 EasyPass sin usar');
   assert.match(buildIdleBalanceMessage(3, match, now).body, /El próximo partido es el jueves a las 21:00 en Ribera de Castilla\.$/);
 });

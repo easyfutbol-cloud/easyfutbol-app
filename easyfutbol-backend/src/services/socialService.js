@@ -53,6 +53,7 @@ export async function createSocialNotification(db, {
     easypass_gift:'easypass_enabled', news:'news_enabled',
     post_match_summary:'match_updates_enabled', unclaimed_tickets:'match_reminders_enabled', easypoints_reward:'match_updates_enabled',
     slot_alert:'match_updates_enabled', reactivation:'news_enabled', idle_balance:'easypass_enabled',
+    friend_joined:'social_enabled',
   }[type];
   if (preferenceColumn) {
     if (!await isNotificationPushEnabled(db,userId,preferenceColumn)) return true;

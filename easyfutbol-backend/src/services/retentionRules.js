@@ -130,6 +130,14 @@ export function buildReactivationMessage(stage, match, { balance = 0, now = new 
   };
 }
 
+export function buildFriendJoinedMessage(friendName, match, now = new Date()) {
+  const name = String(friendName || 'Un amigo').split(' ')[0];
+  return {
+    title: `${name} se ha apuntado`,
+    body: `Juega ${formatMatchWhen(match.starts_at, now)}${placeLabel(match)}. ${spotsLabel(match.spots_left)} ¿Te vienes?`.replace(/\s+/g, ' ').trim(),
+  };
+}
+
 export function buildIdleBalanceMessage(balance, match, now = new Date()) {
   const amount = balance === 1 ? '1 EasyPass' : `${balance} EasyPass`;
   const next = match ? ` El próximo partido es ${formatMatchWhen(match.starts_at, now)}${placeLabel(match)}.` : '';

@@ -6,6 +6,7 @@ import Stripe from 'stripe';
 import { sendPushNotification } from '../services/pushService.js';
 import { processWaitlistForMatch } from '../services/waitlistService.js';
 import { findNextSimilarMatch } from '../services/retentionService.js';
+import { getTeammateSuggestions } from '../services/teammateService.js';
 import { addPlusFairPlayWarning, getPlusFairPlayStatus } from '../services/plusFairPlayService.js';
 import { activePlusSql } from '../services/subscriptionService.js';
 import {
@@ -180,6 +181,10 @@ router.get('/matches/:id/post-match', requireAuth, async (req, res) => {
       console.error('[POST MATCH NEXT]', error?.message || error);
       return null;
     });
+    const suggestedFriends = await getTeammateSuggestions(pool, { matchId, userId: req.user.id }).catch((error) => {
+      console.error('[POST MATCH TEAMMATES]', error?.message || error);
+      return [];
+    });
     const [[feedbackRow]] = await pool.query(
       'SELECT 1 AS found FROM match_feedback WHERE match_id=? AND user_id=? LIMIT 1',
       [matchId, req.user.id]
@@ -191,6 +196,7 @@ router.get('/matches/:id/post-match', requireAuth, async (req, res) => {
         match, score, mvp, personal, teams: { white, black, pending },
         next_match: nextMatch,
         feedback_pending: !feedbackRow,
+        suggested_friends: suggestedFriends,
       },
     });
   } catch (error) {

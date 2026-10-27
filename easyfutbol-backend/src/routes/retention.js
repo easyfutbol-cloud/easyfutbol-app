@@ -162,7 +162,7 @@ router.get('/admin/retention', requireAuth, requireAdmin, async (req, res) => {
     const [nudges] = await pool.query(
       `SELECT sn.type, COUNT(*) AS sent,
               SUM(CASE
-                WHEN sn.type = 'slot_alert' THEN EXISTS (
+                WHEN sn.type IN ('slot_alert','friend_joined') THEN EXISTS (
                   SELECT 1 FROM inscriptions i WHERE i.match_id = sn.entity_id AND i.status IN ('confirmed','paid','active')
                     AND COALESCE(i.assigned_user_id, i.user_id) = sn.user_id AND i.created_at >= sn.created_at)
                 WHEN sn.type = 'idle_balance' THEN EXISTS (
@@ -174,8 +174,27 @@ router.get('/admin/retention', requireAuth, requireAdmin, async (req, res) => {
                     AND i.created_at >= sn.created_at AND i.created_at <= DATE_ADD(sn.created_at, INTERVAL 7 DAY))
               END) AS converted
        FROM social_notifications sn
-       WHERE sn.type IN ('slot_alert','reactivation','idle_balance') AND sn.created_at >= ?
+       WHERE sn.type IN ('slot_alert','reactivation','idle_balance','friend_joined') AND sn.created_at >= ?
        GROUP BY sn.type`,
+      [since]
+    );
+    // ¿Repiten más los que tienen amigos? Jugadores del periodo según sus amigos.
+    const [byFriends] = await pool.query(
+      `SELECT CASE WHEN x.friends = 0 THEN '0 amigos' WHEN x.friends < 3 THEN '1-2 amigos' ELSE '3+ amigos' END AS bucket,
+              COUNT(*) AS players, SUM(x.matches >= 2) AS repeaters, AVG(x.matches) AS matches_avg
+       FROM (
+         SELECT p.user_id, COUNT(DISTINCT p.match_id) AS matches,
+                (SELECT COUNT(*) FROM friendships f WHERE f.status = 'accepted'
+                   AND (f.requester_id = p.user_id OR f.addressee_id = p.user_id)) AS friends
+         FROM (
+           SELECT DISTINCT COALESCE(i.assigned_user_id, i.user_id) AS user_id, m.id AS match_id
+           FROM inscriptions i JOIN matches m ON m.id = i.match_id
+           WHERE ${ACTIVE_INSCRIPTION} AND m.status <> 'cancelled' AND m.starts_at >= ? AND m.starts_at <= NOW()
+         ) p
+         GROUP BY p.user_id
+       ) x
+       GROUP BY bucket
+       ORDER BY FIELD(bucket, '0 amigos', '1-2 amigos', '3+ amigos')`,
       [since]
     );
     // Repetir: jugadores que se apuntan a otro partido en las 24 h tras terminar uno.
@@ -196,7 +215,7 @@ router.get('/admin/retention', requireAuth, requireAdmin, async (req, res) => {
       [since]
     );
 
-    const nudgeLabels = { slot_alert: 'Alerta de hueco', reactivation: 'Reactivación', idle_balance: 'Saldo sin usar' };
+    const nudgeLabels = { slot_alert: 'Alerta de hueco', reactivation: 'Reactivación', idle_balance: 'Saldo sin usar', friend_joined: 'Amigo apuntado' };
     return res.json({
       ok: true,
       days,
@@ -224,7 +243,13 @@ router.get('/admin/retention', requireAuth, requireAdmin, async (req, res) => {
         })),
         comments,
       },
-      nudges: ['slot_alert', 'reactivation', 'idle_balance'].map((type) => {
+      social: byFriends.map((row) => ({
+        bucket: row.bucket,
+        players: Number(row.players),
+        repeat_rate: pct(row.repeaters, row.players),
+        matches_avg: avg(row.matches_avg),
+      })),
+      nudges: ['slot_alert', 'reactivation', 'idle_balance', 'friend_joined'].map((type) => {
         const row = nudges.find((item) => item.type === type) || { sent: 0, converted: 0 };
         return { type, label: nudgeLabels[type], sent: Number(row.sent || 0), conversion_rate: pct(row.converted, row.sent) };
       }),

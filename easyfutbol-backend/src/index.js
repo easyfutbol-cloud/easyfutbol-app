@@ -47,6 +47,7 @@ import { startWaitlistScheduler } from './services/waitlistService.js';
 import { startScheduledMatchPublisher } from './services/scheduledMatchService.js';
 import { startNotificationCampaignScheduler } from './services/notificationCampaignService.js';
 import { startRetentionScheduler } from './services/retentionService.js';
+import { startFriendJoinedScheduler } from './services/teammateService.js';
 import retention from './routes/retention.js';
 
 const app = express();
@@ -195,6 +196,7 @@ app.get('/', (_req, res) => res.send('EasyFutbol Backend up'));
       startNotificationCampaignScheduler();
       startWeeklyLineupScheduler();
       startRetentionScheduler();
+      startFriendJoinedScheduler();
     });
   } catch (e) {
     console.error('❌ DB no responde:', e.message);
