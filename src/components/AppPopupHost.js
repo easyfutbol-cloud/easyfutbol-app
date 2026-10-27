@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { View, Text, Image, StyleSheet, Modal, TouchableOpacity, Linking } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { api } from '../api/client';
@@ -55,11 +55,14 @@ export function AppPopupCard({ popup, onPrimary, onClose }) {
 // WhatsApp) pasen primero, para no abrir dos modales a la vez.
 export default function AppPopupHost({ navigation, enabled }) {
   const [popup, setPopup] = useState(null);
-  const [checked, setChecked] = useState(false);
+  // Ref y no estado: con estado, el re-render de setChecked ejecutaba la
+  // limpieza del efecto (cancelled = true) antes de que llegase la respuesta
+  // y el popup se descartaba siempre.
+  const checkedRef = useRef(false);
 
   useEffect(() => {
-    if (!enabled || checked) return;
-    setChecked(true);
+    if (!enabled || checkedRef.current) return undefined;
+    checkedRef.current = true;
     let cancelled = false;
     api.get('/popups/active')
       .then((res) => {
@@ -71,7 +74,7 @@ export default function AppPopupHost({ navigation, enabled }) {
       })
       .catch(() => {});
     return () => { cancelled = true; };
-  }, [enabled, checked]);
+  }, [enabled]);
 
   const close = useCallback(() => setPopup(null), []);
 
