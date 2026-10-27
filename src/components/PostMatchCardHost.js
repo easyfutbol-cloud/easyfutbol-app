@@ -4,6 +4,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { api } from '../api/client';
 import PlayerStatsShareModal from './PlayerStatsShareCard';
 import RepeatMatchCard from './retention/RepeatMatchCard';
+import { MIN_MATCHES_FOR_REVIEW, maybeAskForReview } from '../utils/storeReview';
 
 // Solo saltan solas las tarjetas de partidos recientes: un acta publicada
 // semanas después no debería interrumpir al abrir la app.
@@ -45,8 +46,10 @@ export default function PostMatchCardHost({ enabled, onSettled, navigation }) {
     let found = false;
     try {
       if (!(await AsyncStorage.getItem('user'))) return;
-      const history = await api.get('/stats/me/history', { params: { limit: 1 } });
-      const last = history.data?.data?.[0];
+      // Pedimos unos pocos para saber también si ya lleva partidos suficientes para pedir valoración.
+      const history = await api.get('/stats/me/history', { params: { limit: MIN_MATCHES_FOR_REVIEW } });
+      const recent = history.data?.data || [];
+      const last = recent[0];
       if (!last?.match_id) return;
       const startsAt = new Date(last.starts_at).getTime();
       if (!Number.isFinite(startsAt) || Date.now() - startsAt > MAX_AGE_MS) return;
@@ -57,7 +60,7 @@ export default function PostMatchCardHost({ enabled, onSettled, navigation }) {
       if (!data?.personal) return;
       await markPostMatchCardSeen(last.match_id);
       found = true;
-      setCard({ match: data.match, personal: data.personal, nextMatch: data.next_match || null });
+      setCard({ match: data.match, personal: data.personal, nextMatch: data.next_match || null, matchesPlayed: recent.length });
     } catch {
       // Sin red o sin acta: ya saldrá en la siguiente apertura.
     } finally {
@@ -75,15 +78,23 @@ export default function PostMatchCardHost({ enabled, onSettled, navigation }) {
     return () => sub.remove();
   }, [enabled, check]);
 
-  const close = useCallback(() => {
+  const dismiss = useCallback(() => {
     setCard(null);
     settle();
   }, [settle]);
 
+  const close = useCallback(() => {
+    const closing = card;
+    dismiss();
+    // Tras cerrar la tarjeta, y con margen para que termine la animación del modal.
+    if (closing) setTimeout(() => maybeAskForReview(closing), 600);
+  }, [card, dismiss]);
+
+  // Si se apunta al partido de la semana que viene no le interrumpimos con la valoración.
   const repeat = useCallback((next) => {
-    close();
+    dismiss();
     navigation?.navigate('Match', { matchId: Number(next.id) });
-  }, [close, navigation]);
+  }, [dismiss, navigation]);
 
   if (!card) return null;
   const { match, personal, nextMatch } = card;

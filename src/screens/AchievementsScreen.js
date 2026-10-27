@@ -99,7 +99,6 @@ function AchievementCard({ item }) {
 export default function AchievementsScreen() {
   const [loading, setLoading] = useState(true);
   const [points, setPoints] = useState(0);
-  const [pointsToNextEasyPass, setPointsToNextEasyPass] = useState(500);
   const [achievements, setAchievements] = useState([]);
   const [specialAwards, setSpecialAwards] = useState([]);
   const [error, setError] = useState('');
@@ -115,7 +114,6 @@ export default function AchievementsScreen() {
         setAchievements([]);
         setSpecialAwards([]);
         setPoints(0);
-        setPointsToNextEasyPass(500);
         setError('No se ha encontrado tu sesión.');
         return;
       }
@@ -135,7 +133,6 @@ export default function AchievementsScreen() {
       }
 
       setPoints(Number(data?.points || 0));
-      setPointsToNextEasyPass(Number(data?.points_to_next_easypass ?? 500));
       setAchievements(Array.isArray(data?.achievements) ? data.achievements : []);
       setSpecialAwards(Array.isArray(data?.specialAwards) ? data.specialAwards : []);
     } catch (err) {
@@ -144,7 +141,6 @@ export default function AchievementsScreen() {
       setAchievements([]);
       setSpecialAwards([]);
       setPoints(0);
-      setPointsToNextEasyPass(500);
     } finally {
       setLoading(false);
     }
@@ -195,12 +191,7 @@ export default function AchievementsScreen() {
           ) : (
             <Text style={styles.pointsValue}>{points}</Text>
           )}
-          <Text style={styles.pointsHint}>Cada 500 puntos podrás canjear 1 EasyPass.</Text>
-          {!loading && (
-            <Text style={styles.pointsSubHint}>
-              Te faltan {pointsToNextEasyPass} puntos para el siguiente EasyPass.
-            </Text>
-          )}
+          <Text style={styles.pointsHint}>Suma puntos desbloqueando logros en tus partidos.</Text>
         </View>
 
         <View style={styles.summaryCard}>
@@ -297,12 +288,6 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 13,
     lineHeight: 20,
-  },
-  pointsSubHint: {
-    color: '#ffd7c2',
-    fontSize: 12,
-    lineHeight: 18,
-    marginTop: 8,
   },
   loader: {
     marginVertical: 12,

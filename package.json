@@ -33,6 +33,7 @@
     "expo-sharing": "~57.0.19",
     "expo-splash-screen": "~57.0.9",
     "expo-status-bar": "~57.0.1",
+    "expo-store-review": "~57.0.3",
     "expo-updates": "~57.0.22",
     "expo-web-browser": "~57.0.3",
     "google-auth-library": "^10.5.0",
