@@ -50,6 +50,7 @@ const migrationOrder = [
   '20261030_retention.sql',
   '20261031_friend_joined.sql',
   '20261101_match_organizers.sql',
+  '20261102_referral_reward_transaction_type.sql',
 ];
 
 const currentFile = fileURLToPath(import.meta.url);
