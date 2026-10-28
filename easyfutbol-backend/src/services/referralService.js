@@ -2,7 +2,8 @@ export function buildReferralCode(userId) {
   return `EF${Number(userId).toString(36).toUpperCase().padStart(6, '0')}`;
 }
 
-export async function qualifyReferralFromPurchase(conn, { referredUserId, paymentReference }) {
+// locationId: sede del pack que valida el referido; la recompensa se abona ahí.
+export async function qualifyReferralFromPurchase(conn, { referredUserId, paymentReference, locationId }) {
   const [[referral]] = await conn.query(
     `SELECT id, referrer_user_id
      FROM user_referrals
@@ -40,6 +41,14 @@ export async function qualifyReferralFromPurchase(conn, { referredUserId, paymen
     'UPDATE users SET easypass_balance=COALESCE(easypass_balance,0)+1 WHERE id=?',
     [referral.referrer_user_id]
   );
+  if (locationId) {
+    await conn.query(
+      `INSERT INTO user_easypass_balances (user_id, location_id, balance)
+       VALUES (?, ?, 1)
+       ON DUPLICATE KEY UPDATE balance = balance + 1`,
+      [referral.referrer_user_id, locationId]
+    );
+  }
   await conn.query(
     `INSERT INTO easypass_transactions
        (user_id, type, amount, description, payment_reference, created_at)

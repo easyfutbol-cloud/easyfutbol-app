@@ -381,6 +381,7 @@ webhookRouter.post('/webhook', express.raw({ type: 'application/json' }), async 
     const referralResult = await qualifyReferralFromPurchase(conn, {
       referredUserId: userId,
       paymentReference: session.id,
+      locationId,
     });
     if (referralResult.qualified) {
       console.log(`✅ Referido validado (usuario:${userId}, total:${referralResult.qualifiedTotal})`);
