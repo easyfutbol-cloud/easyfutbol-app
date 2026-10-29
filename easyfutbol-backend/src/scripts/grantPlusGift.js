@@ -1,15 +1,20 @@
 // Regala EasyFutbol Plus a una lista de usuarios: empieza hoy y termina el mismo día
-// del mes siguiente a las 23:59:59 (hora de Madrid). No pasa por Stripe ni da EasyPass.
+// del mes siguiente a las 23:59:59 (hora de Madrid). No pasa por Stripe.
+// Con --location (slug de la sede) el Plus queda asociado a esa sede, y con --easypass=N
+// se ingresan N EasyPass en el saldo de esa sede, como el EasyPass mensual del Plus de pago.
 // Es idempotente por referencia: repetirlo con el mismo --ref no duplica nada.
 //
 //   npm run plus:gift -- --users=39,904,37 --ref=gift:2026-10-13 --dry-run
-//   npm run plus:gift -- --users=39,904,37 --ref=gift:2026-10-13
+//   npm run plus:gift -- --users=39,904,37 --ref=gift:2026-10-29 --location=asturias --easypass=1
 import 'dotenv/config';
 import { pool } from '../config/db.js';
+import { grantSubscriptionEasyPass } from '../services/subscriptionGrantService.js';
 
 const arg = (name) => process.argv.find((a) => a.startsWith(`--${name}=`))?.split('=').slice(1).join('=');
 const dryRun = process.argv.includes('--dry-run');
 const reference = arg('ref');
+const locationSlug = arg('location') || null;
+const easyPassAmount = Number(arg('easypass') || 0);
 const userIds = [...new Set(String(arg('users') || '').split(',').map((v) => Number(v.trim())).filter((v) => Number.isInteger(v) && v > 0))];
 
 const TZ = 'Europe/Madrid';
@@ -35,8 +40,9 @@ function giftPeriod(now = new Date()) {
   return { start, end };
 }
 
-if (!userIds.length || !reference) {
-  console.error('Uso: npm run plus:gift -- --users=1,2,3 --ref=gift:AAAA-MM-DD [--dry-run]');
+if (!userIds.length || !reference || !Number.isInteger(easyPassAmount) || easyPassAmount < 0 || (easyPassAmount > 0 && !locationSlug)) {
+  console.error('Uso: npm run plus:gift -- --users=1,2,3 --ref=gift:AAAA-MM-DD [--location=asturias] [--easypass=1] [--dry-run]');
+  console.error('--easypass necesita --location: el EasyPass se ingresa en el saldo de esa sede.');
   process.exit(1);
 }
 
@@ -44,7 +50,12 @@ const conn = await pool.getConnection();
 try {
   const { start, end } = giftPeriod();
   const fmt = (d) => d.toLocaleString('es-ES', { timeZone: TZ });
-  console.log(`Periodo: ${fmt(start)} → ${fmt(end)} (Madrid) · ref ${reference}${dryRun ? ' · DRY RUN' : ''}`);
+  let location = null;
+  if (locationSlug) {
+    [[location]] = await conn.query('SELECT id, name FROM locations WHERE slug=? AND active=1 LIMIT 1', [locationSlug]);
+    if (!location) throw new Error(`No existe una sede activa con slug "${locationSlug}"`);
+  }
+  console.log(`Periodo: ${fmt(start)} → ${fmt(end)} (Madrid) · ref ${reference}${location ? ` · sede ${location.name}` : ''}${easyPassAmount ? ` · ${easyPassAmount} EasyPass` : ''}${dryRun ? ' · DRY RUN' : ''}`);
 
   const [[plan]] = await conn.query("SELECT id FROM subscription_plans WHERE code='plus' LIMIT 1");
   if (!plan) throw new Error('No existe el plan plus en subscription_plans');
@@ -76,9 +87,9 @@ try {
     if (!dryRun) {
       await conn.query(
         `INSERT INTO user_subscriptions
-           (user_id, plan_id, stripe_customer_id, stripe_subscription_id, status, current_period_start, current_period_end, cancel_at_period_end, started_at)
-         VALUES (?, ?, NULL, NULL, 'active', ?, ?, 1, ?)`,
-        [userId, plan.id, start, end, start]
+           (user_id, plan_id, location_id, stripe_customer_id, stripe_subscription_id, status, current_period_start, current_period_end, cancel_at_period_end, started_at)
+         VALUES (?, ?, ?, NULL, NULL, 'active', ?, ?, 1, ?)`,
+        [userId, plan.id, location?.id ?? null, start, end, start]
       );
       // user_plus_subscriptions tiene una fila por usuario: se conserva su stripe_customer_id si lo tenía.
       await conn.query(
@@ -98,6 +109,9 @@ try {
          ON DUPLICATE KEY UPDATE source_reference=VALUES(source_reference), starts_at=VALUES(starts_at), ends_at=VALUES(ends_at), revoked_at=NULL`,
         [userId, reference, start, end]
       );
+      if (easyPassAmount) {
+        await grantSubscriptionEasyPass(conn, { userId, planCode: 'plus', amount: easyPassAmount, reference: `${reference}:${userId}`, locationId: location.id });
+      }
     }
     summary.granted.push({ userId, name: user.name });
   }
