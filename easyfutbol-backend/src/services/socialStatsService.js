@@ -96,3 +96,35 @@ export async function getFrequentPlayers(db,userId,limit=20) {
   );
   return rows.map((row)=>({...row,matches_together:Number(row.matches_together)}));
 }
+
+/**
+ * "Quizá conozcas": jugadores con los que has coincidido en partidos y amigos
+ * de tus amigos. Fuera quien ya tiene cualquier relación contigo (amigos,
+ * solicitud pendiente, rechazada o borrada) y los bloqueos en cualquier sentido.
+ */
+export async function getFriendSuggestions(db,userId,limit=20) {
+  const [rows]=await db.query(
+    `SELECT u.id,u.name,u.avatar_url,u.preferred_location,${activePlusSql('u.id')} AS is_plus,
+       COALESCE(t.matches_together,0) AS matches_together,COALESCE(fof.mutual_friends,0) AS mutual_friends
+     FROM users u
+     LEFT JOIN (
+       SELECT b.user_id,COUNT(DISTINCT b.match_id) AS matches_together
+       FROM match_player_stats a JOIN match_player_stats b ON b.match_id=a.match_id AND b.user_id<>a.user_id
+       JOIN matches m ON m.id=a.match_id
+       WHERE a.user_id=? AND m.starts_at<NOW() GROUP BY b.user_id
+     ) t ON t.user_id=u.id
+     LEFT JOIN (
+       SELECT IF(f2.requester_id=myf.friend_id,f2.addressee_id,f2.requester_id) AS user_id,COUNT(DISTINCT myf.friend_id) AS mutual_friends
+       FROM (SELECT IF(requester_id=?,addressee_id,requester_id) AS friend_id FROM friendships
+             WHERE status='accepted' AND (requester_id=? OR addressee_id=?)) myf
+       JOIN friendships f2 ON f2.status='accepted' AND (f2.requester_id=myf.friend_id OR f2.addressee_id=myf.friend_id)
+       GROUP BY IF(f2.requester_id=myf.friend_id,f2.addressee_id,f2.requester_id)
+     ) fof ON fof.user_id=u.id
+     WHERE u.id<>? AND (t.user_id IS NOT NULL OR fof.user_id IS NOT NULL)
+       AND NOT EXISTS(SELECT 1 FROM friendships f WHERE f.user_low_id=LEAST(?,u.id) AND f.user_high_id=GREATEST(?,u.id))
+       AND NOT EXISTS(SELECT 1 FROM user_blocks ub WHERE (ub.blocker_id=? AND ub.blocked_id=u.id) OR (ub.blocker_id=u.id AND ub.blocked_id=?))
+     ORDER BY COALESCE(t.matches_together,0)*3+COALESCE(fof.mutual_friends,0)*2 DESC,u.name ASC LIMIT ?`,
+    [userId,userId,userId,userId,userId,userId,userId,userId,userId,limit]
+  );
+  return rows.map((row)=>({...row,is_plus:Boolean(Number(row.is_plus)),matches_together:Number(row.matches_together),mutual_friends:Number(row.mutual_friends)}));
+}

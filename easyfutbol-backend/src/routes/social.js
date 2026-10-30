@@ -2,7 +2,9 @@ import { Router } from 'express';
 import { pool } from '../config/db.js';
 import { requireAuth, requireAdmin } from '../middlewares/auth.js';
 import { areFriends, createSocialNotification, expireMatchInvitations, getFriendshipStatus, positiveId } from '../services/socialService.js';
-import { getBestTeammates, getFrequentPlayers, getPairStats } from '../services/socialStatsService.js';
+import { getBestTeammates, getFrequentPlayers, getFriendSuggestions, getPairStats } from '../services/socialStatsService.js';
+import { createFriendQrToken, verifyFriendQrToken } from '../services/friendQrService.js';
+import { ensureProfileSlug, isValidSlug, profileShareUrl } from '../services/profileShareService.js';
 import { activePlusSql } from '../services/subscriptionService.js';
 import { getPlayerReputation, publicReputation } from '../services/playerReputationService.js';
 
@@ -259,6 +261,66 @@ router.get('/best-teammates', async (req,res) => {
 router.get('/frequent-players', async (req,res) => {
   try { res.json({ok:true,items:await getFrequentPlayers(pool,req.user.id,Math.min(Number(req.query.limit)||20,50))}); }
   catch(error) { console.error('[SOCIAL frequent]',error); fail(res,500,'No se pudieron cargar jugadores frecuentes'); }
+});
+router.get('/suggestions', async (req,res) => {
+  try { res.json({ok:true,items:await getFriendSuggestions(pool,req.user.id,Math.min(Number(req.query.limit)||20,50))}); }
+  catch(error) { console.error('[SOCIAL suggestions]',error); fail(res,500,'No se pudieron cargar las sugerencias'); }
+});
+
+// Relación con varios jugadores a la vez (lista de apuntados de un partido).
+router.get('/statuses', async (req,res) => {
+  try {
+    const ids=[...new Set(String(req.query.ids||'').split(',').map(positiveId).filter(Boolean))].filter(id=>id!==Number(req.user.id)).slice(0,60);
+    if (!ids.length) return res.json({ok:true,statuses:{}});
+    const userId=req.user.id;
+    const [rows]=await pool.query(
+      `SELECT u.id,
+         CASE WHEN EXISTS(SELECT 1 FROM user_blocks b WHERE (b.blocker_id=? AND b.blocked_id=u.id) OR (b.blocker_id=u.id AND b.blocked_id=?)) THEN 'unavailable'
+              WHEN f.status='accepted' THEN 'friends' WHEN f.status='pending' AND f.requester_id=? THEN 'sent'
+              WHEN f.status='pending' THEN 'received' ELSE 'none' END AS status
+       FROM users u LEFT JOIN friendships f ON f.user_low_id=LEAST(?,u.id) AND f.user_high_id=GREATEST(?,u.id)
+       WHERE u.id IN (?)`,
+      [userId,userId,userId,userId,userId,ids]
+    );
+    res.json({ok:true,statuses:Object.fromEntries(rows.map(row=>[row.id,row.status]))});
+  } catch(error) { console.error('[SOCIAL statuses]',error); fail(res,500,'No se pudo consultar la relación'); }
+});
+
+// Mi QR para añadir amigos en persona: enlace del perfil + token de 15 min.
+router.get('/qr', async (req,res) => {
+  try {
+    const slug=await ensureProfileSlug(pool,req.user.id);
+    const {token,expires_at}=createFriendQrToken(req.user.id);
+    res.json({ok:true,url:`${profileShareUrl(slug)}?qr=${token}`,expires_at});
+  } catch(error) { console.error('[SOCIAL qr]',error); fail(res,500,'No se pudo crear tu QR'); }
+});
+
+// Escanear el QR de otro jugador: amistad al momento, sin solicitud.
+router.post('/qr/connect', async (req,res) => {
+  const slug=String(req.body?.slug||''),token=String(req.body?.token||'');
+  if (!isValidSlug(slug)) return fail(res,400,'Este QR no es de EasyFutbol');
+  const conn=await pool.getConnection();
+  try {
+    await conn.beginTransaction();
+    const [[owner]]=await conn.query('SELECT id,name FROM users WHERE public_slug=? LIMIT 1',[slug]);
+    if (!owner) { await conn.rollback(); return fail(res,404,'Jugador no encontrado'); }
+    if (owner.id===Number(req.user.id)) { await conn.rollback(); return fail(res,400,'Este es tu propio QR'); }
+    const check=verifyFriendQrToken(owner.id,token);
+    if (check!=='ok') { await conn.rollback(); return fail(res,410,check==='expired'?'Este QR ha caducado. Pide que lo abra de nuevo.':'Este QR no es válido'); }
+    if (await isBlocked(conn,req.user.id,owner.id)) { await conn.rollback(); return fail(res,403,'No puedes añadir a este jugador'); }
+    const [[existing]]=await conn.query('SELECT * FROM friendships WHERE user_low_id=LEAST(?,?) AND user_high_id=GREATEST(?,?) FOR UPDATE',[req.user.id,owner.id,req.user.id,owner.id]);
+    if (existing?.status==='accepted') { await conn.rollback(); return res.json({ok:true,user_id:owner.id,name:owner.name,status:'friends',already:true}); }
+    let friendshipId;
+    if (existing) {
+      await conn.query(`UPDATE friendships SET requester_id=?,addressee_id=?,status='accepted',created_at=NOW() WHERE id=?`,[req.user.id,owner.id,existing.id]); friendshipId=existing.id;
+    } else {
+      const [result]=await conn.query(`INSERT INTO friendships(requester_id,addressee_id,status) VALUES (?,?,'accepted')`,[req.user.id,owner.id]); friendshipId=result.insertId;
+    }
+    const [[actor]]=await conn.query('SELECT name FROM users WHERE id=?',[req.user.id]);
+    await createSocialNotification(conn,{userId:owner.id,actorId:req.user.id,type:'friend_accepted',entityType:'friendship',entityId:friendshipId,title:'Nuevo amigo',body:`${actor.name} te ha añadido escaneando tu QR`,data:{screen:'PlayerSocialProfile',userId:req.user.id},dedupeKey:`friend-qr:${friendshipId}:${Date.now()}`});
+    await conn.commit(); res.status(201).json({ok:true,user_id:owner.id,name:owner.name,status:'friends',already:false});
+  } catch(error) { await conn.rollback(); console.error('[SOCIAL qr connect]',error); fail(res,500,'No se pudo añadir al jugador'); }
+  finally { conn.release(); }
 });
 
 router.get('/groups', async (req,res) => {

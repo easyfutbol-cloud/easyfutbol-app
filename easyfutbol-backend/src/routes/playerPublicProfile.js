@@ -15,6 +15,7 @@ import { positiveId } from '../services/socialService.js';
 import { getPlayerReputation, publicReputation } from '../services/playerReputationService.js';
 import { equippedCosmetics } from '../services/engagementRules.js';
 import { getProfileShowcase, getProfileViews, recordProfileView } from '../services/profileShowcaseService.js';
+import { computePlayerCard, getMonthlyEvolution, normalizeProfileCustomization, parseProfileSections } from '../services/playerCardService.js';
 import { ensureProfileSlug, getProfileStreak, getSeasonStats, getRecentForm, isValidSlug, profileShareUrl } from '../services/profileShareService.js';
 
 const router = Router();
@@ -68,8 +69,9 @@ router.get('/:userId', async (req, res) => {
     if (await isBlocked(req.user.id, targetId)) return fail(res, 403, 'Este perfil no está disponible');
 
     const [[user]] = await pool.query(
-      `SELECT u.id, u.name, u.avatar_url, u.banner_url, u.preferred_location, u.primary_position, u.dominant_foot,
-              u.equipped_frame, u.equipped_title, u.public_slug, ${activePlusSql('u.id')} AS is_plus
+      `SELECT u.id, u.name, u.avatar_url, u.banner_url, u.preferred_location, u.primary_position, u.secondary_position, u.dominant_foot,
+              u.equipped_frame, u.equipped_title, u.public_slug, u.nickname, u.shirt_number, u.bio, u.favorite_team, u.profile_accent,
+              ${activePlusSql('u.id')} AS is_plus
        FROM users u WHERE u.id=?`,
       [targetId]
     );
@@ -83,11 +85,12 @@ router.get('/:userId', async (req, res) => {
 
     await pool.query('INSERT IGNORE INTO user_social_privacy(user_id) VALUES (?)', [targetId]);
     const [[privacy]] = await pool.query(
-      'SELECT visible_stats, comments_enabled FROM user_social_privacy WHERE user_id=?',
+      'SELECT visible_stats, comments_enabled, profile_sections FROM user_social_privacy WHERE user_id=?',
       [targetId]
     );
     const visibleStats = String(privacy?.visible_stats || '').split(',').map((s) => s.trim()).filter((s) => VISIBLE_STAT_KEYS.includes(s));
     const commentsEnabled = Boolean(Number(privacy?.comments_enabled ?? 1));
+    const sections = parseProfileSections(privacy?.profile_sections);
 
     const isOwner = req.user.id === targetId;
     const seasonStats = await getSeasonStats(pool, targetId);
@@ -119,6 +122,17 @@ router.get('/:userId', async (req, res) => {
       await recordProfileView(pool, targetId, req.user.id).catch((error) => console.error('[profile view]', error?.message || error));
     }
     const views = isOwner ? await getProfileViews(pool, targetId) : undefined;
+    // El dueño siempre ve su carta y su evolución (para decidir si las enseña).
+    const card = isOwner || sections.includes('card') ? computePlayerCard(seasonStats, user.primary_position) : null;
+    const evolution = isOwner || sections.includes('evolution')
+      ? await getMonthlyEvolution(pool, targetId, {
+        show: {
+          goals: isOwner || visibleStats.includes('goals'),
+          assists: isOwner || visibleStats.includes('assists'),
+          wins: isOwner || visibleStats.includes('win_rate'),
+        },
+      })
+      : null;
 
     let myMatchesPlayed = seasonStats.matches_played;
     if (!isOwner) {
@@ -132,6 +146,9 @@ router.get('/:userId', async (req, res) => {
       is_owner: isOwner,
       matches_played: seasonStats.matches_played,
       visible_stats: visibleStats,
+      sections,
+      card,
+      evolution,
       all_stats: isOwner ? seasonStats : undefined,
       stats,
       comments_enabled: commentsEnabled,
@@ -216,6 +233,37 @@ router.patch('/me/settings', async (req, res) => {
     res.json({ ok: true, visible_stats: visibleStats, comments_enabled: Boolean(commentsEnabled) });
   } catch (error) {
     console.error('[PATCH /player-profile/me/settings]', error);
+    fail(res, 500, 'No se pudo guardar');
+  }
+});
+
+/**
+ * PATCH /api/player-profile/me/customization — apodo, dorsal, bio, equipo,
+ * color del perfil y secciones (orden y cuáles se ven). Solo los campos enviados.
+ */
+router.patch('/me/customization', async (req, res) => {
+  try {
+    const result = normalizeProfileCustomization(req.body || {});
+    if (!result.ok) return fail(res, 400, result.msg);
+    const { profile_sections: sections, ...userFields } = result.values;
+
+    const columns = Object.keys(userFields);
+    if (columns.length) {
+      await pool.query(
+        `UPDATE users SET ${columns.map((c) => `${c}=?`).join(', ')} WHERE id=?`,
+        [...columns.map((c) => userFields[c]), req.user.id]
+      );
+    }
+    if (sections !== undefined) {
+      await pool.query(
+        `INSERT INTO user_social_privacy (user_id, profile_sections) VALUES (?,?)
+         ON DUPLICATE KEY UPDATE profile_sections=VALUES(profile_sections)`,
+        [req.user.id, sections]
+      );
+    }
+    res.json({ ok: true, ...userFields, ...(sections !== undefined ? { sections: parseProfileSections(sections) } : {}) });
+  } catch (error) {
+    console.error('[PATCH /player-profile/me/customization]', error);
     fail(res, 500, 'No se pudo guardar');
   }
 });

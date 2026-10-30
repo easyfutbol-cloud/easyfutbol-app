@@ -101,3 +101,26 @@ export function validatePublicName(value) {
 
   return { ok: true, name };
 }
+
+/**
+ * Para textos libres más largos que un nombre (bio del perfil). Mira cada
+ * palabra y grupos de hasta 3 seguidas, en vez de unirlo todo, para no
+ * encontrar insultos "inventados" al pegar palabras de frases distintas.
+ */
+export function containsOffensiveText(value) {
+  const tokens = [];
+  // "h.i.j.o..." : las letras sueltas seguidas cuentan como una sola palabra.
+  for (const token of normalizePublicNameForModeration(value).split(/[^a-z0-9ñ]+/).filter(Boolean)) {
+    const last = tokens.length - 1;
+    if (token.length === 1 && last >= 0 && tokens[last].single) tokens[last] = { text: tokens[last].text + token, single: true };
+    else tokens.push({ text: token, single: token.length === 1 });
+  }
+  for (let i = 0; i < tokens.length; i += 1) {
+    if (EXACT_BLOCKED_TOKENS.has(tokens[i].text)) return true;
+    for (let size = 1; size <= 3 && i + size <= tokens.length; size += 1) {
+      const compact = tokens.slice(i, i + size).map((t) => t.text).join('');
+      if (BLOCKED_COMPOUNDS.some((pattern) => pattern.test(compact))) return true;
+    }
+  }
+  return false;
+}

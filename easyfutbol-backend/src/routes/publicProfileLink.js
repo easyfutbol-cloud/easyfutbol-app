@@ -85,7 +85,9 @@ router.get('/jugador/:slug', async (req, res) => {
     const { frame, title } = equippedCosmetics(user.equipped_frame, user.equipped_title);
     const avatar = absoluteUrl(user.avatar_url);
     const name = user.name || 'Jugador EasyFutbol';
-    const appUrl = `easyfutbol://jugador/${slug}`;
+    // Si viene del QR de "añadir amigo", el token pasa a la app para añadir al abrirla.
+    const qrToken = /^[0-9a-z]{1,12}\.[A-Za-z0-9_-]{22}$/.test(String(req.query.qr || '')) ? String(req.query.qr) : null;
+    const appUrl = `easyfutbol://jugador/${slug}${qrToken ? `?qr=${qrToken}` : ''}`;
 
     const statsHtml = visible.map((key) => `<div class="stat"><b>${escapeHtml(season[key] ?? 0)}${key === 'win_rate' ? '%' : ''}</b><span>${escapeHtml(STAT_LABELS[key])}</span></div>`).join('');
     const summary = visible.length
