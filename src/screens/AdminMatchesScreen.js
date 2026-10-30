@@ -1,11 +1,12 @@
 
 
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import {
   View,
   Text,
   StyleSheet,
-  FlatList,
+  SectionList,
+  ScrollView,
   TouchableOpacity,
   ActivityIndicator,
   RefreshControl,
@@ -46,11 +47,69 @@ function formatTime(timeString) {
   return String(timeString).slice(0, 5);
 }
 
+const DAY_MS = 24 * 60 * 60 * 1000;
+const SHORT_DATE = { day: 'numeric', month: 'short' };
+
+// Lunes (a mediodía UTC, para no bailar con el horario de verano) de la semana del partido.
+function weekStartOf(dateString) {
+  const [year, month, day] = String(dateString || '').slice(0, 10).split('-').map(Number);
+  if (!year || !month || !day) return null;
+  const date = new Date(Date.UTC(year, month - 1, day, 12));
+  const weekday = (date.getUTCDay() + 6) % 7;
+  return new Date(date.getTime() - weekday * DAY_MS);
+}
+
+function currentWeekStart() {
+  const now = new Date();
+  const local = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+  return weekStartOf(local);
+}
+
+function weekLabel(start, thisWeek) {
+  const diff = Math.round((start.getTime() - thisWeek.getTime()) / (7 * DAY_MS));
+  const end = new Date(start.getTime() + 6 * DAY_MS);
+  const range = `${start.toLocaleDateString('es-ES', { ...SHORT_DATE, timeZone: 'UTC' })} – ${end.toLocaleDateString('es-ES', { ...SHORT_DATE, timeZone: 'UTC' })}`;
+  if (diff === 0) return { title: 'Esta semana', range };
+  if (diff === 1) return { title: 'Próxima semana', range };
+  if (diff === -1) return { title: 'Semana pasada', range };
+  return { title: `Semana del ${range}`, range: '' };
+}
+
+const matchDate = (match) => match.local_match_date || match.match_date;
+const matchSortKey = (match) => `${String(matchDate(match) || '').slice(0, 10)} ${match.local_start_time || match.start_time || ''}`;
+
+// Esta semana primero, luego las siguientes en orden, y al final las pasadas
+// de la más reciente a la más antigua (plegadas por defecto).
+function groupByWeek(matches) {
+  const thisWeek = currentWeekStart();
+  const weeks = new Map();
+  matches.forEach((match) => {
+    const start = weekStartOf(matchDate(match));
+    const key = start ? start.toISOString().slice(0, 10) : 'sin-fecha';
+    if (!weeks.has(key)) weeks.set(key, { key, start, data: [] });
+    weeks.get(key).data.push(match);
+  });
+  return [...weeks.values()]
+    .map((week) => ({
+      ...week,
+      past: Boolean(week.start) && week.start < thisWeek,
+      ...(week.start ? weekLabel(week.start, thisWeek) : { title: 'Sin fecha', range: '' }),
+      data: week.data.sort((a, b) => matchSortKey(a).localeCompare(matchSortKey(b))),
+    }))
+    .sort((a, b) => {
+      if (!a.start || !b.start) return a.start ? -1 : 1;
+      if (a.past !== b.past) return a.past ? 1 : -1;
+      return a.past ? b.start - a.start : a.start - b.start;
+    });
+}
+
 export default function AdminMatchesScreen({ navigation }) {
   const [matches, setMatches] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState('');
+  const [selectedLocation, setSelectedLocation] = useState(null);
+  const [expandedWeeks, setExpandedWeeks] = useState({});
 
   const fetchMatches = useCallback(async (isRefresh = false) => {
     try {
@@ -123,10 +182,79 @@ export default function AdminMatchesScreen({ navigation }) {
   };
   const handleRosterPress = (match) => navigation.navigate('AdminMatchRoster', { matchId:match.id,matchTitle:match.title });
   const handleLivePress = (match) => navigation.navigate('AdminMatchLive', { matchId:match.id,matchTitle:match.title });
+  const markVideoUploaded = (match) => {
+    const alreadySent = Boolean(match.video_available_at);
+    Alert.alert(
+      alreadySent ? 'Vídeo ya avisado' : 'Vídeo subido',
+      alreadySent
+        ? 'Ya se avisó a los jugadores de este partido. Solo recibirán el aviso los que no lo tuvieran.'
+        : `Se enviará una notificación a los jugadores que fueron a ${match.title || 'este partido'} diciendo que el vídeo ya está disponible.`,
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        {
+          text: 'Avisar',
+          onPress: async () => {
+            try {
+              const token = await AsyncStorage.getItem('token');
+              const response = await fetch(`${API_BASE_URL}/api/admin/matches/${match.id}/video-available`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+              });
+              const data = await response.json();
+              if (!response.ok) throw new Error(data?.error || 'No se pudo avisar');
+              Alert.alert('Aviso enviado', `Notificados ${data.sent} de ${data.total} jugador(es).`);
+              fetchMatches(true);
+            } catch (err) {
+              Alert.alert('Vídeo subido', err.message);
+            }
+          },
+        },
+      ]
+    );
+  };
   const duplicateMatch = (match) => Alert.alert('Duplicar partido',`Se creará una copia de ${match.title} exactamente una semana después.`,[{text:'Cancelar',style:'cancel'},{text:'Duplicar',onPress:async()=>{try{const token=await AsyncStorage.getItem('token');const response=await fetch(`${API_BASE_URL}/api/admin/matches/${match.id}/duplicate`,{method:'POST',headers:{'Content-Type':'application/json',Authorization:`Bearer ${token}`}});const data=await response.json();if(!response.ok)throw new Error(data?.error||'No se pudo duplicar');Alert.alert('Partido duplicado','La copia ya aparece en el listado.');fetchMatches();}catch(error){Alert.alert('Duplicar',error.message);}}}]);
+
+  const locations = useMemo(() => {
+    const byId = new Map();
+    matches.forEach((match) => {
+      const id = String(match.location_id ?? 'otras');
+      if (!byId.has(id)) byId.set(id, { id, name: match.location_name || match.city || 'Otras', count: 0 });
+      byId.get(id).count += 1;
+    });
+    return [...byId.values()].sort((a, b) => a.name.localeCompare(b.name, 'es'));
+  }, [matches]);
+
+  const activeLocation = locations.some((location) => location.id === selectedLocation)
+    ? selectedLocation
+    : locations[0]?.id ?? null;
+
+  const sections = useMemo(
+    () => groupByWeek(matches.filter((match) => String(match.location_id ?? 'otras') === activeLocation)),
+    [matches, activeLocation]
+  );
+
+  const isWeekOpen = (section) => expandedWeeks[section.key] ?? !section.past;
+  const toggleWeek = (section) => setExpandedWeeks((current) => ({ ...current, [section.key]: !isWeekOpen(section) }));
+  const visibleSections = sections.map((section) => (isWeekOpen(section) ? section : { ...section, data: [] }));
+
+  const renderSectionHeader = ({ section }) => {
+    const full = sections.find((week) => week.key === section.key);
+    const open = isWeekOpen(section);
+    return (
+      <TouchableOpacity activeOpacity={0.8} style={styles.weekHeader} onPress={() => toggleWeek(section)}>
+        <View style={{ flex: 1 }}>
+          <Text style={[styles.weekTitle, section.past && styles.weekTitlePast]}>{section.title}</Text>
+          {section.range ? <Text style={styles.weekRange}>{section.range}</Text> : null}
+        </View>
+        <Text style={styles.weekCount}>{full?.data.length || 0} {full?.data.length === 1 ? 'partido' : 'partidos'}</Text>
+        <Text style={styles.weekChevron}>{open ? '▾' : '▸'}</Text>
+      </TouchableOpacity>
+    );
+  };
 
   const renderMatchCard = ({ item }) => {
     const statusLabel = STATUS_LABELS[item.status] || item.status || 'Sin estado';
+    const played = new Date(item.starts_at).getTime() <= Date.now();
 
     return (
       <TouchableOpacity
@@ -182,6 +310,17 @@ export default function AdminMatchesScreen({ navigation }) {
           <TouchableOpacity onPress={() => handleStatsPress(item)}><Text style={styles.secondaryLink}>Cargar CSV</Text></TouchableOpacity>
           <TouchableOpacity onPress={()=>duplicateMatch(item)}><Text style={styles.secondaryLink}>Duplicar</Text></TouchableOpacity>
         </View>
+
+        {played && (
+          <TouchableOpacity
+            style={[styles.videoButton, item.video_available_at && styles.videoButtonDone]}
+            onPress={() => markVideoUploaded(item)}
+          >
+            <Text style={[styles.videoButtonText, item.video_available_at && styles.videoButtonTextDone]}>
+              {item.video_available_at ? '✓ Vídeo avisado' : '🎬 Vídeo subido · avisar jugadores'}
+            </Text>
+          </TouchableOpacity>
+        )}
       </TouchableOpacity>
     );
   };
@@ -220,11 +359,34 @@ export default function AdminMatchesScreen({ navigation }) {
         </View>
       ) : null}
 
-      <FlatList
-        data={matches}
+      {locations.length > 0 && (
+        <View>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.locationTabs}>
+            {locations.map((location) => {
+              const active = location.id === activeLocation;
+              return (
+                <TouchableOpacity
+                  key={location.id}
+                  style={[styles.locationTab, active && styles.locationTabActive]}
+                  onPress={() => setSelectedLocation(location.id)}
+                >
+                  <Text style={[styles.locationTabText, active && styles.locationTabTextActive]}>
+                    {location.name} · {location.count}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
+        </View>
+      )}
+
+      <SectionList
+        sections={visibleSections}
         keyExtractor={(item) => String(item.id)}
         renderItem={renderMatchCard}
-        contentContainerStyle={matches.length === 0 ? styles.emptyListContainer : styles.listContent}
+        renderSectionHeader={renderSectionHeader}
+        stickySectionHeadersEnabled
+        contentContainerStyle={sections.length === 0 ? styles.emptyListContainer : styles.listContent}
         showsVerticalScrollIndicator={false}
         refreshControl={
           <RefreshControl
@@ -447,5 +609,20 @@ const styles = StyleSheet.create({
   liveButtonText: { color: '#fff', fontWeight: '900', fontSize: 14 },
   secondaryRow: { flexDirection: 'row', justifyContent: 'space-between', paddingTop: 2 },
   secondaryLink: { color: '#888', fontSize: 11, fontWeight: '700' },
+  videoButton: { marginTop: 12, borderWidth: 1, borderColor: '#ff5a00', borderRadius: 12, paddingVertical: 11, alignItems: 'center' },
+  videoButtonDone: { borderColor: '#2a2a2a', backgroundColor: '#151515' },
+  videoButtonText: { color: '#ff8c4d', fontSize: 13, fontWeight: '800' },
+  videoButtonTextDone: { color: '#22c55e' },
+  locationTabs: { gap: 8, paddingBottom: 12 },
+  locationTab: { borderWidth: 1, borderColor: '#2a2a2a', backgroundColor: '#111', borderRadius: 999, paddingHorizontal: 14, paddingVertical: 9 },
+  locationTabActive: { backgroundColor: '#ff5a00', borderColor: '#ff5a00' },
+  locationTabText: { color: '#bbb', fontSize: 13, fontWeight: '800' },
+  locationTabTextActive: { color: '#fff' },
+  weekHeader: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#000', paddingVertical: 10, gap: 10 },
+  weekTitle: { color: '#fff', fontSize: 16, fontWeight: '900' },
+  weekTitlePast: { color: '#8a8a8a' },
+  weekRange: { color: '#777', fontSize: 12, marginTop: 2 },
+  weekCount: { color: '#888', fontSize: 12, fontWeight: '700' },
+  weekChevron: { color: '#ff8c4d', fontSize: 16, width: 16, textAlign: 'center' },
   riskCard:{backgroundColor:'rgba(244,201,93,.09)',borderWidth:1,borderColor:'rgba(244,201,93,.3)',borderRadius:12,padding:11,marginBottom:11},riskTitle:{color:'#f4c95d',fontSize:9,fontWeight:'900',letterSpacing:.8},riskText:{color:'#aaa07f',fontSize:10,marginTop:4},
 });

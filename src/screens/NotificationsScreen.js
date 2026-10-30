@@ -7,7 +7,7 @@ import ScreenHeader from'../components/ScreenHeader';
 import{publishUnreadNotifications}from'../utils/notificationEvents';
 import{syncNotificationBadge}from'../utils/notifications';
 
-const META={friend_request:['person-add-outline','#8b5cf6'],friend_accepted:['people-outline','#22c55e'],match_invitation:['football-outline','#ff5a00'],group_invitation:['people-circle-outline','#ff5a00'],match_cancelled:['close-circle-outline','#ef4444'],match_updated:['calendar-outline','#f59e0b'],match_reminder:['alarm-outline','#38bdf8'],easypass_gift:['gift-outline','#22c55e'],news:['megaphone-outline','#38bdf8']};
+const META={friend_request:['person-add-outline','#8b5cf6'],friend_accepted:['people-outline','#22c55e'],match_invitation:['football-outline','#ff5a00'],group_invitation:['people-circle-outline','#ff5a00'],match_cancelled:['close-circle-outline','#ef4444'],match_updated:['calendar-outline','#f59e0b'],match_reminder:['alarm-outline','#38bdf8'],easypass_gift:['gift-outline','#22c55e'],news:['megaphone-outline','#38bdf8'],match_video:['videocam-outline','#ff5a00']};
 const dateLabel=value=>{if(!value)return'';const date=new Date(value);return Number.isNaN(date.getTime())?'':date.toLocaleString('es-ES',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'});};
 
 export default function NotificationsScreen({navigation}){
