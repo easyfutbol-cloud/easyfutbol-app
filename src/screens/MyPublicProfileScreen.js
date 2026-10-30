@@ -69,7 +69,7 @@ export default function MyPublicProfileScreen({ navigation }) {
       setBannerUrl(d.user?.banner_url || null);
       setAllStats(d.all_stats || null);
       setVisibleStats(d.visible_stats || []);
-      setCommentsEnabled(Boolean(d.comments_enabled));
+      setCommentsEnabled(Boolean(d.reactions?.enabled ?? true));
       setPhotos(d.photos || []);
       setProfileUser(d.user || null);
       setCard(d.card || null);
@@ -415,8 +415,8 @@ export default function MyPublicProfileScreen({ navigation }) {
 
         <View style={styles.switchRow}>
           <View style={{ flex: 1 }}>
-            <Text style={styles.statLabel}>Permitir comentarios</Text>
-            <Text style={styles.hint}>Solo pueden comentar jugadores con 5 o más partidos jugados.</Text>
+            <Text style={styles.statLabel}>Permitir reacciones</Text>
+            <Text style={styles.hint}>Otros jugadores pueden darte emojis como 🔥 Crack o 🤝 Buen compañero. Solo positivos.</Text>
           </View>
           <Switch value={commentsEnabled} onValueChange={toggleComments} trackColor={{ false: '#333', true: '#ff5a00' }} />
         </View>

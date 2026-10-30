@@ -28,10 +28,10 @@ export const PROFILE_SECTIONS = {
   stats: { label: 'Más estadísticas', icon: 'stats-chart-outline', hint: 'Las que enseñas y no caben en la cabecera' },
   photos: { label: 'Fotos', icon: 'images-outline', hint: 'Tu galería de partidos' },
   showcase: { label: 'Vitrina', icon: 'trophy-outline', hint: 'Logros, El 8 de la semana y distintivos' },
-  comments: { label: 'Comentarios', icon: 'chatbubble-ellipses-outline', hint: 'Lo que te escriben otros jugadores' },
+  reactions: { label: 'Reacciones', icon: 'happy-outline', hint: 'Los emojis que te dan otros jugadores' },
 };
 export const SECTION_ORDER = Object.keys(PROFILE_SECTIONS);
-export const DEFAULT_SECTIONS = ['form', 'stats', 'photos', 'showcase', 'comments'];
+export const DEFAULT_SECTIONS = ['form', 'stats', 'photos', 'showcase', 'reactions'];
 
 export const POSITION_LABELS = { goalkeeper: 'Portero', defender: 'Defensa', midfielder: 'Centrocampista', forward: 'Delantero' };
 export const POSITION_SHORT = { goalkeeper: 'POR', defender: 'DEF', midfielder: 'MED', forward: 'DEL' };

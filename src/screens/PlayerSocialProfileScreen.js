@@ -1,5 +1,5 @@
 import React, { useCallback, useState } from 'react';
-import { ActivityIndicator, Alert, Image, ScrollView, Share, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Alert, Image, ScrollView, Share, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
@@ -30,8 +30,7 @@ const PUBLIC_STAT_ICONS = {
 export default function PlayerSocialProfileScreen({ navigation, route }) {
   const [data, setData] = useState(null);
   const [publicData, setPublicData] = useState(null);
-  const [commentText, setCommentText] = useState('');
-  const [postingComment, setPostingComment] = useState(false);
+  const [reacting, setReacting] = useState(null);
 
   const [shareCard, setShareCard] = useState(null);
   const userId = route.params?.userId;
@@ -93,30 +92,23 @@ export default function PlayerSocialProfileScreen({ navigation, route }) {
   const sendReport=reason=>api.post('/social/reports',{user_id:data.user.id,reason}).then(()=>Alert.alert('Denuncia enviada','La revisaremos de forma privada. El usuario no recibirá ninguna notificación.')).catch(error=>Alert.alert('Denunciar',error.response?.data?.msg||'No se pudo enviar'));
   const reportUser=()=>Alert.alert('Denunciar usuario','Selecciona el motivo. La denuncia será confidencial.',[{text:'Conducta antideportiva',onPress:()=>sendReport('conduct')},{text:'Acoso o comportamiento ofensivo',onPress:()=>sendReport('harassment')},{text:'Spam',onPress:()=>sendReport('spam')},{text:'Perfil o identidad falsos',onPress:()=>sendReport('identity')},{text:'Cancelar',style:'cancel'}]);
 
-  const postComment = async () => {
-    const body = commentText.trim();
-    if (!body) return;
+  // Dar o quitar una reacción. El servidor devuelve el recuento ya actualizado.
+  const toggleReaction = async (key) => {
+    const reactions = publicData.reactions;
+    if (!reactions?.can_react || reacting) return;
+    const mine = reactions.mine.includes(key);
     try {
-      setPostingComment(true);
-      const res = await api.post(`/player-profile/${data.user.id}/comments`, { body });
-      setPublicData((prev) => ({ ...prev, comments: [res.data.data, ...(prev.comments || [])] }));
-      setCommentText('');
+      setReacting(key);
+      const res = mine
+        ? await api.delete(`/player-profile/${data.user.id}/reactions/${key}`)
+        : await api.put(`/player-profile/${data.user.id}/reactions/${key}`);
+      setPublicData((prev) => ({ ...prev, reactions: { ...prev.reactions, ...res.data.reactions } }));
     } catch (error) {
-      Alert.alert('Comentario', error.response?.data?.msg || 'No se pudo publicar');
+      Alert.alert('Reacciones', error.response?.data?.msg || 'No se pudo guardar tu reacción');
     } finally {
-      setPostingComment(false);
+      setReacting(null);
     }
   };
-
-  const deleteComment = (comment) => Alert.alert('Borrar comentario', '¿Seguro que quieres borrarlo?', [
-    { text:'Cancelar', style:'cancel' },
-    { text:'Borrar', style:'destructive', onPress: async () => {
-      try {
-        await api.delete(`/player-profile/comments/${comment.id}`);
-        setPublicData((prev) => ({ ...prev, comments: (prev.comments || []).filter((c) => c.id !== comment.id) }));
-      } catch (error) { Alert.alert('Comentario', error.response?.data?.msg || 'No se pudo borrar'); }
-    } },
-  ]);
 
   const bannerUri = resolveSocialAvatarUrl(data.user.banner_url);
   const visibleStats = (publicData.visible_stats || []).filter((key) => PUBLIC_STAT_LABELS[key]);
@@ -225,49 +217,44 @@ export default function PlayerSocialProfileScreen({ navigation, route }) {
       {!!data.reputation?.badges?.length && <View style={styles.badgeWrap}>{data.reputation.badges.map((badge) => <View key={badge.code} style={styles.publicBadge}><Ionicons name={badge.icon} color="#4dbb78" size={16} /><Text style={styles.publicBadgeText}>{badge.label}</Text></View>)}</View>}
       {data.reputation?.attendance_rate !== null && data.reputation?.attendance_rate !== undefined && <Text style={styles.reliabilityText}>{data.reputation.attendance_rate}% de asistencia · {data.reputation.completed_matches} partidos completados</Text>}
     </View>;
-  const commentsSection = publicData.comments_enabled && <View style={styles.card}>
-      <SectionTitle color={accent.color} icon="chatbubble-ellipses-outline" title={`COMENTARIOS (${publicData.comments?.length || 0})`} />
-
-      {publicData.is_owner ? null : publicData.can_comment ? (
-        <View style={styles.commentInputRow}>
-          <TextInput
-            style={styles.commentInput}
-            placeholder="Escribe un comentario..."
-            placeholderTextColor="#666"
-            value={commentText}
-            onChangeText={setCommentText}
-            multiline
-            maxLength={500}
-          />
-          <TouchableOpacity style={styles.commentSendButton} onPress={postComment} disabled={postingComment || !commentText.trim()}>
-            {postingComment ? <ActivityIndicator size="small" color="#fff" /> : <Ionicons name="send" size={16} color="#fff" />}
+  const reactions = publicData.reactions;
+  const reactionsSection = reactions && (reactions.enabled || isOwner) ? <View style={styles.card}>
+    <SectionTitle color={accent.color} icon="happy-outline" title={reactions.people ? `REACCIONES · ${reactions.people} ${reactions.people === 1 ? 'JUGADOR' : 'JUGADORES'}` : 'REACCIONES'} />
+    {isOwner && !reactions.enabled ? <Text style={styles.reactionHint}>Tienes las reacciones desactivadas. Actívalas en Editar perfil.</Text> : null}
+    <View style={styles.reactionGrid}>
+      {reactions.items.map((item) => {
+        const mine = reactions.mine.includes(item.key);
+        return (
+          <TouchableOpacity
+            key={item.key}
+            disabled={!reactions.can_react || !!reacting}
+            onPress={() => toggleReaction(item.key)}
+            style={[styles.reaction, mine && { borderColor: accent.color, backgroundColor: withAlpha(accent.color, 0.16) }, !item.count && !mine && styles.reactionEmpty]}
+            accessibilityRole="button"
+            accessibilityState={{ selected: mine }}
+            accessibilityLabel={`${item.label}: ${item.count}`}
+          >
+            <Text style={styles.reactionEmoji}>{item.emoji}</Text>
+            <Text style={styles.reactionLabel} numberOfLines={1}>{item.label}</Text>
+            <Text style={[styles.reactionCount, mine && { color: accent.color }]}>{reacting === item.key ? '…' : item.count}</Text>
           </TouchableOpacity>
-        </View>
-      ) : (
-        <Text style={styles.commentLockedText}>
-          Necesitas haber jugado al menos {publicData.min_matches_to_comment} partidos en EasyFutbol para poder comentar.
-        </Text>
-      )}
-
-      {!publicData.comments?.length ? (
-        <Text style={styles.empty}>Todavía no hay comentarios.</Text>
-      ) : publicData.comments.map((comment) => (
-        <View key={comment.id} style={styles.commentRow}>
-          <TouchableOpacity onPress={() => navigation.push('PlayerSocialProfile', { userId: comment.author.id })} accessibilityRole="button" accessibilityLabel={`Ver perfil de ${comment.author.name}`}>
-            <SocialAvatar uri={comment.author.avatar_url} name={comment.author.name} size={32} />
+        );
+      })}
+    </View>
+    {reactions.recent?.length ? <View style={styles.reactorsRow}>
+      <View style={styles.reactors}>
+        {reactions.recent.map((u, index) => (
+          <TouchableOpacity key={u.id} onPress={() => navigation.push('PlayerSocialProfile', { userId: u.id })} style={[styles.reactor, index > 0 && { marginLeft: -10 }]} accessibilityLabel={`Ver perfil de ${u.name}`}>
+            <SocialAvatar uri={u.avatar_url} name={u.name} size={28} />
           </TouchableOpacity>
-          <View style={{ flex:1 }}>
-            <Text style={styles.commentAuthor} onPress={() => navigation.push('PlayerSocialProfile', { userId: comment.author.id })}>{comment.author.name}</Text>
-            <Text style={styles.commentBody}>{comment.body}</Text>
-          </View>
-          {comment.can_delete && (
-            <TouchableOpacity onPress={() => deleteComment(comment)} style={{ padding:4 }}>
-              <Ionicons name="trash-outline" size={16} color="#777" />
-            </TouchableOpacity>
-          )}
-        </View>
-      ))}
-    </View>;
+        ))}
+      </View>
+      <Text style={styles.reactorsText} numberOfLines={1}>Último: {reactions.recent[0].name}</Text>
+    </View> : null}
+    {!isOwner && reactions.enabled && !reactions.can_react
+      ? <Text style={styles.reactionHint}>Juega tu primer partido en EasyFutbol para poder reaccionar.</Text>
+      : !isOwner && reactions.can_react ? <Text style={styles.reactionHint}>Toca un emoji para reaccionar. Puedes dar varios y quitarlos cuando quieras.</Text> : null}
+  </View> : null;
   const card = publicData.card;
   const cardSection = card ? <View style={styles.card}>
     {hiddenBar('card')}
@@ -286,7 +273,7 @@ export default function PlayerSocialProfileScreen({ navigation, route }) {
     <SectionTitle color={accent.color} icon="bar-chart-outline" title="EVOLUCIÓN · 6 MESES" />
     <EvolutionChart months={publicData.evolution} accent={accent.color} />
   </View> : null;
-  const sectionViews = { card: cardSection, evolution: evolutionSection, form: formSection, stats: statsSection, photos: photosSection, showcase: showcaseSection, comments: commentsSection };
+  const sectionViews = { card: cardSection, evolution: evolutionSection, form: formSection, stats: statsSection, photos: photosSection, showcase: showcaseSection, reactions: reactionsSection };
   const orderedSections = isOwner ? [...['card', 'evolution'].filter(hiddenForOwner), ...sections] : sections;
   return <View style={styles.page}>
     <ScreenHeader title="Perfil de jugador" onBack={() => navigation.navigate('Social')} />
@@ -457,8 +444,9 @@ const styles = StyleSheet.create({
   match:{flexDirection:'row',alignItems:'center',paddingTop:15,marginTop:4,borderTopWidth:1,borderTopColor:'#28282b'},dateBox:{width:45,height:49,borderRadius:13,backgroundColor:'#2a211d',alignItems:'center',justifyContent:'center'},dateDay:{color:'#fff',fontSize:18,fontWeight:'900'},dateMonth:{color:'#ff6a1a',fontSize:9,fontWeight:'900'},matchInfo:{flex:1,marginLeft:12},matchTitle:{color:'#fff',fontWeight:'800',fontSize:14},matchDate:{color:'#777',fontSize:11,marginTop:4,textTransform:'capitalize'},empty:{color:'#777',lineHeight:20,marginTop:16},
   privateCard:{borderRadius:18,padding:18,backgroundColor:'#151517',flexDirection:'row',alignItems:'center',gap:12},privateText:{color:'#898990',lineHeight:20,flex:1,fontSize:13},
   badgeWrap:{flexDirection:'row',flexWrap:'wrap',gap:8,marginTop:16},publicBadge:{flexDirection:'row',alignItems:'center',gap:6,backgroundColor:'rgba(77,187,120,.11)',borderWidth:1,borderColor:'rgba(77,187,120,.25)',borderRadius:12,paddingHorizontal:10,paddingVertical:8},publicBadgeText:{color:'#b9dbc5',fontSize:11,fontWeight:'800'},reliabilityText:{color:'#777',fontSize:11,marginTop:13},
-  commentInputRow:{flexDirection:'row',alignItems:'flex-end',gap:8,marginTop:16,marginBottom:6},commentInput:{flex:1,minHeight:38,maxHeight:90,backgroundColor:'#1e1e21',borderRadius:12,borderWidth:1,borderColor:'#2c2c30',color:'#fff',fontSize:13,paddingHorizontal:12,paddingVertical:9},commentSendButton:{width:38,height:38,borderRadius:19,backgroundColor:'#ff5a00',alignItems:'center',justifyContent:'center'},
-  commentLockedText:{color:'#888',fontSize:12,lineHeight:18,marginTop:14,marginBottom:6},
-  commentRow:{flexDirection:'row',alignItems:'flex-start',gap:10,paddingTop:13,marginTop:4,borderTopWidth:1,borderTopColor:'#232326'},commentAuthor:{color:'#fff',fontSize:12,fontWeight:'800'},commentBody:{color:'#bbb',fontSize:12,marginTop:2,lineHeight:17},
+  reactionGrid:{flexDirection:'row',flexWrap:'wrap',gap:8,marginTop:16},reaction:{width:'22.9%',flexGrow:1,alignItems:'center',paddingVertical:10,borderRadius:16,backgroundColor:'#1f1f23',borderWidth:1.5,borderColor:'#2c2c31'},reactionEmpty:{opacity:.55},
+  reactionEmoji:{fontSize:26},reactionLabel:{color:'#c9cbd0',fontSize:9,fontWeight:'800',marginTop:4},reactionCount:{color:'#fff',fontSize:14,fontWeight:'900',marginTop:2},
+  reactionHint:{color:'#77777e',fontSize:11,lineHeight:16,marginTop:12,textAlign:'center'},
+  reactorsRow:{flexDirection:'row',alignItems:'center',gap:10,marginTop:14},reactors:{flexDirection:'row'},reactor:{borderRadius:999,borderWidth:2,borderColor:'#171719'},reactorsText:{color:'#a5a8ae',fontSize:11,fontWeight:'700',flex:1},
   safety:{flexDirection:'row',justifyContent:'center',gap:9,marginTop:18},safetyButton:{minHeight:42,flexDirection:'row',alignItems:'center',gap:6,paddingHorizontal:15,borderRadius:12,borderWidth:1,borderColor:'#303035'},safetyText:{color:'#aaa',fontSize:11,fontWeight:'800'},
 });
