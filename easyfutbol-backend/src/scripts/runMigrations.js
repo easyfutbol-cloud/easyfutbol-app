@@ -53,6 +53,7 @@ const migrationOrder = [
   '20261102_referral_reward_transaction_type.sql',
   '20261103_social_profile_v3.sql',
   '20261104_profile_reactions.sql',
+  '20261105_match_video.sql',
 ];
 
 const currentFile = fileURLToPath(import.meta.url);
