@@ -4,6 +4,7 @@ import { requireAuth, requireAdmin } from '../middlewares/auth.js';
 import { areFriends, createSocialNotification, expireMatchInvitations, getFriendshipStatus, positiveId } from '../services/socialService.js';
 import { getBestTeammates, getFrequentPlayers, getFriendSuggestions, getPairStats } from '../services/socialStatsService.js';
 import { createFriendQrToken, verifyFriendQrToken } from '../services/friendQrService.js';
+import { getFriendsOverview, getSocialTops } from '../services/socialHubService.js';
 import { ensureProfileSlug, isValidSlug, profileShareUrl } from '../services/profileShareService.js';
 import { activePlusSql } from '../services/subscriptionService.js';
 import { getPlayerReputation, publicReputation } from '../services/playerReputationService.js';
@@ -262,6 +263,16 @@ router.get('/frequent-players', async (req,res) => {
   try { res.json({ok:true,items:await getFrequentPlayers(pool,req.user.id,Math.min(Number(req.query.limit)||20,50))}); }
   catch(error) { console.error('[SOCIAL frequent]',error); fail(res,500,'No se pudieron cargar jugadores frecuentes'); }
 });
+// Pantalla Social: amigos con su tarjeta completa y tops de jugadores.
+router.get('/friends/overview', async (req,res) => {
+  try { res.json({ok:true,items:await getFriendsOverview(pool,req.user.id)}); }
+  catch(error) { console.error('[SOCIAL friends overview]',error); fail(res,500,'No se pudieron cargar tus amigos'); }
+});
+router.get('/top', async (req,res) => {
+  try { res.json({ok:true,...await getSocialTops(pool,req.user.id,{period:req.query.period,scope:req.query.scope})}); }
+  catch(error) { console.error('[SOCIAL top]',error); fail(res,500,'No se pudieron cargar los tops'); }
+});
+
 router.get('/suggestions', async (req,res) => {
   try { res.json({ok:true,items:await getFriendSuggestions(pool,req.user.id,Math.min(Number(req.query.limit)||20,50))}); }
   catch(error) { console.error('[SOCIAL suggestions]',error); fail(res,500,'No se pudieron cargar las sugerencias'); }

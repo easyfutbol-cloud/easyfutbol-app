@@ -4,7 +4,7 @@ import express from 'express';
 import rateLimit from 'express-rate-limit';
 import { pool } from '../config/db.js';
 import { requireAuth } from '../middlewares/auth.js';
-import { formatLocationLabel } from '../services/weeklyLineupService.js';
+import { getUserSedeSlug } from '../services/rankingScope.js';
 
 const router = express.Router();
 
@@ -20,27 +20,7 @@ const eventLimiter = rateLimit({
 
 const PUBLIC_COLUMNS = 'id, title, body, image_url, button_label, action_type, action_value, frequency, audience_locations';
 
-/**
- * Sede del jugador: la que eligió al registrarse (preferred_location) o, si no
- * la tiene, la de sus partidos más habituales. null si no se puede saber.
- */
-async function getUserLocationSlug(userId) {
-  const [[user]] = await pool.query('SELECT preferred_location FROM users WHERE id=? LIMIT 1', [userId]);
-  const chosen = formatLocationLabel(user?.preferred_location);
-  if (chosen) return chosen.toLowerCase();
-
-  const [[inferred]] = await pool.query(
-    `SELECT COALESCE(l.slug, CASE WHEN LOWER(m.city) IN ('avilés','aviles','oviedo','gijón','gijon','asturias') THEN 'asturias' ELSE 'valladolid' END) AS slug
-     FROM inscriptions i
-     JOIN matches m ON m.id = i.match_id
-     LEFT JOIN locations l ON l.id = m.location_id
-     WHERE i.user_id=?
-     GROUP BY slug ORDER BY COUNT(*) DESC LIMIT 1`,
-    [userId]
-  );
-  const label = formatLocationLabel(inferred?.slug);
-  return label ? label.toLowerCase() : null;
-}
+const getUserLocationSlug = (userId) => getUserSedeSlug(pool, userId);
 
 /**
  * GET /api/popups/active
