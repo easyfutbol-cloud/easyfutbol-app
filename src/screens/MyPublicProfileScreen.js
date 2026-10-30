@@ -1,5 +1,6 @@
 import React, { useCallback, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, Image, Switch, Alert, Modal, FlatList } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, Image, Switch, Alert, Modal, FlatList, TextInput, KeyboardAvoidingView, Platform } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
 import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
@@ -8,6 +9,10 @@ import { api } from '../api/client';
 import { uploadForm } from '../api/upload';
 import ScreenHeader from '../components/ScreenHeader';
 import { resolveSocialAvatarUrl } from '../components/social/SocialComponents';
+import PlayerCard from '../components/profile/PlayerCard';
+import { DEFAULT_SECTIONS, FOOT_LABELS, POSITION_LABELS, PROFILE_ACCENTS, PROFILE_SECTIONS, SECTION_ORDER, accentFor } from '../utils/profileTheme';
+
+const EMPTY_IDENTITY = { nickname: '', shirt_number: '', bio: '', favorite_team: '', primary_position: null, secondary_position: null, dominant_foot: null };
 
 const BASE = String(api?.defaults?.baseURL || '').replace(/\/+$/, '');
 
@@ -39,6 +44,13 @@ export default function MyPublicProfileScreen({ navigation }) {
   const [visibleStats, setVisibleStats] = useState([]);
   const [commentsEnabled, setCommentsEnabled] = useState(true);
   const [photos, setPhotos] = useState([]);
+  const [profileUser, setProfileUser] = useState(null);
+  const [card, setCard] = useState(null);
+  const [accent, setAccent] = useState('orange');
+  const [sections, setSections] = useState(DEFAULT_SECTIONS);
+  const [identity, setIdentity] = useState(EMPTY_IDENTITY);
+  const [savedIdentity, setSavedIdentity] = useState(EMPTY_IDENTITY);
+  const [savingIdentity, setSavingIdentity] = useState(false);
 
   const [matchPickerVisible, setMatchPickerVisible] = useState(false);
   const [myMatches, setMyMatches] = useState(null);
@@ -59,6 +71,21 @@ export default function MyPublicProfileScreen({ navigation }) {
       setVisibleStats(d.visible_stats || []);
       setCommentsEnabled(Boolean(d.comments_enabled));
       setPhotos(d.photos || []);
+      setProfileUser(d.user || null);
+      setCard(d.card || null);
+      setAccent(d.user?.profile_accent || 'orange');
+      setSections(d.sections || DEFAULT_SECTIONS);
+      const loaded = {
+        nickname: d.user?.nickname || '',
+        shirt_number: d.user?.shirt_number ? String(d.user.shirt_number) : '',
+        bio: d.user?.bio || '',
+        favorite_team: d.user?.favorite_team || '',
+        primary_position: d.user?.primary_position || null,
+        secondary_position: d.user?.secondary_position || null,
+        dominant_foot: d.user?.dominant_foot || null,
+      };
+      setIdentity(loaded);
+      setSavedIdentity(loaded);
     } catch (e) {
       Alert.alert('Error', e?.response?.data?.msg || e.message || 'No se pudo cargar tu perfil');
     } finally {
@@ -76,6 +103,68 @@ export default function MyPublicProfileScreen({ navigation }) {
       Alert.alert('Error', e?.response?.data?.msg || e.message || 'No se pudo guardar');
     } finally {
       setSaving(false);
+    }
+  };
+
+  const saveCustomization = async (patch) => {
+    try {
+      setSaving(true);
+      await api.patch('/player-profile/me/customization', patch);
+      return true;
+    } catch (e) {
+      Alert.alert('Perfil', e?.response?.data?.msg || e.message || 'No se pudo guardar');
+      return false;
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const chooseAccent = async (key) => {
+    const previous = accent;
+    setAccent(key);
+    if (!(await saveCustomization({ profile_accent: key }))) setAccent(previous);
+  };
+
+  const updateSections = async (next) => {
+    const previous = sections;
+    setSections(next);
+    if (!(await saveCustomization({ profile_sections: next }))) setSections(previous);
+  };
+  const toggleSection = (key) => updateSections(sections.includes(key) ? sections.filter((k) => k !== key) : [...sections, key]);
+  const moveSection = (key, direction) => {
+    const index = sections.indexOf(key);
+    const target = index + direction;
+    if (index < 0 || target < 0 || target >= sections.length) return;
+    const next = [...sections];
+    [next[index], next[target]] = [next[target], next[index]];
+    updateSections(next);
+  };
+  // Primero las visibles en su orden; debajo las ocultas para activarlas.
+  const sectionRows = [...sections, ...SECTION_ORDER.filter((key) => !sections.includes(key))];
+
+  const setField = (key, value) => setIdentity((prev) => ({ ...prev, [key]: value }));
+  const identityDirty = Object.keys(EMPTY_IDENTITY).some((key) => identity[key] !== savedIdentity[key]);
+  const saveIdentity = async () => {
+    try {
+      setSavingIdentity(true);
+      await api.patch('/player-profile/me/customization', {
+        nickname: identity.nickname,
+        shirt_number: identity.shirt_number === '' ? null : identity.shirt_number,
+        bio: identity.bio,
+        favorite_team: identity.favorite_team,
+      });
+      const sportChanged = ['primary_position', 'dominant_foot'].some((key) => identity[key] !== savedIdentity[key]);
+      if (sportChanged) {
+        // La secundaria no puede ser igual que la principal.
+        const secondary = identity.secondary_position === identity.primary_position ? null : identity.secondary_position;
+        await api.patch('/me/sport-profile', { primary_position: identity.primary_position, secondary_position: secondary, dominant_foot: identity.dominant_foot });
+      }
+      setSavedIdentity(identity);
+      await load();
+    } catch (e) {
+      Alert.alert('Perfil', e?.response?.data?.msg || e.message || 'No se pudo guardar');
+    } finally {
+      setSavingIdentity(false);
     }
   };
 
@@ -193,8 +282,8 @@ export default function MyPublicProfileScreen({ navigation }) {
   return (
     <View style={styles.screen}>
       <ScreenHeader
-        title="Mi perfil público"
-        description="Fotos, estadísticas y comentarios que verá cualquiera."
+        title="Editar perfil"
+        description="Cómo te ven los demás jugadores: tu estilo, tu carta y lo que enseñas."
         action={(
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
             <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()} accessibilityRole="button" accessibilityLabel="Volver">
@@ -207,19 +296,101 @@ export default function MyPublicProfileScreen({ navigation }) {
           </View>
         )}
       />
-      <ScrollView contentContainerStyle={styles.content}>
+      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+      <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
         <Text style={styles.sectionLabel}>Portada</Text>
         <TouchableOpacity style={styles.bannerBox} onPress={pickBanner} activeOpacity={0.85}>
           {uploadingBanner ? <ActivityIndicator color="#ff5a00" /> : bannerUrl ? (
             <Image source={{ uri: resolveSocialAvatarUrl(bannerUrl) }} style={styles.bannerImage} resizeMode="cover" />
           ) : (
-            <View style={styles.bannerPlaceholder}>
-              <Ionicons name="image-outline" size={26} color="#666" />
-              <Text style={styles.bannerPlaceholderText}>Añadir portada (opcional)</Text>
-            </View>
+            <LinearGradient colors={accentFor(accent).banner} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={[StyleSheet.absoluteFill, styles.bannerPlaceholder]}>
+              <Ionicons name="image-outline" size={26} color="#fff" />
+              <Text style={[styles.bannerPlaceholderText, { color: '#fff' }]}>Añadir portada (opcional)</Text>
+            </LinearGradient>
           )}
         </TouchableOpacity>
         {bannerUrl ? <TouchableOpacity onPress={removeBanner}><Text style={styles.removeText}>Quitar portada</Text></TouchableOpacity> : null}
+
+        <Text style={styles.sectionLabel}>Color de tu perfil</Text>
+        <Text style={styles.hint}>Se usa en la portada, los botones y los títulos de tu perfil.</Text>
+        <View style={styles.swatches}>
+          {Object.entries(PROFILE_ACCENTS).map(([key, item]) => (
+            <TouchableOpacity key={key} onPress={() => chooseAccent(key)} style={[styles.swatch, accent === key && { borderColor: '#fff' }]} accessibilityRole="button" accessibilityLabel={`Color ${item.label}`}>
+              <View style={[styles.swatchInner, { backgroundColor: item.color }]}>{accent === key ? <Ionicons name="checkmark" size={16} color="#fff" /> : null}</View>
+            </TouchableOpacity>
+          ))}
+        </View>
+
+        <Text style={styles.sectionLabel}>Tu jugador</Text>
+        <View style={styles.formCard}>
+          <View style={styles.formRow}>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.inputLabel}>Apodo</Text>
+              <TextInput value={identity.nickname} onChangeText={(v) => setField('nickname', v)} maxLength={24} placeholder="Ej. El Mago" placeholderTextColor="#555" style={styles.input} />
+            </View>
+            <View style={{ width: 86 }}>
+              <Text style={styles.inputLabel}>Dorsal</Text>
+              <TextInput value={identity.shirt_number} onChangeText={(v) => setField('shirt_number', v.replace(/[^0-9]/g, '').slice(0, 2))} keyboardType="number-pad" placeholder="10" placeholderTextColor="#555" style={[styles.input, { textAlign: 'center' }]} />
+            </View>
+          </View>
+
+          <Text style={styles.inputLabel}>Posición</Text>
+          <View style={styles.choiceRow}>
+            {Object.entries(POSITION_LABELS).map(([key, label]) => (
+              <Choice key={key} label={label} active={identity.primary_position === key} color={accentFor(accent).color} onPress={() => setField('primary_position', identity.primary_position === key ? null : key)} />
+            ))}
+          </View>
+
+          <Text style={styles.inputLabel}>Pierna buena</Text>
+          <View style={styles.choiceRow}>
+            {Object.entries(FOOT_LABELS).map(([key, label]) => (
+              <Choice key={key} label={label} active={identity.dominant_foot === key} color={accentFor(accent).color} onPress={() => setField('dominant_foot', identity.dominant_foot === key ? null : key)} />
+            ))}
+          </View>
+
+          <Text style={styles.inputLabel}>Equipo favorito</Text>
+          <TextInput value={identity.favorite_team} onChangeText={(v) => setField('favorite_team', v)} maxLength={40} placeholder="Ej. Real Sporting" placeholderTextColor="#555" style={styles.input} />
+
+          <View style={styles.bioHeader}>
+            <Text style={styles.inputLabel}>Bio</Text>
+            <Text style={styles.counter}>{identity.bio.length}/160</Text>
+          </View>
+          <TextInput value={identity.bio} onChangeText={(v) => setField('bio', v)} maxLength={160} multiline placeholder="Cuéntale a la gente cómo juegas" placeholderTextColor="#555" style={[styles.input, styles.bioInput]} />
+
+          <TouchableOpacity onPress={saveIdentity} disabled={!identityDirty || savingIdentity} style={[styles.saveButton, { backgroundColor: accentFor(accent).color }, (!identityDirty || savingIdentity) && { opacity: 0.4 }]} accessibilityRole="button">
+            {savingIdentity ? <ActivityIndicator color="#fff" /> : <Text style={styles.saveButtonText}>{identityDirty ? 'Guardar cambios' : 'Guardado'}</Text>}
+          </TouchableOpacity>
+        </View>
+
+        {card ? <>
+          <Text style={styles.sectionLabel}>Tu carta</Text>
+          <Text style={styles.hint}>Se calcula sola con tus partidos y tu posición. Actívala en Secciones para que la vean los demás.</Text>
+          <PlayerCard card={card} name={profileUser?.name} nickname={savedIdentity.nickname} avatarUrl={profileUser?.avatar_url} shirtNumber={savedIdentity.shirt_number} width={210} />
+        </> : null}
+
+        <Text style={styles.sectionLabel}>Secciones de tu perfil</Text>
+        <Text style={styles.hint}>Elige qué se ve y en qué orden. Lo que apagues no lo verá nadie más.</Text>
+        <View style={styles.statsList}>
+          {sectionRows.map((key) => {
+            const meta = PROFILE_SECTIONS[key];
+            const index = sections.indexOf(key);
+            const active = index >= 0;
+            return (
+              <View key={key} style={[styles.statRow, !active && { opacity: 0.55 }]}>
+                <Ionicons name={meta.icon} size={19} color={active ? accentFor(accent).color : '#666'} />
+                <View style={{ flex: 1, marginLeft: 10 }}>
+                  <Text style={styles.statLabel}>{meta.label}</Text>
+                  <Text style={styles.statValueHint}>{meta.hint}</Text>
+                </View>
+                {active ? <>
+                  <TouchableOpacity onPress={() => moveSection(key, -1)} disabled={index === 0} style={[styles.moveButton, index === 0 && { opacity: 0.25 }]} accessibilityLabel={`Subir ${meta.label}`}><Ionicons name="chevron-up" size={16} color="#fff" /></TouchableOpacity>
+                  <TouchableOpacity onPress={() => moveSection(key, 1)} disabled={index === sections.length - 1} style={[styles.moveButton, index === sections.length - 1 && { opacity: 0.25 }]} accessibilityLabel={`Bajar ${meta.label}`}><Ionicons name="chevron-down" size={16} color="#fff" /></TouchableOpacity>
+                </> : null}
+                <Switch value={active} onValueChange={() => toggleSection(key)} trackColor={{ false: '#333', true: accentFor(accent).color }} style={{ marginLeft: 6 }} />
+              </View>
+            );
+          })}
+        </View>
 
         <Text style={styles.sectionLabel}>Estadísticas que se ven en tu perfil</Text>
         <Text style={styles.hint}>Solo tú decides qué enseñar. El resto se queda privado.</Text>
@@ -275,6 +446,7 @@ export default function MyPublicProfileScreen({ navigation }) {
 
         {saving ? <Text style={styles.savingText}>Guardando…</Text> : null}
       </ScrollView>
+      </KeyboardAvoidingView>
 
       <Modal visible={matchPickerVisible} transparent animationType="slide" onRequestClose={() => setMatchPickerVisible(false)}>
         <View style={styles.modalOverlay}>
@@ -306,7 +478,31 @@ export default function MyPublicProfileScreen({ navigation }) {
   );
 }
 
+function Choice({ label, active, color, onPress }) {
+  return (
+    <TouchableOpacity onPress={onPress} style={[styles.choice, active && { backgroundColor: color, borderColor: color }]} accessibilityRole="button" accessibilityState={{ selected: active }}>
+      <Text style={[styles.choiceText, active && { color: '#fff' }]}>{label}</Text>
+    </TouchableOpacity>
+  );
+}
+
 const styles = StyleSheet.create({
+  swatches: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
+  swatch: { width: 44, height: 44, borderRadius: 22, borderWidth: 2, borderColor: 'transparent', padding: 3 },
+  swatchInner: { flex: 1, borderRadius: 19, alignItems: 'center', justifyContent: 'center' },
+  formCard: { backgroundColor: '#171719', borderRadius: 18, borderWidth: 1, borderColor: '#29292d', padding: 14 },
+  formRow: { flexDirection: 'row', gap: 10 },
+  inputLabel: { color: '#a5a8ae', fontSize: 11, fontWeight: '900', letterSpacing: 0.6, marginTop: 12, marginBottom: 6, textTransform: 'uppercase' },
+  input: { backgroundColor: '#1f1f23', borderRadius: 12, borderWidth: 1, borderColor: '#2c2c31', color: '#fff', fontSize: 14, paddingHorizontal: 12, paddingVertical: 11 },
+  bioHeader: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between' },
+  counter: { color: '#66686e', fontSize: 10, fontWeight: '800' },
+  bioInput: { minHeight: 76, textAlignVertical: 'top' },
+  choiceRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 7 },
+  choice: { borderRadius: 999, borderWidth: 1, borderColor: '#34343a', paddingHorizontal: 12, paddingVertical: 8 },
+  choiceText: { color: '#c9cbd0', fontSize: 12, fontWeight: '800' },
+  saveButton: { marginTop: 16, borderRadius: 13, height: 46, alignItems: 'center', justifyContent: 'center' },
+  saveButtonText: { color: '#fff', fontSize: 14, fontWeight: '900' },
+  moveButton: { width: 28, height: 28, borderRadius: 8, backgroundColor: '#26262b', alignItems: 'center', justifyContent: 'center', marginLeft: 4 },
   screen: { flex: 1, backgroundColor: '#0b0b0d' },
   loading: { flex: 1, backgroundColor: '#0b0b0d', alignItems: 'center', justifyContent: 'center' },
   content: { padding: 18, paddingBottom: 60 },

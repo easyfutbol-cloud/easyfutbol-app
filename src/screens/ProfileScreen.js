@@ -626,7 +626,7 @@ export default function ProfileScreen({ navigation }) {
               <View style={{ flex:1 }}>
                 <Text style={[styles.section,{color:'#7892ff'}]}>MI PERFIL PÚBLICO</Text>
                 {profileViews?.last_7_days ? <Text style={[styles.communityText,{marginBottom:2,color:'#fff',fontWeight:'800'}]}>👁 {profileViews.last_7_days} {profileViews.last_7_days === 1 ? 'visita' : 'visitas'} esta semana</Text> : null}
-                <Text style={[styles.communityText,{marginBottom:0}]}>Portada, fotos de partidos, qué estadísticas enseñas y comentarios.</Text>
+                <Text style={[styles.communityText,{marginBottom:0}]}>Tu color, apodo, dorsal, carta de jugador, fotos y qué secciones enseñas.</Text>
               </View>
               <Ionicons name="chevron-forward" color="#888" size={22}/>
             </View>

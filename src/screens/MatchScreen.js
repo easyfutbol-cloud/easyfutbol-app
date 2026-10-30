@@ -112,6 +112,7 @@ export default function MatchScreen({ route, navigation }) {
   const [inviteFriendsVisible, setInviteFriendsVisible] = useState(false);
   const [ticketsToAssign, setTicketsToAssign] = useState(null);
   const [matchFriends, setMatchFriends] = useState([]);
+  const [attendeeStatuses, setAttendeeStatuses] = useState({});
 
   const attendeesNormalized = useMemo(() => {
     const apiBase = (api?.defaults?.baseURL || '').replace(/\/+$/, '');
@@ -159,6 +160,24 @@ export default function MatchScreen({ route, navigation }) {
 
     return out;
   }, [attendees, matchFriends]);
+
+  // Relación con cada apuntado, para poder añadirlo como amigo desde aquí.
+  const attendeeIdsKey = attendeesNormalized.map((p) => p.id).filter(Boolean).join(',');
+  useEffect(() => {
+    if (!attendeeIdsKey || isGuest) { setAttendeeStatuses({}); return; }
+    api.get('/social/statuses', { params: { ids: attendeeIdsKey } })
+      .then((response) => setAttendeeStatuses(response.data?.statuses || {}))
+      .catch(() => setAttendeeStatuses({}));
+  }, [attendeeIdsKey, isGuest]);
+
+  const addAttendee = async (player) => {
+    setAttendeeStatuses((prev) => ({ ...prev, [player.id]: 'sent' }));
+    try { await api.post('/social/requests', { user_id: player.id }); }
+    catch (error) {
+      setAttendeeStatuses((prev) => ({ ...prev, [player.id]: 'none' }));
+      Alert.alert('Amigos', error.response?.data?.msg || 'No se pudo enviar la solicitud');
+    }
+  };
 
   useEffect(() => {
     if (!matchId) {
@@ -828,7 +847,9 @@ export default function MatchScreen({ route, navigation }) {
               <Text style={[styles.attendeeName, p.isPlus && styles.attendeeNamePlus]} numberOfLines={1}>
                 {p.username}
               </Text>
-              {p.isFriend?<Text style={{color:colors.orange,fontSize:9,fontWeight:'900'}}>AMIGO</Text>:null}
+              {p.isFriend?<Text style={{color:colors.orange,fontSize:9,fontWeight:'900'}}>AMIGO</Text>
+                :attendeeStatuses[p.id]==='none'?<TouchableOpacity onPress={()=>addAttendee(p)} hitSlop={6} style={styles.attendeeAdd} accessibilityRole="button" accessibilityLabel={`Añadir a ${p.username} como amigo`}><Ionicons name="person-add" size={10} color="#fff"/><Text style={styles.attendeeAddText}>Añadir</Text></TouchableOpacity>
+                :attendeeStatuses[p.id]==='sent'?<Text style={styles.attendeeSentText}>ENVIADA</Text>:null}
             </TouchableOpacity>
           ))}
         </ScrollView>
@@ -1075,6 +1096,9 @@ export default function MatchScreen({ route, navigation }) {
 }
 
 const styles = StyleSheet.create({
+  attendeeAdd: { flexDirection: 'row', alignItems: 'center', gap: 3, marginTop: 3, backgroundColor: colors.orange, borderRadius: 8, paddingHorizontal: 6, paddingVertical: 3 },
+  attendeeAddText: { color: '#fff', fontSize: 9, fontWeight: '900' },
+  attendeeSentText: { color: '#7bcb90', fontSize: 9, fontWeight: '900', marginTop: 3 },
   container:{ flex:1, backgroundColor:colors.background, paddingHorizontal:spacing(2) },
   worldCupBgImage: {
     resizeMode: 'cover',

@@ -9,6 +9,10 @@ import { FramedAvatar, PlayerTitleBadge } from '../components/engagement/Cosmeti
 import { SocialAvatar, resolveSocialAvatarUrl } from '../components/social/SocialComponents';
 import ProfileShareModal, { FORM_COLORS, FORM_LETTER } from '../components/profile/ProfileShareCard';
 import PhotoGrid from '../components/profile/PhotoGrid';
+import { connectByFriendQr } from '../utils/friendQr';
+import PlayerCard from '../components/profile/PlayerCard';
+import EvolutionChart from '../components/profile/EvolutionChart';
+import { DEFAULT_SECTIONS, FOOT_LABELS, POSITION_LABELS, accentFor, withAlpha } from '../utils/profileTheme';
 
 const dateLabel = (value) => new Intl.DateTimeFormat('es-ES', {
   weekday:'short', day:'numeric', month:'short', hour:'2-digit', minute:'2-digit',
@@ -32,11 +36,24 @@ export default function PlayerSocialProfileScreen({ navigation, route }) {
   const [shareCard, setShareCard] = useState(null);
   const userId = route.params?.userId;
   const slug = route.params?.slug;
+  const qrToken = route.params?.qr;
 
   const load = useCallback(async () => {
     try {
       // Los enlaces /jugador/<slug> llegan sin userId: primero se resuelve.
       if (!userId && slug) {
+        // QR de "añadir amigo" escaneado con la cámara del móvil: añade y abre el perfil.
+        if (qrToken) {
+          try {
+            const added = await connectByFriendQr(slug, qrToken);
+            navigation.setParams({ userId: added.user_id, qr: undefined });
+            if (!added.already) Alert.alert('Nuevo amigo', `${added.name} y tú ya sois amigos`);
+            return;
+          } catch (error) {
+            Alert.alert('Añadir amigo', error.response?.data?.msg || 'No se pudo añadir');
+            navigation.setParams({ qr: undefined });
+          }
+        }
         const res = await api.get(`/player-profile/by-slug/${encodeURIComponent(slug)}`);
         navigation.setParams({ userId: res.data.user_id });
         return;
@@ -51,7 +68,7 @@ export default function PlayerSocialProfileScreen({ navigation, route }) {
     } catch (error) {
       Alert.alert('Perfil', error.response?.data?.msg || 'No se pudo cargar');
     }
-  }, [userId, slug, navigation]);
+  }, [userId, slug, qrToken, navigation]);
   useFocusEffect(useCallback(() => { load(); }, [load]));
   if (!data || !publicData) return <View style={styles.page}><ActivityIndicator color="#ff5a00" style={styles.loader} /></View>;
 
@@ -113,6 +130,7 @@ export default function PlayerSocialProfileScreen({ navigation, route }) {
     data.user.primary_position ? positionLabel(data.user.primary_position) : null,
     data.user.dominant_foot ? footLabel(data.user.dominant_foot) : null,
     data.user.preferred_location || null,
+    publicData.user?.favorite_team ? `❤ ${publicData.user.favorite_team}` : null,
   ].filter(Boolean);
 
   const shareProfile = async () => {
@@ -133,26 +151,165 @@ export default function PlayerSocialProfileScreen({ navigation, route }) {
   const hasShowcase = achievements.length > 0 || weeklyWins > 0 || !!data.reputation?.badges?.length;
   const views = publicData.views;
   const viewsDelta = views ? views.last_7_days - views.previous_7_days : 0;
+  const accent = accentFor(publicData.user?.profile_accent);
+  const isOwner = publicData.is_owner;
+  const sections = publicData.sections || DEFAULT_SECTIONS;
+  // Lo que el dueño tiene oculto (carta y evolución) se le enseña arriba para
+  // que vea cómo queda y lo active con un toque. Los demás no lo reciben.
+  const hiddenForOwner = (key) => isOwner && !sections.includes(key);
+  const showSection = async (key) => {
+    try {
+      await api.patch('/player-profile/me/customization', { profile_sections: [key, ...sections] });
+      await load();
+    } catch (error) { Alert.alert('Perfil', error.response?.data?.msg || 'No se pudo guardar'); }
+  };
+  const hiddenBar = (key) => hiddenForOwner(key) ? (
+    <View style={[styles.hiddenBar, { borderColor: withAlpha(accent.color, 0.35) }]}>
+      <Ionicons name="eye-off-outline" size={15} color="#a5a8ae" />
+      <Text style={styles.hiddenText}>Solo tú lo ves</Text>
+      <TouchableOpacity onPress={() => showSection(key)} style={[styles.hiddenButton, { backgroundColor: accent.color }]} accessibilityRole="button">
+        <Text style={styles.hiddenButtonText}>Enseñar en mi perfil</Text>
+      </TouchableOpacity>
+    </View>
+  ) : null;
 
+  const formSection = form.length ? <View style={styles.card}>
+      <SectionTitle color={accent.color} icon="pulse-outline" title="FORMA RECIENTE" />
+      <View style={styles.formRow}>
+        {[...form].reverse().map((m) => (
+          <View key={m.match_id} style={styles.formItem}>
+            <View style={[styles.formDot, { backgroundColor: FORM_COLORS[m.result] || '#555' }]}>
+              <Text style={styles.formLetter}>{FORM_LETTER[m.result] || '·'}</Text>
+              {m.is_mvp ? <View style={styles.formMvp}><Ionicons name="star" size={9} color="#050505" /></View> : null}
+            </View>
+            {m.goals !== null || m.assists !== null ? (
+              <Text style={styles.formMeta}>{[m.goals !== null ? `${m.goals}G` : null, m.assists !== null ? `${m.assists}A` : null].filter(Boolean).join(' · ')}</Text>
+            ) : null}
+          </View>
+        ))}
+      </View>
+      <Text style={styles.formHint}>Últimos partidos, del más antiguo al más reciente</Text>
+    </View> : null;
+  const statsSection = !!extraStats.length && <View style={styles.card}>
+      <SectionTitle color={accent.color} icon="stats-chart-outline" title="MÁS ESTADÍSTICAS" />
+      <View style={styles.publicStatsGrid}>
+        {extraStats.map((key) => <View key={key} style={styles.publicStatTile}>
+          <Ionicons name={PUBLIC_STAT_ICONS[key]} color="#ff7a32" size={20} />
+          <Text style={styles.metricValue}>{statValue(key)}</Text>
+          <Text style={styles.metricLabel}>{PUBLIC_STAT_LABELS[key]}</Text>
+        </View>)}
+      </View>
+    </View>;
+  const photosSection = !!publicData.photos?.length && <View style={styles.card}>
+      <SectionTitle color={accent.color} icon="images-outline" title={`FOTOS (${publicData.photos.length})`} />
+      <PhotoGrid photos={publicData.photos} />
+    </View>;
+  const showcaseSection = hasShowcase && <View style={styles.card}>
+      <SectionTitle color={accent.color} icon="trophy-outline" title="VITRINA" />
+      {weeklyWins > 0 ? (
+        <TouchableOpacity style={styles.lineupTrophy} onPress={() => navigation.navigate('WeeklyLineupResult')} activeOpacity={0.85}>
+          <View style={styles.lineupIcon}><Ionicons name="trophy" size={22} color="#050505" /></View>
+          <View style={{ flex:1 }}>
+            <Text style={styles.lineupTitle}>{weeklyWins === 1 ? 'Ha estado en El 8 de la semana' : `${weeklyWins} veces en El 8 de la semana`}</Text>
+            <Text style={styles.lineupSub}>Elegido por la comunidad</Text>
+          </View>
+          <Ionicons name="chevron-forward" size={18} color="#777" />
+        </TouchableOpacity>
+      ) : null}
+      {achievements.length ? <View style={styles.medalGrid}>
+        {achievements.map((item) => <View key={item.code} style={styles.medal}>
+          <View style={styles.medalIcon}><Ionicons name={item.icon} size={20} color="#ff7a32" /></View>
+          <Text style={styles.medalTitle} numberOfLines={2}>{item.title}</Text>
+        </View>)}
+      </View> : null}
+      {!!data.reputation?.badges?.length && <View style={styles.badgeWrap}>{data.reputation.badges.map((badge) => <View key={badge.code} style={styles.publicBadge}><Ionicons name={badge.icon} color="#4dbb78" size={16} /><Text style={styles.publicBadgeText}>{badge.label}</Text></View>)}</View>}
+      {data.reputation?.attendance_rate !== null && data.reputation?.attendance_rate !== undefined && <Text style={styles.reliabilityText}>{data.reputation.attendance_rate}% de asistencia · {data.reputation.completed_matches} partidos completados</Text>}
+    </View>;
+  const commentsSection = publicData.comments_enabled && <View style={styles.card}>
+      <SectionTitle color={accent.color} icon="chatbubble-ellipses-outline" title={`COMENTARIOS (${publicData.comments?.length || 0})`} />
+
+      {publicData.is_owner ? null : publicData.can_comment ? (
+        <View style={styles.commentInputRow}>
+          <TextInput
+            style={styles.commentInput}
+            placeholder="Escribe un comentario..."
+            placeholderTextColor="#666"
+            value={commentText}
+            onChangeText={setCommentText}
+            multiline
+            maxLength={500}
+          />
+          <TouchableOpacity style={styles.commentSendButton} onPress={postComment} disabled={postingComment || !commentText.trim()}>
+            {postingComment ? <ActivityIndicator size="small" color="#fff" /> : <Ionicons name="send" size={16} color="#fff" />}
+          </TouchableOpacity>
+        </View>
+      ) : (
+        <Text style={styles.commentLockedText}>
+          Necesitas haber jugado al menos {publicData.min_matches_to_comment} partidos en EasyFutbol para poder comentar.
+        </Text>
+      )}
+
+      {!publicData.comments?.length ? (
+        <Text style={styles.empty}>Todavía no hay comentarios.</Text>
+      ) : publicData.comments.map((comment) => (
+        <View key={comment.id} style={styles.commentRow}>
+          <TouchableOpacity onPress={() => navigation.push('PlayerSocialProfile', { userId: comment.author.id })} accessibilityRole="button" accessibilityLabel={`Ver perfil de ${comment.author.name}`}>
+            <SocialAvatar uri={comment.author.avatar_url} name={comment.author.name} size={32} />
+          </TouchableOpacity>
+          <View style={{ flex:1 }}>
+            <Text style={styles.commentAuthor} onPress={() => navigation.push('PlayerSocialProfile', { userId: comment.author.id })}>{comment.author.name}</Text>
+            <Text style={styles.commentBody}>{comment.body}</Text>
+          </View>
+          {comment.can_delete && (
+            <TouchableOpacity onPress={() => deleteComment(comment)} style={{ padding:4 }}>
+              <Ionicons name="trash-outline" size={16} color="#777" />
+            </TouchableOpacity>
+          )}
+        </View>
+      ))}
+    </View>;
+  const card = publicData.card;
+  const cardSection = card ? <View style={styles.card}>
+    {hiddenBar('card')}
+    <SectionTitle color={accent.color} icon="id-card-outline" title="CARTA DE JUGADOR" />
+    <View style={styles.cardWrap}>
+      <PlayerCard card={card} name={data.user.name} nickname={publicData.user?.nickname} avatarUrl={data.user.avatar_url} shirtNumber={publicData.user?.shirt_number} />
+    </View>
+    <Text style={styles.cardHint}>
+      {card.provisional
+        ? `${isOwner ? 'Juega' : 'Le faltan'} ${3 - card.matches_played} ${3 - card.matches_played === 1 ? 'partido' : 'partidos'} más para ${isOwner ? 'desbloquear tu' : 'tener su'} media`
+        : `Calculada con goles, asistencias, paradas, victorias y MVPs de ${isOwner ? 'tus' : 'sus'} partidos`}
+    </Text>
+  </View> : null;
+  const evolutionSection = publicData.evolution ? <View style={styles.card}>
+    {hiddenBar('evolution')}
+    <SectionTitle color={accent.color} icon="bar-chart-outline" title="EVOLUCIÓN · 6 MESES" />
+    <EvolutionChart months={publicData.evolution} accent={accent.color} />
+  </View> : null;
+  const sectionViews = { card: cardSection, evolution: evolutionSection, form: formSection, stats: statsSection, photos: photosSection, showcase: showcaseSection, comments: commentsSection };
+  const orderedSections = isOwner ? [...['card', 'evolution'].filter(hiddenForOwner), ...sections] : sections;
   return <View style={styles.page}>
     <ScreenHeader title="Perfil de jugador" onBack={() => navigation.navigate('Social')} />
     <ScrollView contentContainerStyle={styles.content}>
       <View style={styles.hero}>
         <View style={styles.heroBanner}>
-          {bannerUri ? <Image source={{ uri:bannerUri }} style={StyleSheet.absoluteFill} resizeMode="cover" /> : <LinearGradient colors={['#ff6a17', '#7a2a00', '#1a0d05']} start={{ x:0, y:0 }} end={{ x:1, y:1 }} style={StyleSheet.absoluteFill} />}
+          {bannerUri ? <Image source={{ uri:bannerUri }} style={StyleSheet.absoluteFill} resizeMode="cover" /> : <LinearGradient colors={accent.banner} start={{ x:0, y:0 }} end={{ x:1, y:1 }} style={StyleSheet.absoluteFill} />}
           <LinearGradient colors={['rgba(23,23,25,0)', 'rgba(23,23,25,.65)', '#171719']} locations={[0, 0.6, 1]} style={StyleSheet.absoluteFill} />
-          {streak?.current > 0 ? <View style={styles.streakPill}><Ionicons name="flame" size={14} color="#fff" /><Text style={styles.streakPillText}>{streak.current} {streak.current === 1 ? 'semana' : 'semanas'}</Text></View> : null}
+          {streak?.current > 0 ? <View style={[styles.streakPill, { backgroundColor: accent.color }]}><Ionicons name="flame" size={14} color="#fff" /><Text style={styles.streakPillText}>{streak.current} {streak.current === 1 ? 'semana' : 'semanas'}</Text></View> : null}
         </View>
 
         <View style={styles.identity}>
           <View style={styles.heroAvatar}>
             <FramedAvatar frame={cosmetics.frame} size={112} ring={5}><SocialAvatar uri={data.user.avatar_url} name={data.user.name} size={112} /></FramedAvatar>
+            {publicData.user?.shirt_number ? <View style={[styles.shirtBadge, { backgroundColor: accent.color }]}><Text style={styles.shirtBadgeText}>{publicData.user.shirt_number}</Text></View> : null}
           </View>
           <View style={styles.nameRow}>
             <Text style={[styles.name, publicData.user?.is_plus && styles.plusName]} numberOfLines={1}>{data.user.name}</Text>
             {publicData.user?.is_plus ? <View style={styles.plusBadge}><Text style={styles.plusBadgeText}>PLUS</Text></View> : null}
           </View>
+          {publicData.user?.nickname ? <Text style={[styles.nickname, { color: accent.color }]}>«{publicData.user.nickname}»</Text> : null}
           <PlayerTitleBadge title={cosmetics.title} />
+          {publicData.user?.bio ? <Text style={styles.bio}>{publicData.user.bio}</Text> : null}
           {chips.length ? <View style={styles.chips}>{chips.map((chip) => <View key={chip} style={styles.chip}><Text style={styles.chipText}>{chip}</Text></View>)}</View> : null}
 
           {heroStats.length ? (
@@ -177,85 +334,36 @@ export default function PlayerSocialProfileScreen({ navigation, route }) {
           ) : null}
 
           <View style={styles.heroActions}>
-            {publicData.is_owner ? (
-              <TouchableOpacity onPress={() => navigation.navigate('MyPublicProfile')} style={[styles.action, styles.secondary, styles.actionFlex]}>
-                <Ionicons name="create-outline" size={16} color="#fff" />
+            {isOwner ? (
+              <TouchableOpacity onPress={() => navigation.navigate('MyPublicProfile')} style={[styles.action, { backgroundColor: accent.color }, styles.actionFlex]} accessibilityRole="button">
+                <Ionicons name="color-palette-outline" size={16} color="#fff" />
                 <Text style={styles.actionText}>Editar perfil</Text>
               </TouchableOpacity>
             ) : (
-              <TouchableOpacity onPress={action} style={[styles.action, status === 'friends' && styles.secondary, styles.actionFlex]}>
+              <TouchableOpacity onPress={action} style={[styles.action, status === 'friends' ? styles.secondary : { backgroundColor: accent.color }, styles.actionFlex]} accessibilityRole="button">
+                <Ionicons name={status === 'friends' ? 'person-remove-outline' : status === 'sent' ? 'close' : 'person-add'} size={16} color="#fff" />
                 <Text style={styles.actionText}>{status === 'friends' ? 'Eliminar amistad' : status === 'sent' ? 'Cancelar solicitud' : status === 'received' ? 'Aceptar solicitud' : 'Añadir amigo'}</Text>
               </TouchableOpacity>
             )}
+            {isOwner ? (
+              <TouchableOpacity onPress={() => navigation.navigate('FriendQr')} style={[styles.action, styles.secondary]} accessibilityRole="button" accessibilityLabel="Mi código QR">
+                <Ionicons name="qr-code-outline" size={18} color="#fff" />
+              </TouchableOpacity>
+            ) : null}
             {canShare ? (
-              <TouchableOpacity onPress={shareProfile} style={[styles.action, publicData.is_owner ? null : styles.secondary, styles.actionFlex]} accessibilityRole="button">
-                <Ionicons name="share-social" size={16} color="#fff" />
-                <Text style={styles.actionText}>{publicData.is_owner ? 'Compartir perfil' : 'Compartir'}</Text>
+              <TouchableOpacity onPress={shareProfile} style={[styles.action, styles.secondary]} accessibilityRole="button" accessibilityLabel="Compartir perfil">
+                <Ionicons name="share-social" size={18} color="#fff" />
               </TouchableOpacity>
             ) : null}
           </View>
         </View>
       </View>
 
-      {form.length ? <View style={styles.card}>
-        <SectionTitle icon="pulse-outline" title="FORMA RECIENTE" />
-        <View style={styles.formRow}>
-          {[...form].reverse().map((m) => (
-            <View key={m.match_id} style={styles.formItem}>
-              <View style={[styles.formDot, { backgroundColor: FORM_COLORS[m.result] || '#555' }]}>
-                <Text style={styles.formLetter}>{FORM_LETTER[m.result] || '·'}</Text>
-                {m.is_mvp ? <View style={styles.formMvp}><Ionicons name="star" size={9} color="#050505" /></View> : null}
-              </View>
-              {m.goals !== null || m.assists !== null ? (
-                <Text style={styles.formMeta}>{[m.goals !== null ? `${m.goals}G` : null, m.assists !== null ? `${m.assists}A` : null].filter(Boolean).join(' · ')}</Text>
-              ) : null}
-            </View>
-          ))}
-        </View>
-        <Text style={styles.formHint}>Últimos partidos, del más antiguo al más reciente</Text>
-      </View> : null}
-
-      {!!extraStats.length && <View style={styles.card}>
-        <SectionTitle icon="stats-chart-outline" title="MÁS ESTADÍSTICAS" />
-        <View style={styles.publicStatsGrid}>
-          {extraStats.map((key) => <View key={key} style={styles.publicStatTile}>
-            <Ionicons name={PUBLIC_STAT_ICONS[key]} color="#ff7a32" size={20} />
-            <Text style={styles.metricValue}>{statValue(key)}</Text>
-            <Text style={styles.metricLabel}>{PUBLIC_STAT_LABELS[key]}</Text>
-          </View>)}
-        </View>
-      </View>}
-
-      {!!publicData.photos?.length && <View style={styles.card}>
-        <SectionTitle icon="images-outline" title={`FOTOS (${publicData.photos.length})`} />
-        <PhotoGrid photos={publicData.photos} />
-      </View>}
-
-      {hasShowcase && <View style={styles.card}>
-        <SectionTitle icon="trophy-outline" title="VITRINA" />
-        {weeklyWins > 0 ? (
-          <TouchableOpacity style={styles.lineupTrophy} onPress={() => navigation.navigate('WeeklyLineupResult')} activeOpacity={0.85}>
-            <View style={styles.lineupIcon}><Ionicons name="trophy" size={22} color="#050505" /></View>
-            <View style={{ flex:1 }}>
-              <Text style={styles.lineupTitle}>{weeklyWins === 1 ? 'Ha estado en El 8 de la semana' : `${weeklyWins} veces en El 8 de la semana`}</Text>
-              <Text style={styles.lineupSub}>Elegido por la comunidad</Text>
-            </View>
-            <Ionicons name="chevron-forward" size={18} color="#777" />
-          </TouchableOpacity>
-        ) : null}
-        {achievements.length ? <View style={styles.medalGrid}>
-          {achievements.map((item) => <View key={item.code} style={styles.medal}>
-            <View style={styles.medalIcon}><Ionicons name={item.icon} size={20} color="#ff7a32" /></View>
-            <Text style={styles.medalTitle} numberOfLines={2}>{item.title}</Text>
-          </View>)}
-        </View> : null}
-        {!!data.reputation?.badges?.length && <View style={styles.badgeWrap}>{data.reputation.badges.map((badge) => <View key={badge.code} style={styles.publicBadge}><Ionicons name={badge.icon} color="#4dbb78" size={16} /><Text style={styles.publicBadgeText}>{badge.label}</Text></View>)}</View>}
-        {data.reputation?.attendance_rate !== null && data.reputation?.attendance_rate !== undefined && <Text style={styles.reliabilityText}>{data.reputation.attendance_rate}% de asistencia · {data.reputation.completed_matches} partidos completados</Text>}
-      </View>}
+      {orderedSections.map((key) => <React.Fragment key={key}>{sectionViews[key]}</React.Fragment>)}
 
       {status === 'friends' && <>
         {!data.stats_private && <View style={styles.card}>
-          <SectionTitle icon="swap-horizontal-outline" title="COMPARATIVA" />
+          <SectionTitle color={accent.color} icon="swap-horizontal-outline" title="COMPARATIVA" />
           <View style={styles.compareHeader}><Text style={styles.compareName}>Tú</Text><Text style={styles.compareName}>{data.user.name.split(' ')[0]}</Text></View>
           <CompareRow label="Goles" mine={data.my_stats?.goals} theirs={data.stats?.goals} />
           <CompareRow label="Asistencias" mine={data.my_stats?.assists} theirs={data.stats?.assists} />
@@ -263,7 +371,7 @@ export default function PlayerSocialProfileScreen({ navigation, route }) {
         </View>}
 
         <View style={styles.card}>
-          <SectionTitle icon="people-outline" title="VUESTROS PARTIDOS" />
+          <SectionTitle color={accent.color} icon="people-outline" title="VUESTROS PARTIDOS" />
           <View style={styles.togetherGrid}>
             <SmallStat label="Juntos" value={data.together?.matches_together} />
             <SmallStat label="Victorias" value={data.together?.wins} />
@@ -277,7 +385,7 @@ export default function PlayerSocialProfileScreen({ navigation, route }) {
         </View>
 
         <View style={styles.card}>
-          <SectionTitle icon="calendar-outline" title="PRÓXIMOS PARTIDOS" />
+          <SectionTitle color={accent.color} icon="calendar-outline" title="PRÓXIMOS PARTIDOS" />
           {!data.upcoming_matches?.length && <Text style={styles.empty}>No está apuntado a ningún partido próximo.</Text>}
           {data.upcoming_matches?.map((match) => <TouchableOpacity key={match.match_id} style={styles.match} onPress={() => navigation.navigate('Match', { matchId:match.match_id })}>
             <View style={styles.dateBox}><Text style={styles.dateDay}>{new Date(match.starts_at).getDate()}</Text><Text style={styles.dateMonth}>{new Intl.DateTimeFormat('es-ES',{month:'short'}).format(new Date(match.starts_at)).replace('.', '').toUpperCase()}</Text></View>
@@ -288,50 +396,6 @@ export default function PlayerSocialProfileScreen({ navigation, route }) {
       </>}
 
       {status !== 'friends' && !publicData.is_owner && <View style={styles.privateCard}><Ionicons name="lock-closed-outline" color="#777" size={23} /><Text style={styles.privateText}>Hazte amigo para ver sus próximos partidos y vuestro historial juntos.</Text></View>}
-
-      {publicData.comments_enabled && <View style={styles.card}>
-        <SectionTitle icon="chatbubble-ellipses-outline" title={`COMENTARIOS (${publicData.comments?.length || 0})`} />
-
-        {publicData.is_owner ? null : publicData.can_comment ? (
-          <View style={styles.commentInputRow}>
-            <TextInput
-              style={styles.commentInput}
-              placeholder="Escribe un comentario..."
-              placeholderTextColor="#666"
-              value={commentText}
-              onChangeText={setCommentText}
-              multiline
-              maxLength={500}
-            />
-            <TouchableOpacity style={styles.commentSendButton} onPress={postComment} disabled={postingComment || !commentText.trim()}>
-              {postingComment ? <ActivityIndicator size="small" color="#fff" /> : <Ionicons name="send" size={16} color="#fff" />}
-            </TouchableOpacity>
-          </View>
-        ) : (
-          <Text style={styles.commentLockedText}>
-            Necesitas haber jugado al menos {publicData.min_matches_to_comment} partidos en EasyFutbol para poder comentar.
-          </Text>
-        )}
-
-        {!publicData.comments?.length ? (
-          <Text style={styles.empty}>Todavía no hay comentarios.</Text>
-        ) : publicData.comments.map((comment) => (
-          <View key={comment.id} style={styles.commentRow}>
-            <TouchableOpacity onPress={() => navigation.push('PlayerSocialProfile', { userId: comment.author.id })} accessibilityRole="button" accessibilityLabel={`Ver perfil de ${comment.author.name}`}>
-              <SocialAvatar uri={comment.author.avatar_url} name={comment.author.name} size={32} />
-            </TouchableOpacity>
-            <View style={{ flex:1 }}>
-              <Text style={styles.commentAuthor} onPress={() => navigation.push('PlayerSocialProfile', { userId: comment.author.id })}>{comment.author.name}</Text>
-              <Text style={styles.commentBody}>{comment.body}</Text>
-            </View>
-            {comment.can_delete && (
-              <TouchableOpacity onPress={() => deleteComment(comment)} style={{ padding:4 }}>
-                <Ionicons name="trash-outline" size={16} color="#777" />
-              </TouchableOpacity>
-            )}
-          </View>
-        ))}
-      </View>}
 
       {!publicData.is_owner && <View style={styles.safety}><TouchableOpacity style={styles.safetyButton} onPress={reportUser}><Ionicons name="flag-outline" color="#aaa" size={17}/><Text style={styles.safetyText}>Denunciar</Text></TouchableOpacity><TouchableOpacity style={styles.safetyButton} onPress={blockUser}><Ionicons name="ban-outline" color="#d66b6b" size={17}/><Text style={[styles.safetyText,{color:'#d66b6b'}]}>Bloquear</Text></TouchableOpacity></View>}
     </ScrollView>
@@ -351,14 +415,19 @@ export default function PlayerSocialProfileScreen({ navigation, route }) {
   </View>;
 }
 
-function SectionTitle({ icon, title }) { return <View style={styles.sectionTitle}><Ionicons name={icon} color="#ff6a1a" size={18} /><Text style={styles.eyebrow}>{title}</Text></View>; }
+function SectionTitle({ icon, title, color = '#ff6a1a' }) { return <View style={styles.sectionTitle}><Ionicons name={icon} color={color} size={18} /><Text style={[styles.eyebrow, { color }]}>{title}</Text></View>; }
 function SmallStat({ label, value }) { return <View style={styles.smallStat}><Text style={styles.smallValue}>{value ?? 0}</Text><Text style={styles.smallLabel}>{label}</Text></View>; }
 function CompareRow({ label, mine, theirs }) { return <View style={styles.compareRow}><Text style={styles.compareValue}>{Number(mine || 0)}</Text><Text style={styles.compareLabel}>{label}</Text><Text style={styles.compareValue}>{Number(theirs || 0)}</Text></View>; }
-const positionLabel = (value) => ({goalkeeper:'Portero',defender:'Defensa',midfielder:'Centrocampista',forward:'Delantero'}[value] || 'Jugador');
-const footLabel = (value) => ({right:'Diestro',left:'Zurdo',both:'Ambidiestro'}[value] || '');
+const positionLabel = (value) => POSITION_LABELS[value] || 'Jugador';
+const footLabel = (value) => FOOT_LABELS[value] || '';
 
 const styles = StyleSheet.create({
   page:{flex:1,backgroundColor:'#0b0b0d'},loader:{marginTop:80},content:{padding:18,paddingBottom:110},
+  shirtBadge:{position:'absolute',right:2,bottom:6,minWidth:34,height:34,borderRadius:17,alignItems:'center',justifyContent:'center',paddingHorizontal:6,borderWidth:3,borderColor:'#171719'},shirtBadgeText:{color:'#fff',fontSize:14,fontWeight:'900'},
+  nickname:{fontSize:14,fontWeight:'900',marginTop:2,letterSpacing:.4},bio:{color:'#c9cbd0',fontSize:13,lineHeight:19,textAlign:'center',marginTop:10,paddingHorizontal:6},
+  hiddenBar:{flexDirection:'row',alignItems:'center',gap:7,marginBottom:14,padding:9,borderRadius:13,borderWidth:1,borderStyle:'dashed',backgroundColor:'#121214'},hiddenText:{color:'#a5a8ae',fontSize:11,fontWeight:'800',flex:1},
+  hiddenButton:{borderRadius:10,paddingHorizontal:10,paddingVertical:7},hiddenButtonText:{color:'#fff',fontSize:11,fontWeight:'900'},
+  cardWrap:{marginTop:18},cardHint:{color:'#77777e',fontSize:11,textAlign:'center',marginTop:14,lineHeight:16},
   hero:{borderRadius:26,backgroundColor:'#171719',borderWidth:1,borderColor:'#29292d',overflow:'hidden',marginBottom:14},
   heroBanner:{height:150,backgroundColor:'#1a1a1a'},
   streakPill:{position:'absolute',top:12,right:12,flexDirection:'row',alignItems:'center',gap:4,backgroundColor:'#ff5a00',borderRadius:999,paddingHorizontal:10,paddingVertical:5},streakPillText:{color:'#fff',fontWeight:'900',fontSize:12},

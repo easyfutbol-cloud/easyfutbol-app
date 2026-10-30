@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, RefreshControl, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Alert, RefreshControl, ScrollView, Share, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { api } from '../api/client';
@@ -26,15 +26,41 @@ export default function SocialScreen({ navigation, route }) {
   const [refreshing, setRefreshing] = useState(false);
   const [query, setQuery] = useState('');
   const [inviteCount, setInviteCount] = useState(0);
+  const [requestCount, setRequestCount] = useState(0);
+  const [suggestions, setSuggestions] = useState([]);
 
   const loadSummary = useCallback(async () => {
     try {
       const response = await api.get('/social/summary');
       setInviteCount(Number(response.data?.match_invitations || 0));
+      setRequestCount(Number(response.data?.pending_requests || 0));
     } catch (_) {
       setInviteCount(0);
     }
   }, []);
+
+  const loadSuggestions = useCallback(async () => {
+    try {
+      const response = await api.get('/social/suggestions?limit=15');
+      setSuggestions((response.data?.items || []).map((item) => ({ ...item, sent: false })));
+    } catch (_) {
+      setSuggestions([]);
+    }
+  }, []);
+
+  const addSuggestion = async (item) => {
+    try {
+      await api.post('/social/requests', { user_id: item.id });
+      setSuggestions((prev) => prev.map((s) => (s.id === item.id ? { ...s, sent: true } : s)));
+    } catch (error) { Alert.alert('Amigos', error.response?.data?.msg || 'No se pudo enviar la solicitud'); }
+  };
+
+  const shareInvite = async () => {
+    try {
+      const response = await api.get('/player-profile/me/share');
+      await Share.share({ message: `⚽ Juega conmigo en EasyFutbol. Este es mi perfil: ${response.data.url}` });
+    } catch (error) { Alert.alert('Invitar', error.response?.data?.msg || 'No se pudo preparar el enlace'); }
+  };
 
   const load = useCallback(async () => {
     try {
@@ -61,6 +87,7 @@ export default function SocialScreen({ navigation, route }) {
   }, [tab, query, loadSummary]);
 
   useFocusEffect(useCallback(() => { load(); loadSummary(); }, [load, loadSummary]));
+  useFocusEffect(useCallback(() => { loadSuggestions(); }, [loadSuggestions]));
   useEffect(() => {
     if (tab !== 'search') return undefined;
     const timer = setTimeout(load, 350);
@@ -158,11 +185,46 @@ export default function SocialScreen({ navigation, route }) {
         {TABS.map(([key, label]) => <TouchableOpacity key={key} onPress={() => setTab(key)} style={[styles.tab, tab === key && styles.tabOn]}><Text style={[styles.tabText, tab === key && styles.tabTextOn]}>{label}{key === 'invitations' && inviteCount ? ` · ${inviteCount}` : ''}</Text></TouchableOpacity>)}
       </ScrollView>
       <ScrollView style={styles.list} contentContainerStyle={styles.content} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); load(); }} tintColor="#ff5a00" />}>
+        {tab==='friends'?<View style={styles.quickRow}>
+          <QuickAction icon="qr-code-outline" label="Mi QR" onPress={()=>navigation.navigate('FriendQr',{mode:'code'})}/>
+          <QuickAction icon="scan-outline" label="Escanear" onPress={()=>navigation.navigate('FriendQr',{mode:'scan'})}/>
+          <QuickAction icon="paper-plane-outline" label="Invitar" onPress={shareInvite}/>
+        </View>:null}
+        {tab==='friends'&&requestCount>0?<TouchableOpacity style={styles.requestsBanner} onPress={()=>setTab('requests')} accessibilityRole="button">
+          <View style={styles.requestsDot}><Text style={styles.requestsDotText}>{requestCount}</Text></View>
+          <Text style={styles.requestsText}>{requestCount===1?'Tienes 1 solicitud de amistad':`Tienes ${requestCount} solicitudes de amistad`}</Text>
+          <Ionicons name="chevron-forward" color="#ff7a32" size={18}/>
+        </TouchableOpacity>:null}
+        {tab==='friends'&&suggestions.length?<View style={styles.suggestions}>
+          <Text style={styles.resultsTitle}>Quizá conozcas</Text>
+          <Text style={styles.resultsHint}>Jugadores con los que has coincidido y amigos de tus amigos</Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.suggestionRow}>
+            {suggestions.map(item=><TouchableOpacity key={item.id} style={styles.suggestionCard} onPress={()=>navigation.navigate('PlayerSocialProfile',{userId:item.id})} activeOpacity={.85}>
+              <SocialAvatar uri={item.avatar_url} name={item.name} size={58}/>
+              <Text style={[styles.suggestionName,item.is_plus&&styles.plusName]} numberOfLines={1}>{item.name}</Text>
+              <Text style={styles.suggestionReason} numberOfLines={2}>{suggestionReason(item)}</Text>
+              <TouchableOpacity disabled={item.sent} onPress={()=>addSuggestion(item)} style={[styles.suggestionAdd,item.sent&&styles.suggestionSent]} accessibilityRole="button" accessibilityLabel={`Añadir a ${item.name}`}>
+                <Ionicons name={item.sent?'checkmark':'person-add'} size={14} color={item.sent?'#7bcb90':'#fff'}/>
+                <Text style={[styles.suggestionAddText,item.sent&&{color:'#7bcb90'}]}>{item.sent?'Enviada':'Añadir'}</Text>
+              </TouchableOpacity>
+            </TouchableOpacity>)}
+          </ScrollView>
+          {!loading&&data.length?<Text style={[styles.resultsTitle,{marginTop:18}]}>Tus amigos</Text>:null}
+        </View>:null}
         {tab==='search'&&!loading?<View style={styles.resultsHeading}><Text style={styles.resultsTitle}>{query.trim().length<2?'Jugadores habituales':'Resultados'}</Text><Text style={styles.resultsHint}>{query.trim().length<2?'Personas con las que más has coincidido':'Jugadores encontrados por nombre o correo'}</Text></View>:null}
         {loading ? <ActivityIndicator color="#ff5a00" style={styles.loading} /> : data.length ? data.map(renderItem) : <EmptyState title={emptyCopy[0]} body={emptyCopy[1]} />}
       </ScrollView>
     </View>
   );
+}
+
+const suggestionReason = (item) => [
+  item.matches_together ? `${item.matches_together} ${item.matches_together === 1 ? 'partido' : 'partidos'} contigo` : null,
+  item.mutual_friends ? `${item.mutual_friends} ${item.mutual_friends === 1 ? 'amigo' : 'amigos'} en común` : null,
+].filter(Boolean).join(' · ');
+
+function QuickAction({ icon, label, onPress }) {
+  return <TouchableOpacity style={styles.quickAction} onPress={onPress} accessibilityRole="button"><View style={styles.quickIcon}><Ionicons name={icon} color="#ff6a1a" size={21}/></View><Text style={styles.quickLabel}>{label}</Text></TouchableOpacity>;
 }
 
 function Metric({ icon, label, value }) {
@@ -171,5 +233,9 @@ function Metric({ icon, label, value }) {
 
 const styles = StyleSheet.create({
   page:{flex:1,backgroundColor:'#0b0b0d'}, tabsScroll:{flexGrow:0,maxHeight:58}, tabs:{paddingHorizontal:16,paddingVertical:10,gap:8}, tab:{height:38,paddingHorizontal:15,borderRadius:19,backgroundColor:'#19191c',justifyContent:'center'}, tabOn:{backgroundColor:'#ff5a00'}, tabText:{color:'#999',fontWeight:'800',fontSize:12}, tabTextOn:{color:'#fff'}, search:{marginHorizontal:16,marginTop:2,marginBottom:4,backgroundColor:'#18181b',borderRadius:16,height:50,flexDirection:'row',alignItems:'center',paddingHorizontal:14,gap:9,borderWidth:1,borderColor:'#28282d'},searchActive:{borderColor:'rgba(255,90,0,.55)',backgroundColor:'#1d1815'}, input:{flex:1,color:'#fff',fontSize:15}, list:{flex:1}, content:{padding:16,paddingTop:8,paddingBottom:110},resultsHeading:{marginBottom:12},resultsTitle:{color:'#fff',fontSize:17,fontWeight:'900'},resultsHint:{color:'#77777e',fontSize:11,marginTop:3},frequentCard:{flexDirection:'row',alignItems:'center',gap:12,backgroundColor:'rgba(255,255,255,.055)',borderColor:'rgba(255,255,255,.09)',borderWidth:1,borderRadius:18,padding:13,marginBottom:10},frequentCopy:{flex:1},playedTogether:{flexDirection:'row',alignItems:'center',gap:5,marginTop:4},playedText:{color:'#ff8b4b',fontSize:11,fontWeight:'800'},frequentLocation:{color:'#77777e',fontSize:10,marginTop:3},addFrequent:{backgroundColor:'#ff5a00',borderRadius:11,paddingHorizontal:12,paddingVertical:9},addFrequentText:{color:'#fff',fontSize:11,fontWeight:'900'},friendPill:{flexDirection:'row',alignItems:'center',gap:3,backgroundColor:'#202b23',borderRadius:10,paddingHorizontal:9,paddingVertical:7},friendPillText:{color:'#7bcb90',fontSize:9,fontWeight:'900'}, loading:{marginTop:50}, matchCard:{flexDirection:'row',alignItems:'center',gap:12,backgroundColor:'rgba(255,255,255,.055)',borderColor:'rgba(255,255,255,.09)',borderWidth:1,borderRadius:18,padding:13,marginBottom:10}, matchCopy:{flex:1}, friendName:{color:'#fff',fontSize:16,fontWeight:'900'}, plusName:{color:'#F4C95D'}, matchTitle:{color:'#d4d4d7',fontSize:13,fontWeight:'700',marginTop:3}, matchDate:{color:'#ff7a32',fontSize:11,fontWeight:'800',marginTop:4,textTransform:'capitalize'}, statsCard:{backgroundColor:'rgba(255,255,255,.055)',borderColor:'rgba(255,255,255,.09)',borderWidth:1,borderRadius:18,padding:14,marginBottom:10}, statsIdentity:{flexDirection:'row',alignItems:'center',gap:12}, metrics:{flexDirection:'row',marginTop:14,paddingTop:12,borderTopWidth:1,borderTopColor:'rgba(255,255,255,.08)'}, metric:{flex:1,alignItems:'center'}, metricValue:{color:'#fff',fontSize:20,fontWeight:'900',marginTop:3}, metricLabel:{color:'#888',fontSize:10,fontWeight:'700',marginTop:1}, invitationCard:{backgroundColor:'#17191e',borderRadius:21,borderWidth:1,borderColor:'#30343d',padding:15,marginBottom:11},invitationInactive:{opacity:.58},invitationTop:{flexDirection:'row',alignItems:'center',gap:11},invitationEyebrow:{color:'#ff6a1a',fontSize:8,fontWeight:'900',letterSpacing:1,marginBottom:3},newPill:{backgroundColor:'#ff5a00',borderRadius:9,paddingHorizontal:8,paddingVertical:5},newPillText:{color:'#fff',fontSize:8,fontWeight:'900'},invitationMatch:{marginTop:13,padding:13,borderRadius:15,backgroundColor:'#101216'},invitationTitle:{color:'#fff',fontSize:15,fontWeight:'900'},invitationCapacity:{flexDirection:'row',alignItems:'center',gap:5,marginTop:9},capacityText:{color:'#70c98a',fontSize:10,fontWeight:'800'},invitationActions:{flexDirection:'row',gap:8,marginTop:12},openInvite:{flex:1,minHeight:43,borderRadius:13,backgroundColor:'#ff5a00',flexDirection:'row',alignItems:'center',justifyContent:'center',gap:6},openInviteText:{color:'#080808',fontWeight:'900',fontSize:12},declineInvite:{minHeight:43,paddingHorizontal:15,borderRadius:13,borderWidth:1,borderColor:'#3b3e46',alignItems:'center',justifyContent:'center'},declineInviteText:{color:'#a8abb2',fontWeight:'800',fontSize:11},closedStatus:{color:'#777b84',fontSize:11,fontWeight:'800',marginTop:12,textAlign:'right'},
+  quickRow:{flexDirection:'row',gap:9,marginBottom:12},quickAction:{flex:1,alignItems:'center',gap:7,paddingVertical:13,borderRadius:18,backgroundColor:'#17171a',borderWidth:1,borderColor:'#26262b'},quickIcon:{width:40,height:40,borderRadius:14,backgroundColor:'rgba(255,90,0,.13)',alignItems:'center',justifyContent:'center'},quickLabel:{color:'#fff',fontSize:12,fontWeight:'900'},
+  requestsBanner:{flexDirection:'row',alignItems:'center',gap:10,padding:13,borderRadius:16,backgroundColor:'rgba(255,90,0,.10)',borderWidth:1,borderColor:'rgba(255,90,0,.35)',marginBottom:12},requestsDot:{minWidth:26,height:26,borderRadius:13,backgroundColor:'#ff5a00',alignItems:'center',justifyContent:'center',paddingHorizontal:6},requestsDotText:{color:'#fff',fontWeight:'900',fontSize:12},requestsText:{color:'#fff',fontWeight:'800',fontSize:13,flex:1},
+  suggestions:{marginBottom:10},suggestionRow:{gap:10,paddingTop:12,paddingBottom:4},suggestionCard:{width:142,alignItems:'center',padding:13,borderRadius:20,backgroundColor:'rgba(255,255,255,.055)',borderWidth:1,borderColor:'rgba(255,255,255,.09)'},suggestionName:{color:'#fff',fontSize:13,fontWeight:'900',marginTop:9,maxWidth:'100%'},suggestionReason:{color:'#ff8b4b',fontSize:10,fontWeight:'800',textAlign:'center',marginTop:4,minHeight:26},
+  suggestionAdd:{flexDirection:'row',alignItems:'center',gap:5,marginTop:10,backgroundColor:'#ff5a00',borderRadius:11,paddingHorizontal:12,paddingVertical:8},suggestionSent:{backgroundColor:'#202b23'},suggestionAddText:{color:'#fff',fontSize:11,fontWeight:'900'},
   privacyButton:{width:42,height:42,borderRadius:14,backgroundColor:'#202024',alignItems:'center',justifyContent:'center'},
 });

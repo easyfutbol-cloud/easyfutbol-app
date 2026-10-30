@@ -19,6 +19,7 @@ const ROUTE_TAB = {
   Social: 'friends',
   SocialPrivacy: 'friends',
   PlayerSocialProfile: 'friends',
+  FriendQr: 'friends',
   FriendGroupDetail: 'friends',
   Notifications: 'profile',
   NotificationPreferences: 'profile',

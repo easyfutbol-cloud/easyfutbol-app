@@ -47,6 +47,14 @@
       ],
       "expo-sharing",
       [
+        "expo-camera",
+        {
+          "cameraPermission": "EasyFutbol usa la cámara para escanear el código QR de otros jugadores y añadirlos como amigos, y para hacer tu foto de perfil.",
+          "microphonePermission": false,
+          "recordAudioAndroid": false
+        }
+      ],
+      [
         "expo-media-library",
         {
           "savePhotosPermission": "EasyFutbol guarda en tu galería las tarjetas de estadísticas que descargas.",
