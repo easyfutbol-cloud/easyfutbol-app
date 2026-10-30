@@ -74,8 +74,11 @@ router.get('/', requireAuth, requireAdmin, async (req, res) => {
         m.title,
         '' AS description,
         m.city,
+        COALESCE(m.location_id, CASE WHEN LOWER(m.city) IN ('avilés','aviles','oviedo','gijón','gijon','asturias') THEN 2 ELSE 1 END) AS location_id,
+        COALESCE(l.name, CASE WHEN LOWER(m.city) IN ('avilés','aviles','oviedo','gijón','gijon','asturias') THEN 'Asturias' ELSE 'Valladolid' END) AS location_name,
         COALESCE(f.name,CAST(m.field_id AS CHAR)) AS field_name,
         m.starts_at,
+        m.video_available_at,
         m.duration_min,
         DATE(m.starts_at) AS match_date,
         TIME(m.starts_at) AS start_time,
@@ -96,7 +99,7 @@ router.get('/', requireAuth, requireAdmin, async (req, res) => {
         COALESCE(m.has_aftergame, 0) AS has_aftergame,
         m.created_at,
         m.created_at AS updated_at
-      FROM matches m LEFT JOIN fields f ON f.id=m.field_id
+      FROM matches m LEFT JOIN fields f ON f.id=m.field_id LEFT JOIN locations l ON l.id=m.location_id
       WHERE 1=1
     `;
 
@@ -127,6 +130,53 @@ router.get('/', requireAuth, requireAdmin, async (req, res) => {
   } catch (error) {
     console.error('Error obteniendo partidos admin:', error);
     res.status(500).json({ error: 'Error interno del servidor' });
+  }
+});
+
+/**
+ * POST /api/admin/matches/:id/video-available
+ * Marca que el vídeo del partido ya está subido y avisa a quienes jugaron:
+ * los inscritos confirmados (o quien reclamó la entrada) y cualquiera con
+ * estadísticas en el acta. El dedupe por jugador evita avisar dos veces.
+ */
+router.post('/:id/video-available', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const matchId = Number(req.params.id);
+    const [[match]] = await pool.query('SELECT id,title,starts_at,video_available_at FROM matches WHERE id=?', [matchId]);
+    if (!match) return res.status(404).json({ error: 'Partido no encontrado' });
+    if (new Date(match.starts_at).getTime() > Date.now()) return res.status(400).json({ error: 'El partido todavía no se ha jugado' });
+
+    const playerColumn = await hasAssignedUserIdColumn() ? 'COALESCE(i.assigned_user_id,i.user_id)' : 'i.user_id';
+    const [players] = await pool.query(
+      `SELECT ${playerColumn} AS user_id FROM inscriptions i
+       WHERE i.match_id=? AND i.status IN ('confirmed','paid','active') AND ${playerColumn} IS NOT NULL
+       UNION
+       SELECT user_id FROM match_player_stats WHERE match_id=? AND user_id IS NOT NULL`,
+      [matchId, matchId]
+    );
+
+    await pool.query('UPDATE matches SET video_available_at=COALESCE(video_available_at,UTC_TIMESTAMP()) WHERE id=?', [matchId]);
+
+    let sent = 0;
+    await Promise.all(players.map(async ({ user_id: userId }) => {
+      try {
+        const ok = await createSocialNotification(pool, {
+          userId, type: 'match_video', entityType: 'match', entityId: matchId,
+          title: '🎬 ¡Ya está el vídeo del partido!',
+          body: `${match.title || 'Tu partido'}: el vídeo ya está disponible. ¡Búscate en las jugadas!`,
+          data: { type: 'match_video', screen: 'Match', matchId },
+          dedupeKey: `match-video:${matchId}:${userId}`,
+        });
+        if (ok) sent += 1;
+      } catch (error) {
+        console.error('[MATCH VIDEO NOTIFICATION]', { matchId, userId, error: error?.message || error });
+      }
+    }));
+
+    res.json({ ok: true, sent, total: players.length, already_notified: Boolean(match.video_available_at) });
+  } catch (error) {
+    console.error('[POST /admin/matches/:id/video-available]', error);
+    res.status(500).json({ error: 'No se pudo avisar del vídeo' });
   }
 });
 
