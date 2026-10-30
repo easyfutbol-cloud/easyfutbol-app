@@ -416,22 +416,16 @@ export default function MatchScreen({ route, navigation }) {
 
   const fieldName = match?.field_name || match?.field || match?.fieldName || match?.venue || match?.location || match?.campo || '';
   const fieldConfig = getFieldConfig(fieldName);
-  
-  useEffect(() => {
-    if (match) {
-      console.log('Match field debug', {
-        field_name: match?.field_name,
-        field: match?.field,
-        fieldName: match?.fieldName,
-        venue: match?.venue,
-        location: match?.location,
-        campo: match?.campo,
-        resolvedFieldName: fieldName,
-        normalizedFieldKey: normalizeFieldKey(fieldName),
-        hasFieldConfig: !!fieldConfig,
-      });
-    }
-  }, [match, fieldName, fieldConfig]);
+  // Lo que el admin guarda en Campos manda; FIELD_CONFIGS queda solo de respaldo.
+  const fieldImageUrl = match?.field_image_url
+    ? (/^https?:\/\//i.test(match.field_image_url)
+      ? match.field_image_url
+      : `${String(api?.defaults?.baseURL || '').replace(/\/api\/?$/, '')}${match.field_image_url}`)
+    : null;
+  const fieldImage = fieldImageUrl ? { uri: fieldImageUrl } : fieldConfig?.image;
+  const fieldAddress = String(match?.field_address || '').trim();
+  const fieldMapsUrl = String(match?.field_maps_url || '').trim();
+  const arrivalInstructions = String(match?.field_arrival_instructions || '').trim() || fieldConfig?.arrivalInstructions;
   const city = match?.city || '';
   const easyPassCost = match?.easypass_cost ?? EASY_PASS_COST;
   const hasAftergame =
@@ -487,7 +481,15 @@ export default function MatchScreen({ route, navigation }) {
   };
 
   const handleOpenDirections = async () => {
-    const destination = [fieldName, city].filter(Boolean).join(', ');
+    if (fieldMapsUrl) {
+      try {
+        await Linking.openURL(fieldMapsUrl);
+        return;
+      } catch {
+        // si el enlace falla, buscamos por dirección
+      }
+    }
+    const destination = fieldAddress || [fieldName, city].filter(Boolean).join(', ');
     if (!destination) return;
     const query = encodeURIComponent(destination);
     const url = Platform.OS === 'ios' ? `http://maps.apple.com/?q=${query}` : `https://www.google.com/maps/search/?api=1&query=${query}`;
@@ -695,7 +697,7 @@ export default function MatchScreen({ route, navigation }) {
 
       <View style={styles.heroCard}>
         <ImageBackground
-          source={fieldConfig?.image || pitchImage}
+          source={fieldImage || pitchImage}
           style={styles.heroBg}
           imageStyle={styles.heroImage}
         >
@@ -758,10 +760,10 @@ export default function MatchScreen({ route, navigation }) {
           <View style={styles.practicalCopy}>
             <Text style={styles.practicalEyebrow}>INFORMACIÓN PRÁCTICA</Text>
             <Text style={styles.practicalTitle}>{fieldName || 'Ubicación del partido'}</Text>
-            {!!city && <Text style={styles.practicalCity}>{city}</Text>}
+            {!!(fieldAddress || city) && <Text style={styles.practicalCity}>{fieldAddress || city}</Text>}
           </View>
         </View>
-        <Text style={styles.practicalText}>{fieldConfig?.arrivalInstructions || 'Recomendamos llegar 10 minutos antes para encontrar el campo y organizar el partido con tranquilidad.'}</Text>
+        <Text style={styles.practicalText}>{arrivalInstructions || 'Recomendamos llegar 10 minutos antes para encontrar el campo y organizar el partido con tranquilidad.'}</Text>
         <View style={styles.practicalActions}>
           {!!(fieldName || city) && <TouchableOpacity onPress={handleOpenDirections} style={styles.practicalPrimary}><Ionicons name="navigate-outline" size={16} color="#0d0d0f"/><Text style={styles.practicalPrimaryText}>Cómo llegar</Text></TouchableOpacity>}
           <TouchableOpacity onPress={handleShareMatch} style={styles.practicalSecondary}><Ionicons name="share-social-outline" size={16} color={colors.white}/><Text style={styles.practicalSecondaryText}>Compartir</Text></TouchableOpacity>
