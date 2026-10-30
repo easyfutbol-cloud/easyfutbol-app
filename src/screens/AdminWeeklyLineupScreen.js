@@ -14,6 +14,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { api } from '../api/client';
 import { resolveSocialAvatarUrl } from '../components/social/SocialComponents';
+import { avatarSource } from '../utils/defaultAvatar';
 
 const POSITIONS = ['portero', 'defensa', 'centrocampista', 'delantero'];
 const POSITION_LABELS = { portero: 'Portero', defensa: 'Defensa', centrocampista: 'Centrocampista', delantero: 'Delantero' };
@@ -276,13 +277,7 @@ export default function AdminWeeklyLineupScreen() {
 
                   {candidates.map((c) => (
                     <View key={c.id} style={styles.candidateRow}>
-                      {c.avatar_url ? (
-                        <Image source={{ uri: resolveSocialAvatarUrl(c.avatar_url) }} style={styles.candidateAvatar} />
-                      ) : (
-                        <View style={[styles.candidateAvatar, styles.candidateAvatarPlaceholder]}>
-                          <Text style={styles.candidateAvatarInitial}>{(c.name || '?').charAt(0).toUpperCase()}</Text>
-                        </View>
-                      )}
+                      <Image source={avatarSource(resolveSocialAvatarUrl(c.avatar_url))} style={styles.candidateAvatar} />
                       <View style={styles.candidateNameCol}>
                         <Text style={styles.candidateName}>{c.name} <Text style={styles.candidateId}>#{c.user_id}</Text></Text>
                         {c.location ? <Text style={styles.candidateLocation}>{c.location}</Text> : null}
@@ -312,13 +307,7 @@ export default function AdminWeeklyLineupScreen() {
                         {searching ? <ActivityIndicator color="#ff5a00" style={{ marginTop: 8 }} /> : null}
                         {searchResults.map((user) => (
                           <TouchableOpacity key={user.id} style={styles.searchResultRow} onPress={() => addCandidate(position, user)}>
-                            {user.avatar_url ? (
-                              <Image source={{ uri: resolveSocialAvatarUrl(user.avatar_url) }} style={styles.candidateAvatar} />
-                            ) : (
-                              <View style={[styles.candidateAvatar, styles.candidateAvatarPlaceholder]}>
-                                <Text style={styles.candidateAvatarInitial}>{(user.name || '?').charAt(0).toUpperCase()}</Text>
-                              </View>
-                            )}
+                            <Image source={avatarSource(resolveSocialAvatarUrl(user.avatar_url))} style={styles.candidateAvatar} />
                             <View style={styles.candidateNameCol}>
                               <Text style={styles.candidateName}>{user.name} <Text style={styles.candidateId}>#{user.id}</Text></Text>
                               {user.location ? <Text style={styles.candidateLocation}>{user.location}</Text> : null}
@@ -375,8 +364,6 @@ const styles = StyleSheet.create({
   positionSlots: { color: '#888', fontSize: 11, fontWeight: '600' },
   candidateRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 8 },
   candidateAvatar: { width: 34, height: 34, borderRadius: 17, backgroundColor: '#222' },
-  candidateAvatarPlaceholder: { alignItems: 'center', justifyContent: 'center' },
-  candidateAvatarInitial: { color: '#999', fontWeight: '800', fontSize: 13 },
   candidateNameCol: { flex: 1 },
   candidateName: { color: '#eee', fontSize: 14, fontWeight: '600' },
   candidateId: { color: '#666', fontSize: 11, fontWeight: '600' },

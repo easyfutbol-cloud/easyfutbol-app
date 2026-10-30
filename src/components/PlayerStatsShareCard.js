@@ -2,10 +2,10 @@ import React, { useState } from 'react';
 import { View, Text, Image, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { resolveSocialAvatarUrl } from './social/SocialComponents';
+import { avatarSource } from '../utils/defaultAvatar';
 import ShareCardModal, { CARD_HEIGHT as TEMPLATE_HEIGHT, CARD_WIDTH as TEMPLATE_WIDTH } from './ShareCardModal';
 
 const TEMPLATE_IMAGE = require('../../assets/tarjetaresumen.png');
-const APP_LOGO = require('../../assets/Logo.png');
 
 // Todas las medidas están en píxeles de la plantilla (1080x1920) y se
 // escalan al ancho real con `k`, así la tarjeta queda igual en cualquier móvil.
@@ -58,7 +58,7 @@ export function PlayerStatsCard({ name, avatarUrl, goals, assists, isMvp, date, 
             ]}
           >
             <Image
-              source={avatarUri ? { uri: avatarUri } : APP_LOGO}
+              source={avatarSource(avatarUri)}
               style={styles.avatarImage}
               resizeMode="cover"
             />

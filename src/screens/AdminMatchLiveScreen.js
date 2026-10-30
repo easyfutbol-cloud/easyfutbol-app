@@ -14,6 +14,7 @@ import {
 import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { api } from '../api/client';
+import { avatarSource } from '../utils/defaultAvatar';
 
 const TYPE_LABEL = { goal: 'Gol', save: 'Parada', mvp: 'MVP' };
 const TYPE_ICON = { goal: 'football', save: 'hand-left', mvp: 'star' };
@@ -25,13 +26,7 @@ function pad2(n) {
 function PlayerRow({ player, onPress }) {
   return (
     <TouchableOpacity style={styles.playerRow} onPress={() => onPress(player)} activeOpacity={0.75}>
-      {player.avatar_url ? (
-        <Image source={{ uri: player.avatar_url }} style={styles.playerAvatar} />
-      ) : (
-        <View style={[styles.playerAvatar, styles.playerAvatarPlaceholder]}>
-          <Text style={styles.playerAvatarInitial}>{(player.name || '?').charAt(0).toUpperCase()}</Text>
-        </View>
-      )}
+      <Image source={avatarSource(player.avatar_url)} style={styles.playerAvatar} />
       <Text style={styles.playerName} numberOfLines={1}>{player.name}</Text>
       <Text style={styles.playerId}>#{player.user_id}</Text>
     </TouchableOpacity>
@@ -676,8 +671,6 @@ const styles = StyleSheet.create({
   guestHint: { color: '#666', fontSize: 10, marginTop: 8 },
   playerRow: { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: '#1c1c1c', borderRadius: 14, padding: 12, marginBottom: 8, minHeight: 60 },
   playerAvatar: { width: 40, height: 40, borderRadius: 20, backgroundColor: '#333' },
-  playerAvatarPlaceholder: { alignItems: 'center', justifyContent: 'center' },
-  playerAvatarInitial: { color: '#fff', fontWeight: '900' },
   playerName: { flex: 1, color: '#fff', fontSize: 15, fontWeight: '700' },
   playerId: { color: '#666', fontSize: 11, fontWeight: '700' },
   pickerCancelButton: { paddingVertical: 12, alignItems: 'center' },

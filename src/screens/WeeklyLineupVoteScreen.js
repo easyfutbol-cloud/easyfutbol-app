@@ -4,6 +4,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { api } from '../api/client';
 import { resolveSocialAvatarUrl } from '../components/social/SocialComponents';
+import { avatarSource } from '../utils/defaultAvatar';
 
 const POSITIONS = ['portero', 'defensa', 'centrocampista', 'delantero'];
 const POSITION_LABELS = { portero: 'Portero', defensa: 'Defensa', centrocampista: 'Centrocampista', delantero: 'Delantero' };
@@ -124,13 +125,7 @@ export default function WeeklyLineupVoteScreen({ navigation }) {
                     disabled={votingKey === key}
                     activeOpacity={0.8}
                   >
-                    {candidate.avatar_url ? (
-                      <Image source={{ uri: resolveSocialAvatarUrl(candidate.avatar_url) }} style={styles.avatar} />
-                    ) : (
-                      <View style={[styles.avatar, styles.avatarPlaceholder]}>
-                        <Text style={styles.avatarInitial}>{(candidate.name || '?').charAt(0).toUpperCase()}</Text>
-                      </View>
-                    )}
+                    <Image source={avatarSource(resolveSocialAvatarUrl(candidate.avatar_url))} style={styles.avatar} />
                     <View style={styles.candidateNameCol}>
                       <Text style={[styles.candidateName, selected && styles.candidateNameSelected, candidate.is_plus && styles.plusName]}>{candidate.name}</Text>
                       {candidate.location ? <Text style={styles.candidateLocation}>{candidate.location}</Text> : null}
@@ -179,8 +174,6 @@ const styles = StyleSheet.create({
   candidateRow: { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: '#111', borderWidth: 1, borderColor: '#222', borderRadius: 12, padding: 11, marginBottom: 8 },
   candidateRowSelected: { borderColor: '#ff5a00', backgroundColor: 'rgba(255,90,0,0.08)' },
   avatar: { width: 38, height: 38, borderRadius: 19, backgroundColor: '#222' },
-  avatarPlaceholder: { alignItems: 'center', justifyContent: 'center' },
-  avatarInitial: { color: '#999', fontWeight: '800' },
   candidateNameCol: { flex: 1 },
   candidateName: { color: '#eee', fontSize: 14, fontWeight: '700' },
   candidateNameSelected: { color: '#fff' },

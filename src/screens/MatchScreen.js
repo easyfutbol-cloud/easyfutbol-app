@@ -4,6 +4,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { colors, layout, radii, spacing, typography } from '../theme';
 import { goBackOrFallback } from '../utils/navigation';
 import { api } from '../api/client';
+import { DEFAULT_AVATAR } from '../utils/defaultAvatar';
 import { useFocusEffect } from '@react-navigation/native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { registerForPushNotificationsAsync } from '../utils/notifications';
@@ -25,9 +26,7 @@ const pitchImage = {
   uri: 'https://images.pexels.com/photos/399187/football-pitch-sport-play-399187.jpeg?auto=compress&cs=tinysrgb&w=1200',
 };
 
-const defaultPlayerAvatar = {
-  uri: 'https://easyfutbol.es/wp-content/uploads/2026/05/Diseno-sin-titulo-7.png',
-};
+const defaultPlayerAvatar = DEFAULT_AVATAR;
 
 const normalizeFieldKey = (value) =>
   String(value || '')

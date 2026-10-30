@@ -10,6 +10,7 @@ import {
   Animated,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
+import { avatarSource } from '../utils/defaultAvatar';
 
 const { width: DEVICE_W } = Dimensions.get('window');
 
@@ -110,15 +111,7 @@ export default function FifaCard({ avatarUrl, name, role }) {
           </ImageBackground>
 
           <View style={styles.avatarRingEF}>
-            {avatarUrl ? (
-              <Image source={{ uri: avatarUrl }} style={styles.cardAvatarEF} />
-            ) : (
-              <View style={[styles.cardAvatarEF, styles.cardAvatarEmpty]}>
-                <Text style={{ color: '#bbb', fontWeight: '700' }}>
-                  Añadir foto
-                </Text>
-              </View>
-            )}
+            <Image source={avatarSource(avatarUrl)} style={styles.cardAvatarEF} />
           </View>
 
           <View style={{ alignItems: 'center', marginTop: 10 }}>
@@ -212,7 +205,6 @@ const styles = StyleSheet.create({
     borderRadius: 60,
     backgroundColor: '#222',
   },
-  cardAvatarEmpty: { alignItems: 'center', justifyContent: 'center' },
 
   cardNameEF: {
     color: '#fff',

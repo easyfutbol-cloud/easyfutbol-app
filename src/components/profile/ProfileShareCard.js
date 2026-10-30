@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Image, StyleSheet, Text, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { resolveSocialAvatarUrl } from '../social/SocialComponents';
+import { avatarSource } from '../../utils/defaultAvatar';
 import ShareCardModal, { CARD_HEIGHT, CARD_WIDTH } from '../ShareCardModal';
 
 const APP_LOGO = require('../../../assets/Logo.png');
@@ -33,13 +34,7 @@ export function ProfileCard({ cardRef, cardWidth, name, avatarUrl, frame, title,
           </View>
 
           <LinearGradient colors={ringColors} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={{ marginTop: 110 * k, width: avatarSize + ring * 2, height: avatarSize + ring * 2, borderRadius: (avatarSize + ring * 2) / 2, padding: ring }}>
-            {avatarUri ? (
-              <Image source={{ uri: avatarUri }} style={{ width: avatarSize, height: avatarSize, borderRadius: avatarSize / 2, backgroundColor: '#222' }} />
-            ) : (
-              <View style={{ width: avatarSize, height: avatarSize, borderRadius: avatarSize / 2, backgroundColor: '#22252c', alignItems: 'center', justifyContent: 'center' }}>
-                <Text style={{ color: '#fff', fontSize: 200 * k, fontWeight: '900' }}>{String(name || '?').charAt(0).toUpperCase()}</Text>
-              </View>
-            )}
+            <Image source={avatarSource(avatarUri)} style={{ width: avatarSize, height: avatarSize, borderRadius: avatarSize / 2, backgroundColor: '#222' }} />
           </LinearGradient>
 
           <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.5} style={[styles.name, { fontSize: 104 * k, marginTop: 60 * k }]}>{name || 'Jugador'}</Text>

@@ -6,6 +6,7 @@ import { captureRef } from 'react-native-view-shot';
 import * as Sharing from 'expo-sharing';
 import { api } from '../api/client';
 import { resolveSocialAvatarUrl } from '../components/social/SocialComponents';
+import { avatarSource } from '../utils/defaultAvatar';
 
 const TEMPLATE_IMAGE = require('../../assets/weekly-lineup-template.png');
 const TEMPLATE_ASPECT_RATIO = 1080 / 1350;
@@ -56,10 +57,10 @@ function PlayerPin({ player, spot, containerWidth, onOpen }) {
   return (
     <TouchableOpacity style={[styles.pin, pinStyle]} activeOpacity={0.8} disabled={!player?.user_id} onPress={() => onOpen(player.user_id)} accessibilityRole="button" accessibilityLabel={player ? `Ver perfil de ${player.name}` : undefined}>
       <View style={[styles.avatarRing, avatarStyle]}>
-        {player?.avatar_url ? (
-          <Image source={{ uri: resolveSocialAvatarUrl(player.avatar_url) }} style={styles.avatarImage} />
+        {player ? (
+          <Image source={avatarSource(resolveSocialAvatarUrl(player.avatar_url))} style={styles.avatarImage} />
         ) : (
-          <Text style={[styles.avatarInitial, { fontSize: avatarSize * 0.4 }]}>{(player?.name || '?').charAt(0).toUpperCase()}</Text>
+          <Text style={[styles.avatarInitial, { fontSize: avatarSize * 0.4 }]}>?</Text>
         )}
       </View>
       {player ? (

@@ -20,6 +20,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { api } from '../api/client';
+import { avatarSource } from '../utils/defaultAvatar';
 import SportsFeatureCard from '../components/SportsFeatureCard';
 import { menuController } from '../navigation/menuController';
 import { publishUnreadNotifications, subscribeUnreadNotifications } from '../utils/notificationEvents';
@@ -324,13 +325,7 @@ export default function HomeScreen({ navigation }) {
                 accessibilityHint="Mantén pulsado para abrir tu perfil"
                 hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
               >
-                {avatar ? (
-                  <Image source={{ uri: avatar }} style={styles.avatarImage} />
-                ) : (
-                  <Text style={styles.avatarInitial}>
-                    {(displayName || 'E').charAt(0).toUpperCase()}
-                  </Text>
-                )}
+                <Image source={avatarSource(avatar)} style={styles.avatarImage} />
               </TouchableOpacity>
             </View>
           </View>
@@ -541,11 +536,6 @@ const styles = StyleSheet.create({
   avatarImage: {
     width: '100%',
     height: '100%',
-  },
-  avatarInitial: {
-    color: colors.white,
-    fontSize: 17,
-    fontWeight: '900',
   },
   adminSection: {
     marginBottom: spacing(3),

@@ -6,6 +6,7 @@ import {
 } from 'react-native';
 import { colors, layout, radii, spacing, typography } from '../theme';
 import { api } from '../api/client';
+import { DEFAULT_AVATAR } from '../utils/defaultAvatar';
 import { uploadForm } from '../api/upload';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as ImagePicker from 'expo-image-picker';
@@ -523,11 +524,10 @@ export default function ProfileScreen({ navigation }) {
                   style={[styles.avatarImage, engagement?.equipped?.frame && styles.avatarFramed]}
                 />
               ) : (
-                <View style={[styles.avatarPlaceholder, engagement?.equipped?.frame && styles.avatarFramed]}>
-                  <Text style={styles.avatarInitial}>
-                    {(user?.name || 'Jugador')[0].toUpperCase()}
-                  </Text>
-                </View>
+                <Image
+                  source={DEFAULT_AVATAR}
+                  style={[styles.avatarImage, engagement?.equipped?.frame && styles.avatarFramed]}
+                />
               )}
             </TouchableOpacity>
             </FramedAvatar>
@@ -1003,21 +1003,6 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surface,
   },
   avatarFramed: { borderWidth: 0 },
-  avatarPlaceholder: {
-    width: 128,
-    height: 128,
-    borderRadius: 64,
-    borderWidth: 3,
-    borderColor: ORANGE,
-    backgroundColor: colors.surfaceElevated,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  avatarInitial: {
-    color: '#fff',
-    fontSize: 42,
-    fontWeight: '900',
-  },
   profileHeroName:{ color:colors.white, ...typography.heading, marginTop:spacing(1.5), textAlign:'center' },
   profileNameRow:{ flexDirection:'row', alignItems:'center', justifyContent:'center', gap:spacing(0.75) },
   plusName:{ color:'#F4C95D' },

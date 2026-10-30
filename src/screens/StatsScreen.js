@@ -6,14 +6,14 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { colors, layout, radii, spacing, typography } from '../theme';
 import { api } from '../api/client';
 import ScreenHeader from '../components/ScreenHeader';
+import { avatarSource } from '../utils/defaultAvatar';
 
 const ORANGE = '#ff5a00';
-const DEFAULT_PLAYER_AVATAR = 'https://easyfutbol.es/wp-content/uploads/2026/05/Diseno-sin-titulo-7.png';
 function buildAvatarUrl(rawAvatar) {
-  if (!rawAvatar) return DEFAULT_PLAYER_AVATAR;
+  if (!rawAvatar) return null;
 
   const value = String(rawAvatar).trim();
-  if (!value) return DEFAULT_PLAYER_AVATAR;
+  if (!value) return null;
 
   if (/^https?:\/\//i.test(value)) {
     return value;
@@ -113,7 +113,7 @@ export default function StatsScreen({ navigation }) {
       <View style={[styles.row, index < 3 && styles.rowPodium]} accessible accessibilityLabel={`Posición ${index + 1}, ${displayName}, ${item.goals ?? 0} goles, ${item.assists ?? 0} asistencias`}>
         <Text style={[styles.rank, index < 3 && styles.rankMedal]}>{medal}</Text>
 
-        <Image source={{ uri: avatar || DEFAULT_PLAYER_AVATAR }} style={styles.avatar} resizeMode="cover" />
+        <Image source={avatarSource(avatar)} style={styles.avatar} resizeMode="cover" />
 
         <View style={{ flex: 1 }}>
           <Text style={[styles.name, item.is_plus && styles.plusName]} numberOfLines={1}>{displayName}{item.is_plus ? '  ★' : ''}</Text>
