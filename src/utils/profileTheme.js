@@ -37,11 +37,13 @@ export const POSITION_LABELS = { goalkeeper: 'Portero', defender: 'Defensa', mid
 export const POSITION_SHORT = { goalkeeper: 'POR', defender: 'DEF', midfielder: 'MED', forward: 'DEL' };
 export const FOOT_LABELS = { right: 'Diestro', left: 'Zurdo', both: 'Ambidiestro' };
 
+// Todas las cartas son negras con llamas naranjas; el nivel cambia el borde
+// metálico y el color del brillo.
 export const CARD_TIERS = {
-  bronze: { label: 'BRONCE', colors: ['#c98a55', '#7a4a26', '#3a2312'], text: '#fff4ea', line: 'rgba(255,240,225,.28)' },
-  silver: { label: 'PLATA', colors: ['#e3e6ea', '#9aa1aa', '#4b5058'], text: '#15171a', line: 'rgba(20,22,26,.18)' },
-  gold: { label: 'ORO', colors: ['#ffe08a', '#d4a52c', '#7a5a12'], text: '#1d1503', line: 'rgba(29,21,3,.18)' },
-  elite: { label: 'ÉLITE', colors: ['#1b1b1f', '#3a1a5c', '#ff5a00'], text: '#ffffff', line: 'rgba(255,255,255,.22)' },
+  bronze: { label: 'BRONCE', rim: ['#f0b383', '#8a4f26', '#d99a62', '#5c3216'], glow: '#c26a2c' },
+  silver: { label: 'PLATA', rim: ['#ffffff', '#9aa1aa', '#e3e6ea', '#5d636b'], glow: '#9aa1aa' },
+  gold: { label: 'ORO', rim: ['#fff4bf', '#d4a52c', '#ffe08a', '#8a6414'], glow: '#e0a72a' },
+  elite: { label: 'ÉLITE', rim: ['#ffd29a', '#ff5a00', '#ff9a3d', '#b32700'], glow: '#ff5a00' },
 };
 
 export const ATTRIBUTE_NAMES = { gol: 'Gol', asi: 'Asistencia', par: 'Paradas', vic: 'Victorias', mvp: 'MVP', exp: 'Experiencia' };
