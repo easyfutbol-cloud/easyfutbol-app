@@ -11,17 +11,17 @@ import multer from 'multer';
 import { pool } from '../config/db.js';
 import { activePlusSql } from '../services/subscriptionService.js';
 import { requireAuth } from '../middlewares/auth.js';
-import { positiveId } from '../services/socialService.js';
+import { createSocialNotification, positiveId } from '../services/socialService.js';
 import { getPlayerReputation, publicReputation } from '../services/playerReputationService.js';
 import { equippedCosmetics } from '../services/engagementRules.js';
 import { getProfileShowcase, getProfileViews, recordProfileView } from '../services/profileShowcaseService.js';
+import { MIN_MATCHES_TO_REACT, getProfileReactions, isValidReaction, reactionFor } from '../services/profileReactionsService.js';
 import { computePlayerCard, getMonthlyEvolution, normalizeProfileCustomization, parseProfileSections } from '../services/playerCardService.js';
 import { ensureProfileSlug, getProfileStreak, getSeasonStats, getRecentForm, isValidSlug, profileShareUrl } from '../services/profileShareService.js';
 
 const router = Router();
 router.use(requireAuth);
 
-const MIN_MATCHES_TO_COMMENT = 5;
 const VISIBLE_STAT_KEYS = ['goals', 'assists', 'saves', 'mvp_count', 'matches_played', 'win_rate'];
 
 const fail = (res, code, msg) => res.status(code).json({ ok: false, msg });
@@ -89,7 +89,8 @@ router.get('/:userId', async (req, res) => {
       [targetId]
     );
     const visibleStats = String(privacy?.visible_stats || '').split(',').map((s) => s.trim()).filter((s) => VISIBLE_STAT_KEYS.includes(s));
-    const commentsEnabled = Boolean(Number(privacy?.comments_enabled ?? 1));
+    // comments_enabled se reutiliza como "acepto reacciones" (sustituyen a los comentarios).
+    const reactionsEnabled = Boolean(Number(privacy?.comments_enabled ?? 1));
     const sections = parseProfileSections(privacy?.profile_sections);
 
     const isOwner = req.user.id === targetId;
@@ -101,13 +102,6 @@ router.get('/:userId', async (req, res) => {
       `SELECT p.id, p.image_url, p.caption, p.created_at, p.match_id, m.title AS match_title
        FROM player_profile_photos p LEFT JOIN matches m ON m.id = p.match_id
        WHERE p.user_id=? ORDER BY p.created_at DESC LIMIT 30`,
-      [targetId]
-    );
-
-    const [comments] = await pool.query(
-      `SELECT c.id, c.body, c.created_at, c.author_user_id, u.name AS author_name, u.avatar_url AS author_avatar_url
-       FROM player_profile_comments c JOIN users u ON u.id = c.author_user_id
-       WHERE c.profile_user_id=? ORDER BY c.created_at DESC LIMIT 50`,
       [targetId]
     );
 
@@ -151,9 +145,16 @@ router.get('/:userId', async (req, res) => {
       evolution,
       all_stats: isOwner ? seasonStats : undefined,
       stats,
-      comments_enabled: commentsEnabled,
-      can_comment: !isOwner && commentsEnabled && myMatchesPlayed >= MIN_MATCHES_TO_COMMENT,
-      min_matches_to_comment: MIN_MATCHES_TO_COMMENT,
+      reactions: {
+        enabled: reactionsEnabled,
+        can_react: !isOwner && reactionsEnabled && myMatchesPlayed >= MIN_MATCHES_TO_REACT,
+        min_matches_to_react: MIN_MATCHES_TO_REACT,
+        ...(await getProfileReactions(pool, targetId, req.user.id)),
+      },
+      // Las apps anteriores a las reacciones ocultan los comentarios con esto.
+      comments_enabled: false,
+      can_comment: false,
+      comments: [],
       reputation: publicReputation(await getPlayerReputation(pool, targetId)),
       streak,
       recent_form: recentForm,
@@ -167,13 +168,6 @@ router.get('/:userId', async (req, res) => {
         created_at: p.created_at,
         match_id: p.match_id,
         match_title: p.match_title,
-      })),
-      comments: comments.map((c) => ({
-        id: c.id,
-        body: c.body,
-        created_at: c.created_at,
-        author: { id: c.author_user_id, name: c.author_name, avatar_url: c.author_avatar_url },
-        can_delete: isOwner || c.author_user_id === req.user.id,
       })),
     });
   } catch (error) {
@@ -364,45 +358,66 @@ router.delete('/me/photos/:id', async (req, res) => {
   }
 });
 
-/** POST /api/player-profile/:userId/comments — comentar en el perfil de otro jugador */
-router.post('/:userId/comments', async (req, res) => {
+/** POST /api/player-profile/:userId/comments — retirado: los comentarios son ahora reacciones */
+router.post('/:userId/comments', (_req, res) => fail(res, 410, 'Los comentarios se han sustituido por reacciones. Actualiza la app para reaccionar.'));
+
+async function reactionTarget(req, res) {
   const targetId = positiveId(req.params.userId);
-  if (!targetId) return fail(res, 400, 'Usuario no válido');
+  if (!targetId) { fail(res, 400, 'Usuario no válido'); return null; }
+  if (!isValidReaction(req.params.emoji)) { fail(res, 400, 'Reacción no válida'); return null; }
+  if (targetId === req.user.id) { fail(res, 400, 'No puedes reaccionar a tu propio perfil'); return null; }
+  if (await isBlocked(req.user.id, targetId)) { fail(res, 403, 'No puedes reaccionar aquí'); return null; }
+  return targetId;
+}
 
+/** PUT /api/player-profile/:userId/reactions/:emoji — dar una reacción (idempotente) */
+router.put('/:userId/reactions/:emoji', async (req, res) => {
   try {
-    if (await isBlocked(req.user.id, targetId)) return fail(res, 403, 'No puedes comentar aquí');
-
+    const targetId = await reactionTarget(req, res);
+    if (!targetId) return;
+    const [[target]] = await pool.query('SELECT id FROM users WHERE id=?', [targetId]);
+    if (!target) return fail(res, 404, 'Usuario no encontrado');
     const [[privacy]] = await pool.query('SELECT comments_enabled FROM user_social_privacy WHERE user_id=?', [targetId]);
-    if (privacy && Number(privacy.comments_enabled) === 0) return fail(res, 403, 'Este jugador ha desactivado los comentarios');
-
+    if (privacy && Number(privacy.comments_enabled) === 0) return fail(res, 403, 'Este jugador ha desactivado las reacciones');
     const [[myRow]] = await pool.query('SELECT COUNT(*) AS c FROM match_player_stats WHERE user_id=?', [req.user.id]);
-    if (Number(myRow.c) < MIN_MATCHES_TO_COMMENT) {
-      return fail(res, 403, `Necesitas haber jugado al menos ${MIN_MATCHES_TO_COMMENT} partidos para comentar`);
-    }
+    if (Number(myRow.c) < MIN_MATCHES_TO_REACT) return fail(res, 403, 'Juega tu primer partido para poder reaccionar');
 
-    const body = String(req.body?.body || '').trim();
-    if (!body) return fail(res, 400, 'Escribe algo antes de enviar');
-    if (body.length > 500) return fail(res, 400, 'El comentario es demasiado largo');
-
+    const emoji = req.params.emoji;
     const [result] = await pool.query(
-      'INSERT INTO player_profile_comments (profile_user_id, author_user_id, body) VALUES (?,?,?)',
-      [targetId, req.user.id, body]
+      'INSERT IGNORE INTO player_profile_reactions (profile_user_id, reactor_user_id, emoji) VALUES (?,?,?)',
+      [targetId, req.user.id, emoji]
     );
-    const [[author]] = await pool.query('SELECT name, avatar_url FROM users WHERE id=?', [req.user.id]);
-
-    res.status(201).json({
-      ok: true,
-      data: {
-        id: result.insertId,
-        body,
-        created_at: new Date(),
-        author: { id: req.user.id, name: author.name, avatar_url: author.avatar_url },
-        can_delete: true,
-      },
-    });
+    if (result.affectedRows) {
+      // Un aviso como mucho por persona y día, aunque dé varios emojis.
+      const [[actor]] = await pool.query('SELECT name FROM users WHERE id=?', [req.user.id]);
+      const reaction = reactionFor(emoji);
+      const day = new Date().toISOString().slice(0, 10);
+      await createSocialNotification(pool, {
+        userId: targetId, actorId: req.user.id, type: 'profile_reaction', entityType: 'user', entityId: req.user.id,
+        title: `${reaction.emoji} ${reaction.label}`, body: `${actor.name} ha reaccionado a tu perfil`,
+        data: { screen: 'PlayerSocialProfile', userId: targetId }, dedupeKey: `profile-reaction:${targetId}:${req.user.id}:${day}`,
+      }).catch((error) => console.error('[profile reaction notify]', error?.message || error));
+    }
+    res.json({ ok: true, reactions: await getProfileReactions(pool, targetId, req.user.id) });
   } catch (error) {
-    console.error('[POST /player-profile/:userId/comments]', error);
-    fail(res, 500, 'No se pudo publicar el comentario');
+    console.error('[PUT /player-profile/:userId/reactions/:emoji]', error);
+    fail(res, 500, 'No se pudo reaccionar');
+  }
+});
+
+/** DELETE /api/player-profile/:userId/reactions/:emoji — quitar mi reacción */
+router.delete('/:userId/reactions/:emoji', async (req, res) => {
+  try {
+    const targetId = await reactionTarget(req, res);
+    if (!targetId) return;
+    await pool.query(
+      'DELETE FROM player_profile_reactions WHERE profile_user_id=? AND reactor_user_id=? AND emoji=?',
+      [targetId, req.user.id, req.params.emoji]
+    );
+    res.json({ ok: true, reactions: await getProfileReactions(pool, targetId, req.user.id) });
+  } catch (error) {
+    console.error('[DELETE /player-profile/:userId/reactions/:emoji]', error);
+    fail(res, 500, 'No se pudo quitar la reacción');
   }
 });
 

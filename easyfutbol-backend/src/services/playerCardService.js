@@ -5,10 +5,10 @@ import { containsOffensiveText, validatePublicName } from './publicNameModeratio
 
 // Secciones del perfil que el jugador puede ordenar u ocultar. Las de amistad
 // (comparativa, partidos juntos, próximos partidos) van siempre al final.
-export const PROFILE_SECTION_KEYS = ['card', 'evolution', 'form', 'stats', 'photos', 'showcase', 'comments'];
+export const PROFILE_SECTION_KEYS = ['card', 'evolution', 'form', 'stats', 'photos', 'showcase', 'reactions'];
 // Sin elegir nada se ve lo de antes: carta y evolución son opt-in, igual que
 // las estadísticas, porque dejan deducir goles y asistencias.
-export const DEFAULT_PROFILE_SECTIONS = ['form', 'stats', 'photos', 'showcase', 'comments'];
+export const DEFAULT_PROFILE_SECTIONS = ['form', 'stats', 'photos', 'showcase', 'reactions'];
 // Solo claves; los colores los pinta la app.
 export const PROFILE_ACCENTS = ['orange', 'red', 'gold', 'green', 'sky', 'blue', 'purple', 'pink'];
 
@@ -17,7 +17,8 @@ export const MIN_MATCHES_FOR_CARD = 3;
 export function parseProfileSections(raw) {
   if (raw === null || raw === undefined) return [...DEFAULT_PROFILE_SECTIONS];
   const list = Array.isArray(raw) ? raw : String(raw).split(',');
-  return [...new Set(list.map((s) => String(s).trim()))].filter((s) => PROFILE_SECTION_KEYS.includes(s));
+  // 'comments' era la sección de comentarios, sustituida por las reacciones.
+  return [...new Set(list.map((s) => String(s).trim()).map((s) => (s === 'comments' ? 'reactions' : s)))].filter((s) => PROFILE_SECTION_KEYS.includes(s));
 }
 
 const cleanText = (value) => String(value ?? '').trim().replace(/\s+/g, ' ');

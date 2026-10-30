@@ -4,6 +4,7 @@ import {
   DEFAULT_PROFILE_SECTIONS, cardTier, computePlayerCard, lastMonthKeys, normalizeProfileCustomization, parseProfileSections,
 } from '../src/services/playerCardService.js';
 import { FRIEND_QR_TTL_MS, createFriendQrToken, verifyFriendQrToken } from '../src/services/friendQrService.js';
+import { PROFILE_REACTIONS, isValidReaction } from '../src/services/profileReactionsService.js';
 import { containsOffensiveText } from '../src/services/publicNameModerationService.js';
 
 test('secciones: null da el orden por defecto, sin carta ni evolución', () => {
@@ -11,6 +12,8 @@ test('secciones: null da el orden por defecto, sin carta ni evolución', () => {
   assert.ok(!DEFAULT_PROFILE_SECTIONS.includes('card') && !DEFAULT_PROFILE_SECTIONS.includes('evolution'));
   assert.deepEqual(parseProfileSections(''), []);
   assert.deepEqual(parseProfileSections('card,photos,card,hack,form'), ['card', 'photos', 'form']);
+  assert.deepEqual(parseProfileSections('form,comments'), ['form', 'reactions'], 'los comentarios guardados pasan a reacciones');
+  assert.equal(DEFAULT_PROFILE_SECTIONS.at(-1), 'reactions');
 });
 
 test('personalización: valida y solo toca los campos enviados', () => {
@@ -22,7 +25,7 @@ test('personalización: valida y solo toca los campos enviados', () => {
   assert.equal(normalizeProfileCustomization({ nickname: 'hijodeputa' }).ok, false);
   assert.equal(normalizeProfileCustomization({ bio: 'x'.repeat(161) }).ok, false);
   assert.equal(normalizeProfileCustomization({ profile_accent: 'neon' }).ok, false);
-  assert.deepEqual(normalizeProfileCustomization({ profile_sections: ['card', 'x', 'comments'] }).values, { profile_sections: 'card,comments' });
+  assert.deepEqual(normalizeProfileCustomization({ profile_sections: ['card', 'x', 'reactions'] }).values, { profile_sections: 'card,reactions' });
   assert.equal(normalizeProfileCustomization({ profile_sections: 'card' }).ok, false);
 });
 
@@ -74,4 +77,12 @@ test('QR: el token vale para su dueño y caduca a los 15 minutos', () => {
   const later = (parseInt(exp, 36) + 3_600_000).toString(36);
   assert.equal(verifyFriendQrToken(42, `${later}.${sig}`, now), 'invalid', 'no se puede alargar la caducidad');
   assert.equal(verifyFriendQrToken(42, 'basura', now), 'invalid');
+});
+
+test('reacciones: catálogo cerrado de emojis', () => {
+  assert.equal(new Set(PROFILE_REACTIONS.map((r) => r.key)).size, PROFILE_REACTIONS.length);
+  assert.ok(PROFILE_REACTIONS.every((r) => r.key.length <= 16 && r.emoji && r.label));
+  assert.equal(isValidReaction('fire'), true);
+  assert.equal(isValidReaction('💩'), false);
+  assert.equal(isValidReaction('constructor'), false);
 });
