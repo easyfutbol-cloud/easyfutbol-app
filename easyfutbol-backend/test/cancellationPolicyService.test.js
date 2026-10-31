@@ -39,3 +39,33 @@ test('rechaza como iniciado un partido pasado o con fecha inválida', () => {
   assert.equal(hasMatchStarted('fecha-invalida', NOW), true);
 });
 
+
+test('partido antes de las 13:00: devolución solo hasta las 16:00 del día anterior', () => {
+  // Partido el miércoles 5 a las 10:00 (Madrid, UTC+2) → límite martes 4 a las 16:00 (14:00Z)
+  const startsAt = '2026-08-05T08:00:00.000Z';
+  assert.equal(getCancellationPolicy(startsAt, false, new Date('2026-08-04T13:59:59.000Z')).refundable, true);
+  assert.equal(getCancellationPolicy(startsAt, false, new Date('2026-08-04T14:00:00.000Z')).refundable, false);
+  // A las 23:00 del día anterior quedan 11 h, pero ya no hay devolución
+  assert.equal(getCancellationPolicy(startsAt, false, new Date('2026-08-04T21:00:00.000Z')).refundable, false);
+});
+
+test('la regla matutina también aplica a Plus y genera aviso', () => {
+  const startsAt = '2026-08-05T08:00:00.000Z';
+  const result = getCancellationPolicy(startsAt, true, new Date('2026-08-04T20:00:00.000Z'));
+  assert.equal(result.refundable, false);
+  assert.equal(result.earnsSubscriberWarning, true);
+});
+
+test('un partido a las 13:00 mantiene la regla de horas', () => {
+  // 13:00 Madrid = 11:00Z; 8 h antes = 03:00Z
+  const startsAt = '2026-08-05T11:00:00.000Z';
+  assert.equal(getCancellationPolicy(startsAt, false, new Date('2026-08-05T02:59:59.000Z')).refundable, true);
+  assert.equal(getCancellationPolicy(startsAt, false, new Date('2026-08-05T03:00:00.000Z')).refundable, false);
+});
+
+test('la regla matutina respeta el horario de invierno', () => {
+  // Partido el sábado 7 nov a las 09:00 (UTC+1) → límite viernes 6 a las 16:00 (15:00Z)
+  const startsAt = '2026-11-07T08:00:00.000Z';
+  assert.equal(getCancellationPolicy(startsAt, false, new Date('2026-11-06T14:59:59.000Z')).refundable, true);
+  assert.equal(getCancellationPolicy(startsAt, false, new Date('2026-11-06T15:00:00.000Z')).refundable, false);
+});

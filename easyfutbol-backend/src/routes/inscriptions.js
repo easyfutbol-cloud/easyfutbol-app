@@ -12,7 +12,6 @@ import { activePlusSql } from '../services/subscriptionService.js';
 import {
   getCancellationPolicy,
   hasMatchStarted,
-  hoursUntilMatch,
 } from '../services/cancellationPolicyService.js';
 
 const router = Router();
@@ -21,10 +20,6 @@ const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 // --- Helper política de reembolso ---
 function refundPercent(startsAtISO, isPlus = false) {
   return getCancellationPolicy(startsAtISO, isPlus).refundable ? 100 : 0;
-}
-
-function hoursUntil(startsAtISO) {
-  return hoursUntilMatch(startsAtISO);
 }
 
 function formatMatchDateTime(startsAtISO) {
@@ -449,7 +444,7 @@ router.patch('/inscriptions/:id/cancel', requireAuth, async (req, res) => {
 
     const fairPlay = await getPlusFairPlayStatus(conn, userId);
     row.is_plus = fairPlay.eligible;
-    const earnsLateWarning = fairPlay.eligible && hoursUntil(row.starts_at) <= 4;
+    const earnsLateWarning = getCancellationPolicy(row.starts_at, fairPlay.eligible).earnsSubscriberWarning;
     const pct = refundPercent(row.starts_at, fairPlay.eligible);
 
     const isEasyPassInscription = !row.stripe_session_id && (
@@ -655,7 +650,7 @@ router.post('/matches/:id/cancel', requireAuth, async (req, res) => {
 
       const fairPlay = await getPlusFairPlayStatus(conn, userId);
       row.is_plus = fairPlay.eligible;
-      const earnsLateWarning = fairPlay.eligible && hoursUntil(row.starts_at) <= 4;
+      const earnsLateWarning = getCancellationPolicy(row.starts_at, fairPlay.eligible).earnsSubscriberWarning;
 
       const isEasyPassInscription = !row.stripe_session_id && (
         row.payment_type === 'easypass' ||

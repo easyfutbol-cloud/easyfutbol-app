@@ -2,7 +2,7 @@ const MADRID_TIME_ZONE = 'Europe/Madrid';
 
 const pad = (value) => String(value).padStart(2, '0');
 
-function partsInMadrid(value) {
+export function partsInMadrid(value) {
   const date = value instanceof Date ? value : new Date(value);
   if (Number.isNaN(date.getTime())) return null;
   return Object.fromEntries(
