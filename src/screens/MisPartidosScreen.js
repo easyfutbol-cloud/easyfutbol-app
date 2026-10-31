@@ -22,6 +22,7 @@ import ScreenHeader from '../components/ScreenHeader';
 import PlayerStatsShareModal from '../components/PlayerStatsShareCard';
 import SegmentedControl from '../components/SegmentedControl';
 import { colors, layout, radii, spacing } from '../theme';
+import { cancellationPolicyMessage, getCancellationPolicy } from '../utils/cancellationPolicy';
 
 const PUBLIC_BASE = String(api?.defaults?.baseURL || '').replace(/\/api\/?$/, '');
 
@@ -547,13 +548,13 @@ export default function MisPartidosScreen({ navigation }) {
       selectedMatch?.starts_at ||
       selectedMatch?.start_date ||
       selectedMatch?.date;
-    const hoursUntilMatch = (new Date(startsAt).getTime() - Date.now()) / 36e5;
     const isPlus = Boolean(entry?.is_plus);
-    const deadlineHours = isPlus ? 4 : 8;
-    const refundEligible = Number.isFinite(hoursUntilMatch) && hoursUntilMatch > deadlineHours;
-    const policyMessage = refundEligible
-      ? `Como quedan más de ${deadlineHours} horas, se devolverá el EasyPass utilizado.`
-      : `Quedan ${deadlineHours} horas o menos. La entrada se cancelará sin devolución.${isPlus ? ' Además, recibirás un aviso Plus.' : ''}`;
+    const policy = getCancellationPolicy(startsAt, isPlus);
+    const { refundEligible } = policy;
+    const policyMessage = cancellationPolicyMessage(
+      policy,
+      ` La entrada se cancelará sin devolución.${isPlus ? ' Además, recibirás un aviso Plus.' : ''}`
+    );
 
     Alert.alert(
       'Cancelar entrada',

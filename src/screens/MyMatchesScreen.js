@@ -5,6 +5,7 @@ import { useEffect, useState, useCallback, useMemo } from 'react';
 import { api } from '../api/client';
 import ScreenHeader from '../components/ScreenHeader';
 import SegmentedControl from '../components/SegmentedControl';
+import { cancellationPolicyMessage, getCancellationPolicy } from '../utils/cancellationPolicy';
 
 const TAB_OPTIONS = [
   { value: 'future', label: 'Entradas futuras' },
@@ -193,16 +194,16 @@ export default function MyMatchesScreen() {
 
   const handleCancelPress = (matchId, total, startsAt, isPlus = false) => {
     const title = 'Cancelar entrada';
-    const hoursUntilMatch = (new Date(startsAt).getTime() - Date.now()) / 36e5;
-    const deadlineHours = isPlus ? 4 : 8;
-    const refundMessage = hoursUntilMatch > deadlineHours
-      ? `Como quedan más de ${deadlineHours} horas, se devolverá el EasyPass utilizado.`
-      : `Quedan ${deadlineHours} horas o menos. Puedes cancelar, pero el EasyPass utilizado no se devolverá.${isPlus ? ' Además, recibirás un aviso Plus.' : ''}`;
+    const policy = getCancellationPolicy(startsAt, isPlus);
+    const refundMessage = cancellationPolicyMessage(
+      policy,
+      ` Puedes cancelar, pero el EasyPass utilizado no se devolverá.${isPlus ? ' Además, recibirás un aviso Plus.' : ''}`
+    );
     const body = total && total > 1
       ? `Vas a cancelar tus entradas para este partido.\n\n${refundMessage}`
       : `Vas a cancelar tu entrada para este partido.\n\n${refundMessage}`;
 
-    const confirmLabel = hoursUntilMatch > deadlineHours ? 'Sí, cancelar' : 'Cancelar sin devolución';
+    const confirmLabel = policy.refundEligible ? 'Sí, cancelar' : 'Cancelar sin devolución';
 
     Alert.alert(
       title,
