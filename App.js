@@ -189,7 +189,7 @@ async function checkMinimumAppVersion() {
 
     console.log('APP VERSION REQUEST:', versionUrl);
 
-    const response = await fetch(`${versionUrl}?t=${Date.now()}`, {
+    const response = await fetch(`${versionUrl}&t=${Date.now()}`, {
       method: 'GET',
       headers: {
         Accept: 'application/json',

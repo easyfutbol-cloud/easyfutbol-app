@@ -13,7 +13,10 @@ const VALID_PLATFORMS = ['ios', 'android'];
  */
 router.get('/version', async (req, res) => {
   try {
-    const platform = VALID_PLATFORMS.includes(req.query?.platform) ? req.query.platform : null;
+    // Las apps publicadas piden `?platform=ios?t=123` (un segundo `?` en vez de `&`),
+    // así que nos quedamos con lo que va antes del `?`.
+    const requested = String(req.query?.platform || '').split('?')[0];
+    const platform = VALID_PLATFORMS.includes(requested) ? requested : null;
 
     const [rows] = await pool.query(
       `SELECT platform, min_version, min_build, force_update, store_url, message
