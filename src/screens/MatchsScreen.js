@@ -17,9 +17,14 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import ScreenHeader from '../components/ScreenHeader';
 import { colors, layout, radii, spacing, typography } from '../theme';
+import {
+  ASTURIAS_REGION,
+  buildCityOptions,
+  canonicalCity,
+  pickAsturiasCity,
+} from '../utils/matchCityGroups';
 
 const STORAGE_CITY_KEY = 'ef_selected_city';
-const FALLBACK_CITIES = ['Valladolid', 'Avilés'];
 const SCREEN_BACKGROUND = require('../../assets/matches/match-6.jpg');
 
 const MATCH_CARD_IMAGES = [
@@ -59,19 +64,6 @@ function formatCalendarDay(dateObj) {
     day: dateObj.toLocaleDateString('es-ES', { day: '2-digit' }),
     month: dateObj.toLocaleDateString('es-ES', { month: 'short' }).replace('.', '').toUpperCase(),
   };
-}
-
-function buildCityOptions(matches) {
-  const set = new Set(FALLBACK_CITIES);
-  matches.forEach((m) => {
-    const c = (m.city || '').trim();
-    if (c) set.add(c);
-  });
-  return Array.from(set).sort((a, b) => {
-    if (a === 'Valladolid') return -1;
-    if (b === 'Valladolid') return 1;
-    return a.localeCompare(b, 'es');
-  });
 }
 
 // Agrupa los partidos por día
@@ -125,16 +117,20 @@ export default function MatchsScreen({ navigation }) {
   const [citySelectorOpen, setCitySelectorOpen] = useState(false);
   const [initialCityLoaded, setInitialCityLoaded] = useState(false);
 
-  const availableCities = useMemo(() => buildCityOptions(matches), [matches]);
+  const { regions, asturiasCities } = useMemo(
+    () => buildCityOptions(matches, selectedCity),
+    [matches, selectedCity]
+  );
+  const inAsturias = asturiasCities.includes(selectedCity);
 
   const filteredMatches = useMemo(() => {
     if (!selectedCity) return matches;
-    return matches.filter((m) => (m.city || '').trim() === selectedCity);
+    return matches.filter((m) => canonicalCity(m.city) === selectedCity);
   }, [matches, selectedCity]);
 
   const cityRecommendations = useMemo(() => {
     const items = selectedCity
-      ? recommendations.filter((match) => (match.city || '').trim() === selectedCity)
+      ? recommendations.filter((match) => canonicalCity(match.city) === selectedCity)
       : recommendations;
     return items.slice(0, 3);
   }, [recommendations, selectedCity]);
@@ -190,7 +186,7 @@ export default function MatchsScreen({ navigation }) {
     (async () => {
       try {
         const saved = await AsyncStorage.getItem(STORAGE_CITY_KEY);
-        if (saved) setSelectedCity(saved);
+        if (saved) setSelectedCity(canonicalCity(saved));
       } catch (e) {
         // ignore
       } finally {
@@ -219,6 +215,42 @@ export default function MatchsScreen({ navigation }) {
       // ignore
     }
   }, []);
+
+  const selectRegion = (region) => {
+    if (region !== ASTURIAS_REGION) {
+      changeCity(region);
+    } else {
+      changeCity(inAsturias ? selectedCity : pickAsturiasCity(asturiasCities, matches));
+    }
+  };
+
+  const renderAsturiasSwitcher = () => {
+    if (!inAsturias) return null;
+    return (
+      <View style={styles.citySwitcher} accessibilityRole="tablist">
+        {asturiasCities.map((city) => {
+          const active = city === selectedCity;
+          return (
+            <TouchableOpacity
+              key={city}
+              style={[styles.citySwitcherOption, active && styles.citySwitcherOptionActive]}
+              onPress={() => changeCity(city)}
+              activeOpacity={0.85}
+              accessibilityRole="tab"
+              accessibilityState={{ selected: active }}
+            >
+              <Text
+                style={[styles.citySwitcherText, active && styles.citySwitcherTextActive]}
+                numberOfLines={1}
+              >
+                {city}
+              </Text>
+            </TouchableOpacity>
+          );
+        })}
+      </View>
+    );
+  };
 
   const sections = useMemo(() => groupMatchesByDay(filteredMatches), [filteredMatches]);
 
@@ -423,24 +455,29 @@ export default function MatchsScreen({ navigation }) {
           <ScreenHeader
             eyebrow="EASYFUTBOL"
             title="¿Dónde quieres jugar?"
-            description="Elige una ciudad para ver su calendario. La guardaremos como predeterminada y podrás cambiarla cuando quieras."
+            description="Elige una sede para ver su calendario. La guardaremos como predeterminada y podrás cambiarla cuando quieras."
           />
 
           <View style={styles.citySelectorGrid}>
-            {availableCities.map((c) => {
-              const active = c === selectedCity;
+            {regions.map((c) => {
+              const isAsturias = c === ASTURIAS_REGION;
+              const active = isAsturias ? inAsturias : c === selectedCity;
               return (
                 <TouchableOpacity
                   key={c}
                   activeOpacity={0.86}
-                  onPress={() => changeCity(c)}
+                  onPress={() => selectRegion(c)}
                   style={[styles.citySelectorCard, active && styles.citySelectorCardActive]}
                   accessibilityRole="button"
                   accessibilityState={{ selected: active }}
                 >
                   <Text style={[styles.citySelectorCardTitle, active && styles.citySelectorCardTitleActive]}>{c}</Text>
                   <Text style={[styles.citySelectorCardMeta, active && styles.citySelectorCardMetaActive]}>
-                    {active ? 'Ciudad predeterminada' : 'Ver calendario'}
+                    {active
+                      ? `Sede predeterminada${isAsturias ? ` · ${selectedCity}` : ''}`
+                      : isAsturias
+                      ? asturiasCities.join(', ')
+                      : 'Ver calendario'}
                   </Text>
                 </TouchableOpacity>
               );
@@ -463,14 +500,15 @@ export default function MatchsScreen({ navigation }) {
         <View style={styles.topCityHeader}>
           <View style={styles.topCityAccent} />
           <View style={styles.topCityInfo}>
-            <Text style={styles.topCityLabel}>Ciudad predeterminada</Text>
-            <Text style={styles.topCityName}>{selectedCity}</Text>
+            <Text style={styles.topCityLabel}>Sede predeterminada</Text>
+            <Text style={styles.topCityName}>{inAsturias ? ASTURIAS_REGION : selectedCity}</Text>
             <Text style={styles.topCityHint}>Te avisaremos cuando haya nuevos partidos</Text>
           </View>
           <TouchableOpacity style={styles.changeCityBtn} onPress={() => setCitySelectorOpen(true)} activeOpacity={0.85}>
-            <Text style={styles.changeCityText}>Cambiar ciudad</Text>
+            <Text style={styles.changeCityText}>Cambiar sede</Text>
           </TouchableOpacity>
         </View>
+        {renderAsturiasSwitcher()}
         <View style={styles.center}>
           <Text style={styles.emptyTitle}>No hay partidos disponibles</Text>
           <Text style={styles.emptyText}>No hay partidos abiertos en {selectedCity} ahora mismo.</Text>
@@ -491,14 +529,15 @@ export default function MatchsScreen({ navigation }) {
         <View style={styles.topCityHeader}>
           <View style={styles.topCityAccent} />
           <View style={styles.topCityInfo}>
-            <Text style={styles.topCityLabel}>TU CIUDAD</Text>
-            <Text style={styles.topCityName}>{selectedCity}</Text>
+            <Text style={styles.topCityLabel}>TU SEDE</Text>
+            <Text style={styles.topCityName}>{inAsturias ? ASTURIAS_REGION : selectedCity}</Text>
             <Text style={styles.topCityHint}>{filteredMatches.length} partido{filteredMatches.length === 1 ? '' : 's'} disponible{filteredMatches.length === 1 ? '' : 's'}</Text>
           </View>
           <TouchableOpacity style={styles.changeCityBtn} onPress={() => setCitySelectorOpen(true)} activeOpacity={0.85} accessibilityRole="button">
             <Text style={styles.changeCityText}>Cambiar</Text>
           </TouchableOpacity>
         </View>
+        {renderAsturiasSwitcher()}
       </View>
       <SectionList
         sections={sections}
@@ -699,6 +738,36 @@ const styles = StyleSheet.create({
   changeCityText: {
     color: colors.orange,
     fontSize: 11,
+    fontWeight: '900',
+  },
+  citySwitcher: {
+    flexDirection: 'row',
+    marginBottom: spacing(1.5),
+    padding: 4,
+    gap: 4,
+    backgroundColor: 'rgba(17,21,27,0.92)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.08)',
+    borderRadius: 999,
+  },
+  citySwitcherOption: {
+    flex: 1,
+    minHeight: layout.minTouchTarget,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: spacing(1),
+    borderRadius: 999,
+  },
+  citySwitcherOptionActive: {
+    backgroundColor: colors.orange,
+  },
+  citySwitcherText: {
+    color: '#9f9f9f',
+    fontSize: 14,
+    fontWeight: '800',
+  },
+  citySwitcherTextActive: {
+    color: colors.white,
     fontWeight: '900',
   },
   cardWrapper: {
