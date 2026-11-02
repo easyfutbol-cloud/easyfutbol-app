@@ -7,6 +7,7 @@ import { sendPushNotification } from '../services/pushService.js';
 import { processWaitlistForMatch } from '../services/waitlistService.js';
 import { findNextSimilarMatch } from '../services/retentionService.js';
 import { getTeammateSuggestions } from '../services/teammateService.js';
+import { createSocialNotification } from '../services/socialService.js';
 import { addPlusFairPlayWarning, getPlusFairPlayStatus } from '../services/plusFairPlayService.js';
 import { activePlusSql } from '../services/subscriptionService.js';
 import {
@@ -50,6 +51,39 @@ async function getLocationName(conn, locationId, fallbackName) {
     [locationId]
   );
   return locationRow?.name || fallbackName;
+}
+
+// Entradas que juega otra persona: hay que leerlas antes de cancelarlas para poder avisarla después.
+async function getInvitedPlayers(conn, buyerId, { inscriptionId, matchId }) {
+  const [rows] = await conn.query(
+    `SELECT i.id AS inscription_id, i.assigned_user_id, buyer.name AS buyer_name
+     FROM inscriptions i
+     JOIN users buyer ON buyer.id = i.user_id
+     WHERE i.user_id = ?
+       AND ${inscriptionId ? 'i.id = ?' : 'i.match_id = ?'}
+       AND i.status = 'confirmed'
+       AND i.assigned_user_id IS NOT NULL
+       AND i.assigned_user_id <> i.user_id`,
+    [buyerId, inscriptionId || matchId]
+  );
+  return rows;
+}
+
+// Un fallo al avisar nunca debe afectar a una cancelación que ya está hecha.
+async function notifyInvitedPlayers(invitedPlayers, buyerId, matchId, startsAt) {
+  await Promise.all(invitedPlayers.map((player) => createSocialNotification(pool, {
+    userId: player.assigned_user_id,
+    actorId: buyerId,
+    type: 'match_cancelled',
+    entityType: 'match',
+    entityId: matchId,
+    title: 'Han cancelado tu entrada',
+    body: `${player.buyer_name || 'Quien reservó'} ha cancelado tu entrada para el partido del ${formatMatchDateTime(startsAt)}.`,
+    data: { type: 'match_cancelled', screen: 'Match', matchId },
+    dedupeKey: `ticket-cancelled:${player.inscription_id}`,
+  }).catch((error) => {
+    console.error('[TICKET CANCELLED NOTIFY]', error?.message || error);
+  })));
 }
 
 
@@ -453,6 +487,8 @@ router.patch('/inscriptions/:id/cancel', requireAuth, async (req, res) => {
       return res.status(400).json({ ok: false, msg: 'No se puede cancelar una entrada después de comenzar el partido' });
     }
 
+    const invitedPlayers = await getInvitedPlayers(conn, userId, { inscriptionId });
+
     const fairPlay = await getPlusFairPlayStatus(conn, userId);
     row.is_plus = fairPlay.eligible;
     const earnsLateWarning = getCancellationPolicy(row.starts_at, fairPlay.eligible).earnsSubscriberWarning;
@@ -518,6 +554,7 @@ router.patch('/inscriptions/:id/cancel', requireAuth, async (req, res) => {
       await processWaitlistForMatch(row.match_id).catch((error) => {
         console.error('[WAITLIST] Error tras cancelar entrada:', error);
       });
+      await notifyInvitedPlayers(invitedPlayers, userId, row.match_id, row.starts_at);
 
       return res.json({
         ok: true,
@@ -553,6 +590,7 @@ router.patch('/inscriptions/:id/cancel', requireAuth, async (req, res) => {
       await processWaitlistForMatch(row.match_id).catch((error) => {
         console.error('[WAITLIST] Error tras cancelar entrada Stripe:', error);
       });
+      await notifyInvitedPlayers(invitedPlayers, userId, row.match_id, row.starts_at);
       return res.json({
         ok: true,
         msg: `Entrada cancelada sin reembolso.${earnsLateWarning ? ` Aviso Plus ${warningStatus.warningCount}/3.` : ''}`,
@@ -591,6 +629,7 @@ router.patch('/inscriptions/:id/cancel', requireAuth, async (req, res) => {
     await processWaitlistForMatch(row.match_id).catch((error) => {
       console.error('[WAITLIST] Error tras cancelar entrada Stripe:', error);
     });
+    await notifyInvitedPlayers(invitedPlayers, userId, row.match_id, row.starts_at);
 
     return res.json({ ok: true, msg: 'Entrada cancelada con reembolso', pct, refund_id: refund.id });
   } catch (e) {
@@ -658,6 +697,8 @@ router.post('/matches/:id/cancel', requireAuth, async (req, res) => {
 
     // Si estaba confirmado, calcular política
     if (row.status === 'confirmed') {
+
+      const invitedPlayers = await getInvitedPlayers(conn, userId, { matchId });
 
       const fairPlay = await getPlusFairPlayStatus(conn, userId);
       row.is_plus = fairPlay.eligible;
@@ -729,6 +770,7 @@ router.post('/matches/:id/cancel', requireAuth, async (req, res) => {
         await processWaitlistForMatch(matchId).catch((error) => {
           console.error('[WAITLIST] Error tras cancelar entradas:', error);
         });
+        await notifyInvitedPlayers(invitedPlayers, userId, matchId, row.starts_at);
 
         return res.json({
           ok:true,
@@ -769,6 +811,7 @@ router.post('/matches/:id/cancel', requireAuth, async (req, res) => {
         await processWaitlistForMatch(matchId).catch((error) => {
           console.error('[WAITLIST] Error tras cancelar entradas Stripe:', error);
         });
+        await notifyInvitedPlayers(invitedPlayers, userId, matchId, row.starts_at);
         return res.json({
           ok:true,
           msg:`Canceladas ${inscriptionCount} plaza(s) sin reembolso.${earnsLateWarning ? ` Aviso Plus ${warningStatus.warningCount}/3.` : ''}`,
@@ -805,6 +848,7 @@ router.post('/matches/:id/cancel', requireAuth, async (req, res) => {
       await processWaitlistForMatch(matchId).catch((error) => {
         console.error('[WAITLIST] Error tras cancelar entradas Stripe:', error);
       });
+      await notifyInvitedPlayers(invitedPlayers, userId, matchId, row.starts_at);
 
       return res.json({ ok:true, msg:`Canceladas ${inscriptionCount} plaza(s) con reembolso`, pct, refund_id: refund.id });
     }
