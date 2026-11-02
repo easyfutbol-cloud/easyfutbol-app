@@ -7,23 +7,26 @@ import * as Sharing from 'expo-sharing';
 import { api } from '../api/client';
 import { resolveSocialAvatarUrl } from '../components/social/SocialComponents';
 import { avatarSource } from '../utils/defaultAvatar';
+import PlayerCard, { CARD_RATIO } from '../components/profile/PlayerCard';
 
 const TEMPLATE_IMAGE = require('../../assets/weekly-lineup-template.png');
 const TEMPLATE_ASPECT_RATIO = 1080 / 1350;
 
-// Posición de cada hueco sobre la plantilla, en % del ancho/alto de la imagen
-// (ajustado a ojo sobre el campo dibujado en weekly-lineup-template.png).
-// Repartidas con hueco de sobra entre filas para que quepan foto + etiqueta
-// sin solaparse, sea cual sea el ancho real de pantalla (ver AVATAR_RATIO).
+// Centro de cada carta sobre la plantilla, en % del ancho/alto de la imagen.
+// Las cartas son demasiado altas para cuatro filas rectas, así que van
+// escalonadas y una fila puede empezar a la altura de otra sin pisarla. El
+// portero acaba justo encima del @easyfutbol_es de la plantilla.
 const POSITION_SPOTS = {
-  delantero: [{ top: 0.35, left: 0.37 }, { top: 0.35, left: 0.63 }],
-  centrocampista: [{ top: 0.495, left: 0.35 }, { top: 0.495, left: 0.65 }],
-  defensa: [{ top: 0.64, left: 0.26 }, { top: 0.64, left: 0.5 }, { top: 0.64, left: 0.74 }],
-  portero: [{ top: 0.79, left: 0.5 }],
+  delantero: [{ top: 0.39, left: 0.31 }, { top: 0.39, left: 0.69 }],
+  centrocampista: [{ top: 0.485, left: 0.12 }, { top: 0.485, left: 0.88 }],
+  defensa: [{ top: 0.695, left: 0.27 }, { top: 0.585, left: 0.5 }, { top: 0.695, left: 0.73 }],
+  portero: [{ top: 0.8, left: 0.5 }],
 };
 
-// Diámetro de la foto como fracción del ancho real del campo en pantalla,
+// Ancho de la carta como fracción del ancho real de la plantilla en pantalla,
 // para que escale igual en un móvil pequeño que en una tablet.
+const CARD_WIDTH_RATIO = 0.185;
+// Las cartas de antes del despliegue del backend no llegan: se queda la foto.
 const AVATAR_RATIO = 0.105;
 
 function parseDateOnly(value) {
@@ -43,6 +46,31 @@ function formatWeek(weekStart, weekEnd) {
 
 function PlayerPin({ player, spot, containerWidth, onOpen }) {
   if (!containerWidth) return null;
+
+  if (player?.card) {
+    const cardWidth = containerWidth * CARD_WIDTH_RATIO;
+    const cardHeight = cardWidth * CARD_RATIO;
+    return (
+      <TouchableOpacity
+        style={[styles.pin, { top: `${spot.top * 100}%`, left: `${spot.left * 100}%`, width: cardWidth, marginLeft: -cardWidth / 2, marginTop: -cardHeight / 2 }]}
+        activeOpacity={0.8}
+        onPress={() => onOpen(player.user_id)}
+        accessibilityRole="button"
+        accessibilityLabel={`Ver perfil de ${player.name}`}
+      >
+        <PlayerCard
+          compact
+          card={player.card}
+          name={player.name}
+          nickname={player.nickname}
+          avatarUrl={player.avatar_url}
+          subtitle={player.location}
+          nameColor={player.is_plus ? '#F4C95D' : undefined}
+          width={cardWidth}
+        />
+      </TouchableOpacity>
+    );
+  }
 
   const avatarSize = containerWidth * AVATAR_RATIO;
   const pinStyle = {

@@ -28,19 +28,23 @@ const FLAME_CORES = [
 ];
 const STREAKS = ['M-20 200 L120 -20 L132 -20 L-8 200 Z', 'M30 230 L190 -20 L198 -20 L38 230 Z', 'M110 290 L230 70 L236 70 L116 290 Z'];
 
-export default function PlayerCard({ card, name, nickname, avatarUrl, shirtNumber, width = 230 }) {
+// compact: para tamaños pequeños como el 8 de la semana. Sin atributos, con la
+// foto y el nombre más grandes, porque ahí los atributos no se leerían.
+export default function PlayerCard({ card, name, nickname, avatarUrl, shirtNumber, width = 230, compact = false, subtitle, nameColor }) {
   if (!card) return null;
   const tier = CARD_TIERS[card.tier] || CARD_TIERS.bronze;
   const height = width * CARD_RATIO;
   const u = width / 200; // 1 unidad del viewBox en píxeles
-  const half = Math.ceil(card.attributes.length / 2);
-  const columns = [card.attributes.slice(0, half), card.attributes.slice(half)];
+  const attributes = card.attributes || [];
+  const half = Math.ceil(attributes.length / 2);
+  const columns = [attributes.slice(0, half), attributes.slice(half)];
   const displayName = (nickname || name || '').toUpperCase();
+  const username = compact && nickname && name && nickname.toUpperCase() !== name.toUpperCase() ? name : null;
   const avatarSize = 78 * u;
   const id = `pc-${card.tier}`;
 
   return (
-    <View style={[styles.shadow, { width, height, shadowColor: tier.glow }]}>
+    <View style={[styles.shadow, { width, height, shadowColor: tier.glow }, compact && { shadowRadius: 6, shadowOffset: { width: 0, height: 2 }, elevation: 4 }]}>
       <Svg width={width} height={height} viewBox="0 0 200 290" style={StyleSheet.absoluteFill}>
         <Defs>
           <LinearGradient id={`${id}-rim`} x1="0" y1="0" x2="1" y2="1">
@@ -99,22 +103,29 @@ export default function PlayerCard({ card, name, nickname, avatarUrl, shirtNumbe
       </Svg>
 
       {/* Media, posición y dorsal */}
-      <View style={[styles.rating, { left: 24 * u, top: 34 * u }]}>
+      <View style={[styles.rating, compact ? { left: 20 * u, top: 44 * u } : { left: 24 * u, top: 34 * u }]}>
         <Text style={[styles.overall, { fontSize: 46 * u, lineHeight: 50 * u }]}>{card.provisional ? '–' : card.overall}</Text>
         <Text style={[styles.position, { fontSize: 16 * u }]}>{POSITION_SHORT[card.position] || 'JUG'}</Text>
         <View style={[styles.miniLine, { width: 28 * u, marginTop: 5 * u }]} />
       </View>
 
       {/* Foto */}
-      <View style={[styles.avatar, { right: 26 * u, top: 38 * u, borderRadius: avatarSize, padding: 1.5 * u, backgroundColor: tier.rim[1] }]}>
+      <View style={[styles.avatar, compact ? { right: 22 * u, top: 42 * u } : { right: 26 * u, top: 38 * u }, { borderRadius: avatarSize, padding: (compact ? 4 : 1.5) * u, backgroundColor: tier.rim[1] }]}>
         <SocialAvatar uri={avatarUrl} name={name} size={avatarSize} />
-        {shirtNumber ? (
+        {shirtNumber && !compact ? (
           <View style={[styles.shirtBadge, { minWidth: 26 * u, height: 26 * u, borderRadius: 13 * u, borderColor: tier.rim[1], left: -6 * u, bottom: -4 * u }]}>
             <Text style={[styles.shirt, { fontSize: 12 * u }]}>{shirtNumber}</Text>
           </View>
         ) : null}
       </View>
 
+      {compact ? (
+        <>
+          <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.45} style={[styles.name, { top: (username ? 160 : 170) * u, left: 14 * u, right: 14 * u, fontSize: 30 * u, letterSpacing: 0 }, nameColor && { color: nameColor }]}>{displayName}</Text>
+          {username ? <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.6} style={[styles.compactUsername, { top: 195 * u, left: 24 * u, right: 24 * u, fontSize: 16 * u }]}>{username}</Text> : null}
+          {subtitle ? <Text numberOfLines={1} adjustsFontSizeToFit style={[styles.compactSubtitle, { top: (username ? 216 : 208) * u, left: 30 * u, right: 30 * u, fontSize: (username ? 16 : 19) * u }]}>{subtitle}</Text> : null}
+        </>
+      ) : <>
       {/* Nombre */}
       <Text numberOfLines={1} adjustsFontSizeToFit style={[styles.name, { top: 127 * u, left: 16 * u, right: 16 * u, fontSize: 19 * u }]}>{displayName}</Text>
 
@@ -137,6 +148,7 @@ export default function PlayerCard({ card, name, nickname, avatarUrl, shirtNumbe
         {card.provisional ? `EN JUEGO · ${card.matches_played}/3` : `${tier.label} · ${card.matches_played} PJ`}
       </Text>
       <Text style={[styles.brand, { top: 250 * u, fontSize: 7 * u, letterSpacing: 2 * u }]}>EASYFUTBOL</Text>
+      </>}
     </View>
   );
 }
@@ -153,6 +165,8 @@ const styles = StyleSheet.create({
   shirt: { color: '#fff', fontWeight: '900' },
   avatar: { position: 'absolute' },
   name: { position: 'absolute', color: '#fff', fontWeight: '900', textAlign: 'center', letterSpacing: 1.2, ...glow },
+  compactUsername: { position: 'absolute', color: '#fff', fontWeight: '700', textAlign: 'center' },
+  compactSubtitle: { position: 'absolute', color: '#ffd2b0', fontWeight: '800', textAlign: 'center' },
   attributes: { position: 'absolute', flexDirection: 'row' },
   column: { flex: 1, paddingHorizontal: 8 },
   attribute: { flexDirection: 'row', alignItems: 'baseline', gap: 6 },
