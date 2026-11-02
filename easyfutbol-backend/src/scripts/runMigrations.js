@@ -54,6 +54,7 @@ const migrationOrder = [
   '20261103_social_profile_v3.sql',
   '20261104_profile_reactions.sql',
   '20261105_match_video.sql',
+  '20261106_match_events_occurred_at.sql',
 ];
 
 const currentFile = fileURLToPath(import.meta.url);

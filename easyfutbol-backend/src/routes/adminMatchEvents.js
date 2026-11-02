@@ -6,10 +6,11 @@ import { pool } from '../config/db.js';
 import { requireAuth, requireAdmin } from '../middlewares/auth.js';
 import { applyEventStatDelta, setMvp, clearMvp, applyMatchResult, notifyMatchResultToPlayers } from '../services/matchLiveStatsService.js';
 import { syncEngagementAfterMatch } from '../services/engagementService.js';
+import { capOccurredAt, minuteFromOccurredAt, parseOccurredAt } from '../utils/matchEventTime.js';
 
 const router = express.Router({ mergeParams: true });
 
-const EVENT_COLUMNS = `e.id, e.match_id, e.type, e.minute, e.user_id, e.assist_user_id, e.team_color,
+const EVENT_COLUMNS = `e.id, e.match_id, e.type, e.minute, e.occurred_at, e.user_id, e.assist_user_id, e.team_color,
                        e.guest_player_name, e.guest_assist_name,
                        CAST(e.is_candidate AS UNSIGNED) AS is_candidate, e.created_at,
                        COALESCE(scorer.name, e.guest_player_name) AS player_name, scorer.avatar_url AS player_avatar_url,
@@ -66,7 +67,7 @@ router.get('/', requireAuth, requireAdmin, async (req, res) => {
       `SELECT ${EVENT_COLUMNS} FROM match_live_events e
        LEFT JOIN users scorer ON scorer.id = e.user_id
        LEFT JOIN users assist ON assist.id = e.assist_user_id
-       WHERE e.match_id=? ORDER BY FIELD(e.type,'mvp','goal','save'), e.minute ASC, e.id ASC`,
+       WHERE e.match_id=? ORDER BY FIELD(e.type,'mvp','goal','save'), e.minute ASC, e.occurred_at ASC, e.id ASC`,
       [matchId]
     );
 
@@ -102,7 +103,9 @@ router.get('/search-players', requireAuth, requireAdmin, async (req, res) => {
 
 /**
  * POST /api/admin/matches/:matchId/events
- * Body: { type: 'goal'|'save'|'mvp', minute, user_id | guest_name, assist_user_id? | assist_guest_name?, team_color?, is_candidate? }
+ * Body: { type: 'goal'|'save'|'mvp', occurred_at?, minute?, user_id | guest_name, assist_user_id? | assist_guest_name?, team_color?, is_candidate? }
+ * occurred_at es la hora real capturada al pulsar el botón; si no llega minuto
+ * se calcula a partir de ella. Las versiones antiguas solo envían el minuto.
  * Admite jugadores sin cuenta en la app (guest_name / assist_guest_name): se
  * guardan por nombre y no entran en match_player_stats (no cuentan para el
  * ranking oficial), por eso el MVP no puede ser un invitado.
@@ -132,8 +135,17 @@ router.post('/', requireAuth, requireAdmin, async (req, res) => {
     }
 
     let minute = null;
+    let occurredAt = null;
     if (type !== 'mvp') {
-      minute = Number(req.body?.minute);
+      const hasMinute = req.body?.minute !== undefined && req.body?.minute !== null;
+      if (req.body?.occurred_at !== undefined && req.body?.occurred_at !== null) {
+        occurredAt = parseOccurredAt(req.body.occurred_at);
+        if (!occurredAt) { conn.release(); return res.status(400).json({ ok: false, msg: 'Hora inválida' }); }
+        occurredAt = capOccurredAt(occurredAt);
+      } else if (!hasMinute) {
+        occurredAt = new Date();
+      }
+      minute = hasMinute ? Number(req.body.minute) : minuteFromOccurredAt(occurredAt, match.starts_at);
       if (!Number.isInteger(minute) || minute < 0 || minute > 200) { conn.release(); return res.status(400).json({ ok: false, msg: 'Minuto inválido' }); }
     }
 
@@ -162,9 +174,9 @@ router.post('/', requireAuth, requireAdmin, async (req, res) => {
     }
 
     const [result] = await conn.query(
-      `INSERT INTO match_live_events (match_id, type, minute, user_id, guest_player_name, assist_user_id, guest_assist_name, team_color, is_candidate, created_by)
-       VALUES (?,?,?,?,?,?,?,?,?,?)`,
-      [matchId, type, minute, userId, guestPlayerName, assistUserId, guestAssistName, teamColor || null, req.body?.is_candidate ? 1 : 0, req.user?.id || null]
+      `INSERT INTO match_live_events (match_id, type, minute, occurred_at, user_id, guest_player_name, assist_user_id, guest_assist_name, team_color, is_candidate, created_by)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
+      [matchId, type, minute, occurredAt, userId, guestPlayerName, assistUserId, guestAssistName, teamColor || null, req.body?.is_candidate ? 1 : 0, req.user?.id || null]
     );
 
     await conn.commit();
@@ -181,7 +193,7 @@ router.post('/', requireAuth, requireAdmin, async (req, res) => {
 
 /**
  * PUT /api/admin/matches/:matchId/events/:eventId
- * Actualiza minuto, jugador, asistencia, equipo o estrella — recalculando
+ * Actualiza hora, minuto, jugador, asistencia, equipo o estrella — recalculando
  * las estadísticas si cambia el jugador o la asistencia.
  */
 router.put('/:eventId', requireAuth, requireAdmin, async (req, res) => {
@@ -195,6 +207,14 @@ router.put('/:eventId', requireAuth, requireAdmin, async (req, res) => {
     if (!current || current.match_id !== matchId) { conn.release(); return res.status(404).json({ ok: false, msg: 'Evento no encontrado' }); }
 
     let minute = current.minute;
+    let occurredAt = current.occurred_at;
+    if (req.body?.occurred_at !== undefined && current.type !== 'mvp') {
+      occurredAt = parseOccurredAt(req.body.occurred_at);
+      if (!occurredAt) { conn.release(); return res.status(400).json({ ok: false, msg: 'Hora inválida' }); }
+      occurredAt = capOccurredAt(occurredAt);
+      const match = await getMatch(matchId);
+      minute = minuteFromOccurredAt(occurredAt, match?.starts_at);
+    }
     if (req.body?.minute !== undefined && current.type !== 'mvp') {
       minute = Number(req.body.minute);
       if (!Number.isInteger(minute) || minute < 0 || minute > 200) { conn.release(); return res.status(400).json({ ok: false, msg: 'Minuto inválido' }); }
@@ -238,8 +258,8 @@ router.put('/:eventId', requireAuth, requireAdmin, async (req, res) => {
     }
 
     await conn.query(
-      'UPDATE match_live_events SET minute=?, user_id=?, assist_user_id=?, team_color=?, is_candidate=? WHERE id=?',
-      [minute, userId, assistUserId, teamColor || null, isCandidate, eventId]
+      'UPDATE match_live_events SET minute=?, occurred_at=?, user_id=?, assist_user_id=?, team_color=?, is_candidate=? WHERE id=?',
+      [minute, occurredAt, userId, assistUserId, teamColor || null, isCandidate, eventId]
     );
 
     await conn.commit();
@@ -330,7 +350,7 @@ router.get('/summary', requireAuth, requireAdmin, async (req, res) => {
       `SELECT ${EVENT_COLUMNS} FROM match_live_events e
        LEFT JOIN users scorer ON scorer.id = e.user_id
        LEFT JOIN users assist ON assist.id = e.assist_user_id
-       WHERE e.match_id=? ORDER BY e.minute ASC, e.id ASC`,
+       WHERE e.match_id=? ORDER BY e.minute ASC, e.occurred_at ASC, e.id ASC`,
       [matchId]
     );
 
