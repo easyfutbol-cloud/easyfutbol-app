@@ -3,6 +3,8 @@
 // primeras semanas; el cierre sigue siendo automático a la hora fijada.
 import { pool } from '../config/db.js';
 import { markSchedulerFailure, markSchedulerSuccess, registerScheduler } from './operationalHealthService.js';
+import { computeLineupCard } from './playerCardService.js';
+import { getSeasonStats } from './profileShareService.js';
 import { madridWallTimeToUtc, toMysqlUtc } from '../utils/madridDateTime.js';
 import { activePlusSql } from './subscriptionService.js';
 
@@ -210,5 +212,19 @@ export async function getPollWinners(pollId) {
       .sort((a, b) => b.votes - a.votes)
       .slice(0, POSITION_SLOTS[position]);
   }
+
+  const winnerList = Object.entries(winners).flatMap(([position, list]) => list.map((winner) => ({ position, winner })));
+  if (!winnerList.length) return winners;
+
+  const [profiles] = await pool.query(
+    'SELECT id, nickname, primary_position FROM users WHERE id IN (?)',
+    [winnerList.map(({ winner }) => winner.user_id)]
+  );
+  const profileById = new Map(profiles.map((profile) => [profile.id, profile]));
+  await Promise.all(winnerList.map(async ({ position, winner }) => {
+    const profile = profileById.get(winner.user_id);
+    winner.nickname = profile?.nickname || null;
+    winner.card = computeLineupCard(await getSeasonStats(pool, winner.user_id), profile?.primary_position, position);
+  }));
   return winners;
 }

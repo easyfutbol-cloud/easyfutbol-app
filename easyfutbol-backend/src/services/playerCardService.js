@@ -123,6 +123,23 @@ export function computePlayerCard(stats, position) {
   };
 }
 
+const LINEUP_CARD_POSITIONS = { portero: 'goalkeeper', defensa: 'defender', centrocampista: 'midfielder', delantero: 'forward' };
+
+/**
+ * Carta de un ganador del 8: misma media que en su perfil, pero con la posición
+ * en la que ha ganado y sin atributos, para no dejar deducir goles ni asistencias.
+ */
+export function computeLineupCard(stats, primaryPosition, lineupPosition) {
+  const { overall, tier, provisional, matches_played: matchesPlayed } = computePlayerCard(stats, primaryPosition);
+  return {
+    overall,
+    tier,
+    provisional,
+    matches_played: matchesPlayed,
+    position: LINEUP_CARD_POSITIONS[lineupPosition] || primaryPosition || null,
+  };
+}
+
 // --- evolución mensual ---
 
 const monthKey = (date) => `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}`;
