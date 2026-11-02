@@ -774,11 +774,24 @@ export default function MisPartidosScreen({ navigation }) {
           <View style={styles.card}>
             <View style={styles.sectionHeader}>
               <Ionicons name="ticket-outline" size={20} color={ORANGE} />
-              <Text style={styles.sectionTitle}>Tus entradas</Text>
+              <Text style={styles.sectionTitle}>{inscriptions.length === 1 ? 'Tu entrada' : 'Tus entradas'}</Text>
             </View>
             {inscriptions.map((entry, index) => {
               const entryId = getInscriptionId(entry);
               const isClaimed = !!entry.assigned_user_id;
+
+              if (entry.reserved_by_other) {
+                return (
+                  <View key={`entry-detail-${entryId || index}-${index}`} style={styles.entryRow}>
+                    <View style={styles.entryInfo}>
+                      <Text style={styles.entryText}>Entrada {index + 1}</Text>
+                      <Text style={styles.entryMuted}>Camiseta {getTicketColor(entry.ticket_type || entry.ticketType || entry.camiseta)}</Text>
+                      <Text style={styles.entryReservedBy}>Partido reservado por {entry.reserved_by_name || 'otro jugador'}</Text>
+                      <Text style={styles.entryMuted}>Solo quien lo reservó puede gestionar o cancelar esta entrada.</Text>
+                    </View>
+                  </View>
+                );
+              }
 
               return (
                 <View key={`entry-detail-${entryId || index}-${index}`} style={styles.entryRow}>
@@ -997,6 +1010,7 @@ export default function MisPartidosScreen({ navigation }) {
           const ticket = getTicketColor(match.camiseta || match.ticket_type || match.ticketType);
           const status = match.status || match.estado || 'Confirmado';
           const entryCount = match.inscriptions?.length || 1;
+          const reservedEntry = match.inscriptions?.find((entry) => entry.reserved_by_other);
           const isPastCard = activeTab === 'past';
           const matchImage = getMatchImage(match);
 
@@ -1062,6 +1076,13 @@ export default function MisPartidosScreen({ navigation }) {
                   <Text style={styles.matchInfoText}>{status}</Text>
                 </View>
               </View>
+
+              {reservedEntry && (
+                <View style={styles.entryHintBox}>
+                  <Ionicons name="person-outline" size={16} color={ORANGE} />
+                  <Text style={styles.entryHintText}>Partido reservado por {reservedEntry.reserved_by_name || 'otro jugador'}</Text>
+                </View>
+              )}
 
               {entryCount > 1 && (
                 <View style={styles.entryHintBox}>
@@ -1539,6 +1560,12 @@ const styles = StyleSheet.create({
   },
   entryAssigned: {
     color: '#39D98A',
+    fontSize: 12,
+    fontWeight: '700',
+    marginTop: 3,
+  },
+  entryReservedBy: {
+    color: ORANGE,
     fontSize: 12,
     fontWeight: '700',
     marginTop: 3,

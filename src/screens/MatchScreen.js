@@ -98,6 +98,7 @@ export default function MatchScreen({ route, navigation }) {
   const [ticketType, setTicketType] = useState('white'); // 'white' | 'black'
   const [myTicketsCount, setMyTicketsCount] = useState(0);
   const [myTicketsLoading, setMyTicketsLoading] = useState(true);
+  const [reservedByName, setReservedByName] = useState(null);
   const [quantity, setQuantity] = useState(1);
   const [easyPassBalance, setEasyPassBalance] = useState(0);
   const [easyPassLoading, setEasyPassLoading] = useState(true);
@@ -227,14 +228,16 @@ export default function MatchScreen({ route, navigation }) {
         const payload = res.data;
         if (cancelled || !payload?.ok) return;
 
-        const all = payload.data?.inscriptions || [];
+        const all = Array.isArray(payload.data) ? payload.data : payload.data?.inscriptions || [];
         const mid = Number(matchId);
-        const countForMatch = all.filter(
-          (ins) => ins.match_id === mid && ins.status === 'confirmed'
-        ).length;
+        const forMatch = all.filter(
+          (ins) => Number(ins.match_id) === mid && ins.status === 'confirmed'
+        );
+        const reserved = forMatch.find((ins) => ins.reserved_by_other);
 
         if (!cancelled) {
-          setMyTicketsCount(countForMatch);
+          setMyTicketsCount(forMatch.filter((ins) => !ins.reserved_by_other).length);
+          setReservedByName(reserved ? reserved.reserved_by_name || 'otro jugador' : null);
         }
       } catch (err) {
         if (!cancelled) {
@@ -1089,6 +1092,12 @@ export default function MatchScreen({ route, navigation }) {
           {`Ya tienes ${myTicketsCount} entrada${
             myTicketsCount > 1 ? 's' : ''
           } para este partido.`}
+        </Text>
+      )}
+
+      {!myTicketsLoading && reservedByName && (
+        <Text style={styles.infoText}>
+          {`Ya estás apuntado. Partido reservado por ${reservedByName}.`}
         </Text>
       )}
       </ScrollView>
