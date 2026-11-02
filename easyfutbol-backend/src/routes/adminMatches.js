@@ -10,9 +10,12 @@ const router = express.Router();
 async function notifyMatchPlayers(matchId, title, body, type) {
   try {
     const [players] = await pool.query(
-      `SELECT DISTINCT user_id FROM inscriptions
-       WHERE match_id=? AND user_id IS NOT NULL AND status IN ('pending','confirmed')`,
-      [matchId]
+      `SELECT user_id FROM inscriptions
+       WHERE match_id=? AND user_id IS NOT NULL AND status IN ('pending','confirmed')
+       UNION
+       SELECT assigned_user_id FROM inscriptions
+       WHERE match_id=? AND assigned_user_id IS NOT NULL AND status IN ('pending','confirmed')`,
+      [matchId, matchId]
     );
     await Promise.all(players.map(({user_id:userId})=>createSocialNotification(pool,{
       userId,type,entityType:'match',entityId:Number(matchId),title,body,
@@ -510,6 +513,16 @@ router.delete('/:id', requireAuth, requireAdmin, async (req, res) => {
       [matchId]
     );
 
+    // Quienes juegan con una entrada ajena no reciben devolución, pero también hay que avisarles.
+    const buyerIds = new Set(buyers.map((buyer) => Number(buyer.user_id)));
+    const [assignedPlayers] = await conn.query(
+      `SELECT DISTINCT assigned_user_id AS user_id
+       FROM inscriptions
+       WHERE match_id=? AND status='confirmed' AND assigned_user_id IS NOT NULL`,
+      [matchId]
+    );
+    const invitedPlayers = assignedPlayers.filter((player) => !buyerIds.has(Number(player.user_id)));
+
     const locationId = Number(
       match.location_id
       || (['avilés', 'aviles', 'oviedo', 'gijón', 'gijon', 'asturias'].includes(String(match.city || '').toLowerCase()) ? 2 : 1)
@@ -552,6 +565,17 @@ router.delete('/:id', requireAuth, requireAdmin, async (req, res) => {
       entityId: matchId,
       title: 'Partido eliminado',
       body: `${match.title} ha sido eliminado por la organización. Se te ha devuelto el EasyPass.`,
+      data: { type: 'match_cancelled', screen: 'Home' },
+      dedupeKey: `admin-match:deleted:${matchId}:${userId}`,
+    })).map((p) => p.catch((err) => console.error('[DELETE match notify]', err?.message || err))));
+
+    await Promise.all(invitedPlayers.map(({ user_id: userId }) => createSocialNotification(pool, {
+      userId,
+      type: 'match_cancelled',
+      entityType: 'match',
+      entityId: matchId,
+      title: 'Partido eliminado',
+      body: `${match.title} ha sido eliminado por la organización.`,
       data: { type: 'match_cancelled', screen: 'Home' },
       dedupeKey: `admin-match:deleted:${matchId}:${userId}`,
     })).map((p) => p.catch((err) => console.error('[DELETE match notify]', err?.message || err))));
