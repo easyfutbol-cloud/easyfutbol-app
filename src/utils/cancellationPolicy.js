@@ -46,15 +46,25 @@ export function getCancellationPolicy(startsAt, isPlus = false, now = Date.now()
     );
   }
 
-  return { refundEligible: now < deadlineMs, morningMatch, deadlineHours };
+  return { refundEligible: now < deadlineMs, morningMatch, deadlineHours, deadlineMs };
+}
+
+function formatDeadlineDay(deadlineMs) {
+  return new Intl.DateTimeFormat('es-ES', {
+    timeZone: MADRID_TIME_ZONE,
+    weekday: 'long',
+    day: 'numeric',
+    month: 'long',
+  }).format(new Date(deadlineMs)).replace(',', '');
 }
 
 export function cancellationPolicyMessage(policy, lateSuffix = '') {
-  const { refundEligible, morningMatch, deadlineHours } = policy;
+  const { refundEligible, morningMatch, deadlineHours, deadlineMs } = policy;
   if (morningMatch) {
+    const deadlineText = `las 16:00 del ${formatDeadlineDay(deadlineMs)} (día anterior al partido)`;
     return refundEligible
-      ? 'Como cancelas antes de las 16:00 del día anterior, se devolverá el EasyPass utilizado.'
-      : `En partidos antes de las 13:00, la devolución solo es posible hasta las 16:00 del día anterior.${lateSuffix}`;
+      ? `Este partido es antes de las 13:00: si cancelas antes de ${deadlineText}, se te devuelve el EasyPass. Ahora mismo cancelarías con devolución.`
+      : `Este partido es antes de las 13:00: el EasyPass solo se devolvía cancelando antes de ${deadlineText}.${lateSuffix}`;
   }
   return refundEligible
     ? `Como quedan más de ${deadlineHours} horas, se devolverá el EasyPass utilizado.`
