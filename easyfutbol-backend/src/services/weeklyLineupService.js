@@ -86,12 +86,20 @@ function addDays(dateStr, days) {
   return toDateString(dt.getUTCFullYear(), dt.getUTCMonth() + 1, dt.getUTCDate());
 }
 
-/** Ventana de votación de una semana: lunes 19:00 a miércoles 19:00, hora de Madrid. */
-function computeVotingWindow(weekStart) {
-  const opensAt = madridWallTimeToUtc(weekStart, '19:00');
-  const closesAt = madridWallTimeToUtc(addDays(weekStart, 2), '19:00');
+/**
+ * Ventana de votación de una semana: se vota sobre la semana ya jugada, del
+ * lunes 19:00 al miércoles 19:00 siguientes, hora de Madrid.
+ */
+export function computeVotingWindow(weekStart) {
+  const opensAt = madridWallTimeToUtc(addDays(weekStart, 7), '19:00');
+  const closesAt = madridWallTimeToUtc(addDays(weekStart, 9), '19:00');
   return { opensAt, closesAt };
 }
+
+const windowParams = (weekStart) => {
+  const { opensAt, closesAt } = computeVotingWindow(weekStart);
+  return [opensAt ? toMysqlUtc(opensAt) : null, closesAt ? toMysqlUtc(closesAt) : null];
+};
 
 /** Crea (si no existe) el borrador de la próxima semana para que el admin pueda ir preparando candidatos. */
 export async function ensureUpcomingDraftPoll() {
@@ -100,14 +108,21 @@ export async function ensureUpcomingDraftPoll() {
   const nextWeekEnd = addDays(nextWeekStart, 6);
 
   for (const [weekStart, weekEnd] of [[currentWeekStart, currentWeekEnd], [nextWeekStart, nextWeekEnd]]) {
-    const [[existing]] = await pool.query('SELECT id FROM weekly_lineup_polls WHERE week_start=? LIMIT 1', [weekStart]);
-    if (existing) continue;
+    const [[existing]] = await pool.query('SELECT id, status FROM weekly_lineup_polls WHERE week_start=? LIMIT 1', [weekStart]);
+    if (existing) {
+      if (existing.status === 'draft') {
+        await pool.query(
+          'UPDATE weekly_lineup_polls SET scheduled_open_at=?, scheduled_close_at=? WHERE id=?',
+          [...windowParams(weekStart), existing.id]
+        );
+      }
+      continue;
+    }
 
-    const { opensAt, closesAt } = computeVotingWindow(weekStart);
     await pool.query(
       `INSERT IGNORE INTO weekly_lineup_polls (week_start, week_end, scheduled_open_at, scheduled_close_at, status)
        VALUES (?,?,?,?,'draft')`,
-      [weekStart, weekEnd, opensAt ? toMysqlUtc(opensAt) : null, closesAt ? toMysqlUtc(closesAt) : null]
+      [weekStart, weekEnd, ...windowParams(weekStart)]
     );
   }
 }
@@ -117,7 +132,10 @@ export async function ensureUpcomingDraftPoll() {
  * cada posición tenga al menos un candidato.
  */
 export async function openPoll(pollId) {
-  const [[poll]] = await pool.query('SELECT id, status FROM weekly_lineup_polls WHERE id=?', [pollId]);
+  const [[poll]] = await pool.query(
+    "SELECT id, status, DATE_FORMAT(week_start,'%Y-%m-%d') AS week_start FROM weekly_lineup_polls WHERE id=?",
+    [pollId]
+  );
   if (!poll) return { ok: false, msg: 'Votación no encontrada' };
   if (poll.status !== 'draft') return { ok: false, msg: 'Solo se puede abrir una votación que esté en borrador' };
 
@@ -131,7 +149,16 @@ export async function openPoll(pollId) {
     return { ok: false, msg: `Falta al menos un candidato en: ${missing.map((p) => POSITION_LABELS[p]).join(', ')}` };
   }
 
-  await pool.query("UPDATE weekly_lineup_polls SET status='open', opened_at=NOW() WHERE id=?", [pollId]);
+  // Abrirla fuera de plazo haría que el cierre automático la cerrase enseguida.
+  const { closesAt } = computeVotingWindow(poll.week_start);
+  if (closesAt && closesAt.getTime() <= Date.now()) {
+    return { ok: false, msg: 'El plazo de votación de esa semana ya ha terminado' };
+  }
+
+  await pool.query(
+    "UPDATE weekly_lineup_polls SET status='open', opened_at=NOW(), scheduled_open_at=?, scheduled_close_at=? WHERE id=?",
+    [...windowParams(poll.week_start), pollId]
+  );
   return { ok: true };
 }
 
