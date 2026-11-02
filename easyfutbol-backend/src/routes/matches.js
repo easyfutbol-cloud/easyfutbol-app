@@ -138,7 +138,7 @@ router.get('/matches/:id/attendees', async (req, res) => {
                 ELSE 'orange'
               END AS ticket_color
        FROM inscriptions i
-       JOIN users u ON u.id = i.user_id
+       JOIN users u ON u.id = COALESCE(i.assigned_user_id, i.user_id)
        WHERE i.match_id=?
          AND TRIM(REPLACE(i.status, '.', '')) = 'confirmed'
        GROUP BY

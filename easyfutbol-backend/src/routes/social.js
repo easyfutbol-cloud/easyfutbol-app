@@ -243,7 +243,7 @@ router.get('/users/:userId/stats', async (req,res) => {
         `SELECT DISTINCT m.id match_id,m.title,m.starts_at,m.capacity,m.spots_taken,i.ticket_type,
                 GREATEST(m.capacity-m.spots_taken,0) spots_remaining
          FROM inscriptions i JOIN matches m ON m.id=i.match_id
-         WHERE i.user_id=? AND i.status IN ('pending','confirmed')
+         WHERE COALESCE(i.assigned_user_id,i.user_id)=? AND i.status IN ('pending','confirmed')
            AND m.starts_at>NOW() AND m.status<>'cancelled'
          ORDER BY m.starts_at ASC LIMIT 5`,[otherId]
       ):[[]];

@@ -327,7 +327,7 @@ router.get('/me/match-recommendations', requireAuth, async (req,res) => {
               GREATEST(m.capacity-m.spots_taken,0) spots_remaining
        FROM matches m JOIN fields f ON f.id=m.field_id LEFT JOIN locations l ON l.id=m.location_id
        WHERE m.starts_at>NOW() AND m.status IN ('scheduled','open') AND m.spots_taken<m.capacity
-         AND NOT EXISTS (SELECT 1 FROM inscriptions i WHERE i.match_id=m.id AND i.user_id=? AND i.status IN ('pending','confirmed'))
+         AND NOT EXISTS (SELECT 1 FROM inscriptions i WHERE i.match_id=m.id AND COALESCE(i.assigned_user_id,i.user_id)=? AND i.status IN ('pending','confirmed'))
        ORDER BY m.starts_at ASC LIMIT 100`,[req.user.id]
     );
     const days=(preferences.available_days || []).map(Number),locations=(preferences.location_ids || []).map(Number),slots=preferences.time_slots || [];

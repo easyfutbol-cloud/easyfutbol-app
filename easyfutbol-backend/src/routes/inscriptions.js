@@ -65,6 +65,8 @@ router.get('/me/inscriptions', requireAuth, async (req, res) => {
               i.payment_type,
               i.claim_token,
               i.assigned_user_id,
+              i.user_id AS buyer_id,
+              buyer.name AS buyer_name,
               assigned.name AS assigned_name,
               assigned.avatar_url AS assigned_avatar_url,
               1 AS quantity,
@@ -85,26 +87,35 @@ router.get('/me/inscriptions', requireAuth, async (req, res) => {
        FROM inscriptions i
        JOIN matches m ON m.id = i.match_id
        JOIN fields  f ON f.id = m.field_id
+       JOIN users buyer ON buyer.id = i.user_id
        LEFT JOIN users assigned ON assigned.id = i.assigned_user_id
        LEFT JOIN match_player_stats own_stats
          ON own_stats.match_id = m.id
-        AND own_stats.user_id = i.user_id
+        AND own_stats.user_id = ?
        LEFT JOIN match_player_stats mvp_stats
          ON mvp_stats.match_id = m.id
         AND mvp_stats.is_mvp = 1
        LEFT JOIN users mvp_user ON mvp_user.id = mvp_stats.user_id
-       WHERE i.user_id = ?
+       WHERE i.user_id = ? OR i.assigned_user_id = ?
        ORDER BY m.starts_at DESC, i.id ASC
        LIMIT 300`,
-      [userId]
+      [userId, userId, userId]
     );
 
-    const normalizedRows = rows.map((row) => ({
-      ...row,
-      quantity: 1,
-      total_entries: 1,
-      entradas_count: 1,
-    }));
+    const normalizedRows = rows.map(({ buyer_id, buyer_name, ...row }) => {
+      // Entrada que ha pagado otra persona: quien juega solo puede verla, así que
+      // no recibe ni el enlace de la entrada ni los datos del pago.
+      const reservedByOther = Number(buyer_id) !== Number(userId);
+      return {
+        ...row,
+        quantity: 1,
+        total_entries: 1,
+        entradas_count: 1,
+        reserved_by_other: reservedByOther,
+        reserved_by_name: reservedByOther ? buyer_name : null,
+        ...(reservedByOther ? { claim_token: null, stripe_session_id: null, payment_type: null } : {}),
+      };
+    });
 
     console.log('GET /me/inscriptions', {
       userId,
@@ -129,10 +140,10 @@ router.get('/matches/:id/post-match', requireAuth, async (req, res) => {
     const [[access]] = await pool.query(
       `SELECT 1
        FROM inscriptions i
-       WHERE i.match_id=? AND i.user_id=? AND i.status IN ('confirmed','paid','active')
+       WHERE i.match_id=? AND (i.user_id=? OR i.assigned_user_id=?) AND i.status IN ('confirmed','paid','active')
        UNION
        SELECT 1 FROM match_player_stats WHERE match_id=? AND user_id=? LIMIT 1`,
-      [matchId, req.user.id, matchId, req.user.id]
+      [matchId, req.user.id, req.user.id, matchId, req.user.id]
     );
     if (!access) return res.status(403).json({ ok: false, msg: 'No participaste en este partido' });
 
@@ -146,7 +157,7 @@ router.get('/matches/:id/post-match', requireAuth, async (req, res) => {
     const [players] = await pool.query(
       `SELECT mps.user_id,u.name,u.avatar_url,mps.goals,mps.assists,mps.is_mvp,mps.result,
               COALESCE((SELECT i.ticket_type FROM inscriptions i
-                        WHERE i.match_id=mps.match_id AND i.user_id=mps.user_id
+                        WHERE i.match_id=mps.match_id AND COALESCE(i.assigned_user_id,i.user_id)=mps.user_id
                           AND i.status IN ('confirmed','paid','active')
                         ORDER BY i.id LIMIT 1),'pending') team
        FROM match_player_stats mps JOIN users u ON u.id=mps.user_id
