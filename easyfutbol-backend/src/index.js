@@ -49,6 +49,8 @@ import { startNotificationCampaignScheduler } from './services/notificationCampa
 import { startRetentionScheduler } from './services/retentionService.js';
 import { startFriendJoinedScheduler } from './services/teammateService.js';
 import retention from './routes/retention.js';
+import friendLeagues from './routes/friendLeagues.js';
+import { startFriendLeagueScheduler } from './services/friendLeagueService.js';
 import adminOrganizers from './routes/adminOrganizers.js';
 
 const app = express();
@@ -178,6 +180,7 @@ app.use('/', publicProfileLink);
 app.use('/api/player-profile', playerPublicProfile);
 app.use('/api/easypoints', easypoints);
 app.use('/api', retention);
+app.use('/api/friend-leagues', friendLeagues);
 
 // estáticos para avatares
 app.use('/uploads', express.static('uploads'));
@@ -199,6 +202,7 @@ app.get('/', (_req, res) => res.send('EasyFutbol Backend up'));
       startWeeklyLineupScheduler();
       startRetentionScheduler();
       startFriendJoinedScheduler();
+      startFriendLeagueScheduler();
     });
   } catch (e) {
     console.error('❌ DB no responde:', e.message);
