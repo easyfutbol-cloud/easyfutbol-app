@@ -146,3 +146,43 @@ export function buildIdleBalanceMessage(balance, match, now = new Date()) {
     body: `Tu saldo sigue ahí, listo para jugar.${next}`,
   };
 }
+
+const averageOf = (values) => {
+  const rated = values.filter((value) => value !== null && value !== undefined).map(Number);
+  return rated.length ? Math.round((rated.reduce((sum, value) => sum + value, 0) / rated.length) * 10) / 10 : null;
+};
+
+/**
+ * Agrupa por partido las filas de reseñas, ya ordenadas, conservando el orden.
+ * Las medias ignoran las preguntas sin responder.
+ */
+export function groupMatchReviews(rows) {
+  const matches = new Map();
+  for (const row of rows) {
+    if (!matches.has(row.match_id)) {
+      matches.set(row.match_id, {
+        match_id: row.match_id,
+        title: row.match_title,
+        starts_at: row.starts_at,
+        field_name: row.field_name || row.city || null,
+        reviews: [],
+      });
+    }
+    matches.get(row.match_id).reviews.push({
+      user_id: row.user_id,
+      user_name: row.user_name,
+      avatar_url: row.avatar_url,
+      teams_balance: row.teams_balance,
+      organizer_rating: row.organizer_rating,
+      field_rating: row.field_rating,
+      comment: row.comment,
+      created_at: row.created_at,
+    });
+  }
+  return [...matches.values()].map((match) => ({
+    ...match,
+    organizer_avg: averageOf(match.reviews.map((review) => review.organizer_rating)),
+    field_avg: averageOf(match.reviews.map((review) => review.field_rating)),
+    unbalanced: match.reviews.filter((review) => review.teams_balance === 'unbalanced').length,
+  }));
+}

@@ -4,6 +4,7 @@ import express from 'express';
 import rateLimit from 'express-rate-limit';
 import { pool } from '../config/db.js';
 import { requireAuth, requireAdmin } from '../middlewares/auth.js';
+import { groupMatchReviews } from '../services/retentionRules.js';
 
 const router = express.Router();
 
@@ -97,6 +98,30 @@ router.post('/matches/:id/feedback', requireAuth, feedbackLimiter, async (req, r
 
 const pct = (part, total) => (Number(total) ? Math.round((Number(part) / Number(total)) * 1000) / 10 : null);
 const avg = (value) => (value === null || value === undefined ? null : Math.round(Number(value) * 10) / 10);
+
+/** GET /api/admin/match-reviews?days=30 — reseñas de cada partido y quién las dejó. */
+router.get('/admin/match-reviews', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const days = Math.min(180, Math.max(7, Number.parseInt(req.query.days, 10) || 30));
+    const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+    const [rows] = await pool.query(
+      `SELECT mf.match_id, m.title AS match_title, m.starts_at, m.city, f.name AS field_name,
+              mf.user_id, u.name AS user_name, u.avatar_url,
+              mf.teams_balance, mf.organizer_rating, mf.field_rating, mf.comment, mf.created_at
+       FROM match_feedback mf
+       JOIN matches m ON m.id = mf.match_id
+       JOIN users u ON u.id = mf.user_id
+       LEFT JOIN fields f ON f.id = m.field_id
+       WHERE mf.dismissed = 0 AND m.starts_at >= ?
+       ORDER BY m.starts_at DESC, m.id DESC, mf.created_at DESC`,
+      [since]
+    );
+    return res.json({ ok: true, days, total: rows.length, matches: groupMatchReviews(rows) });
+  } catch (error) {
+    console.error('[GET /admin/match-reviews]', error);
+    return res.status(500).json({ ok: false, msg: 'No se pudieron cargar las reseñas' });
+  }
+});
 
 /** GET /api/admin/retention?days=30 — valoraciones y efecto de cada aviso. */
 router.get('/admin/retention', requireAuth, requireAdmin, async (req, res) => {

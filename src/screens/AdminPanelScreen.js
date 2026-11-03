@@ -12,6 +12,7 @@ const SECTIONS = [
       { label: 'Dashboard', description: 'Actividad y KPIs', icon: 'analytics-outline', route: 'AdminDashboard' },
       { label: 'KPIs de negocio', description: 'Retención, MAU, precio por EasyPass y CAC', icon: 'trending-up-outline', route: 'AdminBusinessKpis' },
       { label: 'Retención', description: 'Repetir, avisos automáticos y valoraciones', icon: 'repeat-outline', route: 'AdminRetention' },
+      { label: 'Reseñas de partidos', description: 'Qué valora cada jugador en cada partido', icon: 'chatbubbles-outline', route: 'AdminMatchReviews' },
       { label: 'Ligas', description: 'Las ligas entre amigos que se están creando', icon: 'podium-outline', route: 'AdminFriendLeagues' },
       { label: 'Partidos', description: 'Gestionar calendario', icon: 'football-outline', route: 'AdminMatches' },
       { label: 'Crear partido', description: 'Nueva convocatoria', icon: 'add-circle-outline', route: 'AdminCreateMatch' },

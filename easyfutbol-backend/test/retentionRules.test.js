@@ -9,6 +9,7 @@ import {
   daysSince,
   favoriteSlot,
   formatMatchWhen,
+  groupMatchReviews,
   isSameSlot,
   isSendingHour,
   madridSlot,
@@ -86,4 +87,22 @@ test('los textos incluyen plazas, campo y saldo cuando los hay', () => {
   });
   assert.equal(buildIdleBalanceMessage(1, null).title, 'Tienes 1 EasyPass sin usar');
   assert.match(buildIdleBalanceMessage(3, match, now).body, /El próximo partido es el jueves a las 21:00 en Ribera de Castilla\.$/);
+});
+
+test('groupMatchReviews agrupa por partido, respeta el orden e ignora preguntas sin responder', () => {
+  const base = { match_title: 'Jueves', starts_at: '2026-11-01', city: 'Oviedo', field_name: null, avatar_url: null, comment: null, created_at: '2026-11-02' };
+  const groups = groupMatchReviews([
+    { ...base, match_id: 2, user_id: 1, user_name: 'Ana', teams_balance: 'unbalanced', organizer_rating: 5, field_rating: null, comment: 'Muy bien' },
+    { ...base, match_id: 2, user_id: 2, user_name: 'Luis', teams_balance: null, organizer_rating: 2, field_rating: 4 },
+    { ...base, match_id: 1, user_id: 1, user_name: 'Ana', teams_balance: 'balanced', organizer_rating: null, field_rating: null, field_name: 'La Herminia' },
+  ]);
+  assert.deepEqual(groups.map((group) => group.match_id), [2, 1]);
+  assert.deepEqual(groups[0].reviews.map((review) => review.user_name), ['Ana', 'Luis']);
+  assert.equal(groups[0].organizer_avg, 3.5);
+  assert.equal(groups[0].field_avg, 4);
+  assert.equal(groups[0].unbalanced, 1);
+  assert.equal(groups[0].field_name, 'Oviedo');
+  assert.equal(groups[1].organizer_avg, null);
+  assert.equal(groups[1].field_name, 'La Herminia');
+  assert.deepEqual(groupMatchReviews([]), []);
 });

@@ -133,6 +133,12 @@ export default function AdminRetentionScreen({ navigation }) {
               ))}
             </View>
 
+            <TouchableOpacity style={[styles.card, styles.rowCard]} onPress={() => navigation.navigate('AdminMatchReviews')} accessibilityRole="button">
+              <Ionicons name="chatbubbles-outline" size={20} color="#ff5a00" />
+              <Text style={[styles.cardTitle, { flex: 1, marginBottom: 0 }]}>Ver reseñas por partido y jugador</Text>
+              <Ionicons name="chevron-forward" size={18} color="#888" />
+            </TouchableOpacity>
+
             {feedback.return_by_sentiment.length ? (
               <View style={styles.card}>
                 <Text style={styles.cardTitle}>¿Vuelven a jugar en 14 días?</Text>
