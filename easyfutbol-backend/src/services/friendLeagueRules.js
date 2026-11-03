@@ -8,9 +8,13 @@ export const LEAGUE_LIMITS = {
   matchesGoal: { min: 3, max: 50 },
   durationDays: { min: 7, max: 180 },
   points: { min: -10, max: 20 },
-  members: 30,
+  members: 20,
+  adminMembers: 100,
 };
 const TEAM_SIZES = [1, 2, 3];
+
+/** Jugadores que caben en una liga según quién la crea, contando al creador e invitados. */
+export const maxMembersFor = (role) => (role === 'admin' ? LEAGUE_LIMITS.adminMembers : LEAGUE_LIMITS.members);
 
 const inRange = (value, { min, max }) => Number.isInteger(value) && value >= min && value <= max;
 

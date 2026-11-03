@@ -6,6 +6,7 @@ import {
   computeStandings,
   findOvertaken,
   isLeagueComplete,
+  maxMembersFor,
   normalizeLeagueInput,
   normalizeRules,
   validateTeams,
@@ -17,6 +18,14 @@ const row = (match_id, user_id, result, stats = {}) => ({
 });
 const solos = (...ids) => ids.map((user_id) => ({ user_id, team_no: null }));
 const entryOf = (standings, userId) => standings.entries.find((entry) => entry.user_ids.includes(userId));
+
+describe('maxMembersFor', () => {
+  test('los usuarios llegan a 20 y los administradores a más', () => {
+    assert.equal(maxMembersFor('user'), 20);
+    assert.equal(maxMembersFor(undefined), 20);
+    assert.equal(maxMembersFor('admin'), 100);
+  });
+});
 
 describe('normalizeRules', () => {
   test('rellena lo que falte y acepta valores negativos', () => {

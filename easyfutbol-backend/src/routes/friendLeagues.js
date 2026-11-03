@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { pool } from '../config/db.js';
 import { requireAuth } from '../middlewares/auth.js';
 import { areFriends, createSocialNotification, positiveId } from '../services/socialService.js';
-import { LEAGUE_LIMITS, normalizeLeagueInput, validateTeams } from '../services/friendLeagueRules.js';
+import { maxMembersFor, normalizeLeagueInput, validateTeams } from '../services/friendLeagueRules.js';
 import { getLeague, getLeagueDetail, getMembers, listLeaguesForUser } from '../services/friendLeagueService.js';
 
 const router = Router();
@@ -23,21 +23,22 @@ const notifyInvite = (db, { userId, actorId, actorName, league }) => createSocia
   dedupeKey: `friend-league-invite:${league.id}:${userId}`,
 });
 
-/** Invita a los que sean amigos del creador y aún no estén dentro. Devuelve cuántos. */
-async function inviteFriends(db, { league, ownerId, userIds }) {
+/** Invita a los que sean amigos del creador y aún no estén dentro, hasta llenar la liga. */
+async function inviteFriends(db, { league, ownerId, userIds, maxMembers }) {
   const ids = [...new Set((Array.isArray(userIds) ? userIds : []).map(positiveId).filter(Boolean))].filter((id) => id !== ownerId);
   const [[{ total }]] = await db.query('SELECT COUNT(*) AS total FROM friend_league_members WHERE league_id=?', [league.id]);
   const [[owner]] = await db.query('SELECT name FROM users WHERE id=?', [ownerId]);
   let invited = 0;
+  let full = false;
   for (const userId of ids) {
-    if (Number(total) + invited >= LEAGUE_LIMITS.members) break;
+    if (Number(total) + invited >= maxMembers) { full = true; break; }
     if (!await areFriends(db, ownerId, userId)) continue;
     const [result] = await db.query(`INSERT IGNORE INTO friend_league_members (league_id, user_id, status) VALUES (?, ?, 'invited')`, [league.id, userId]);
     if (!result.affectedRows) continue;
     invited += 1;
     await notifyInvite(db, { userId, actorId: ownerId, actorName: owner.name, league });
   }
-  return invited;
+  return { invited, full };
 }
 
 /** La liga si el usuario es su creador y sigue sin empezar. Si no, responde el error. */
@@ -73,13 +74,14 @@ router.post('/', async (req, res) => {
       [value.name, req.user.id, value.team_size, value.matches_goal, value.duration_days, JSON.stringify(value.rules)]
     );
     await conn.query(`INSERT INTO friend_league_members (league_id, user_id, status) VALUES (?, ?, 'accepted')`, [result.insertId, req.user.id]);
-    const invited = await inviteFriends(conn, {
+    const { invited, full } = await inviteFriends(conn, {
       league: { id: result.insertId, name: value.name },
       ownerId: Number(req.user.id),
       userIds: req.body?.friend_ids,
+      maxMembers: maxMembersFor(req.user.role),
     });
     await conn.commit();
-    res.status(201).json({ ok: true, id: result.insertId, invited });
+    res.status(201).json({ ok: true, id: result.insertId, invited, full });
   } catch (error) {
     await conn.rollback().catch(() => {});
     console.error('[FRIEND LEAGUES create]', error);
@@ -94,7 +96,7 @@ router.get('/:id', async (req, res) => {
     const leagueId = positiveId(req.params.id);
     const detail = leagueId ? await getLeagueDetail(pool, leagueId, req.user.id) : null;
     if (!detail) return fail(res, 404, 'Liga no encontrada');
-    res.json({ ok: true, ...detail });
+    res.json({ ok: true, ...detail, max_members: detail.me.is_owner ? maxMembersFor(req.user.role) : undefined });
   } catch (error) {
     console.error('[FRIEND LEAGUES detail]', error);
     fail(res, 500, 'No se pudo cargar la liga');
@@ -122,8 +124,10 @@ router.post('/:id/invite', async (req, res) => {
   try {
     const league = await loadOwnedDraft(req, res);
     if (!league) return;
-    const invited = await inviteFriends(pool, { league, ownerId: Number(req.user.id), userIds: req.body?.user_ids });
-    res.status(201).json({ ok: true, invited });
+    const maxMembers = maxMembersFor(req.user.role);
+    const { invited, full } = await inviteFriends(pool, { league, ownerId: Number(req.user.id), userIds: req.body?.user_ids, maxMembers });
+    if (full && !invited) return fail(res, 409, `La liga ya tiene el máximo de ${maxMembers} jugadores`);
+    res.status(201).json({ ok: true, invited, full });
   } catch (error) {
     console.error('[FRIEND LEAGUES invite]', error);
     fail(res, 500, 'No se pudo enviar la invitación');
