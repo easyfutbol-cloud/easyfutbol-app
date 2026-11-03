@@ -8,26 +8,32 @@ import ScreenHeader from '../components/ScreenHeader';
 import { EmptyState, FriendCard, SocialAvatar } from '../components/social/SocialComponents';
 import FriendTile, { shortMatchDate } from '../components/social/FriendTile';
 import TopPlayers from '../components/social/TopPlayers';
+import FriendLeaguesList from '../components/social/FriendLeaguesList';
+import { isAdminUser } from '../utils/friendLeagueRules';
 
-// Social: tus amigos (cuadrícula), los tops de jugadores, invitaciones y
+// Social: tus amigos (cuadrícula), tus ligas, los tops de jugadores, invitaciones y
 // solicitudes. Al escribir en el buscador se ven resultados en cualquier pestaña.
 const TABS = [
   ['friends', 'Amigos', 'people'],
+  ['leagues', 'Ligas', 'podium'],
   ['top', 'Top jugadores', 'trophy'],
   ['invitations', 'Invitaciones', 'mail'],
   ['requests', 'Solicitudes', 'person-add'],
 ];
 const PERIODS = [['month', 'Este mes'], ['season', 'Temporada']];
 const SOON_MS = 7 * 24 * 60 * 60 * 1000;
+const LINKED_TABS = ['requests', 'invitations', 'top', 'leagues'];
 
 const matchDate = (value) => new Date(value).toLocaleString('es-ES', {
   weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit',
 });
 
 export default function SocialScreen({ navigation, route }) {
-  const [tab, setTab] = useState(route.params?.tab === 'requests' || route.params?.tab === 'invitations' || route.params?.tab === 'top' ? route.params.tab : 'friends');
+  const [tab, setTab] = useState(LINKED_TABS.includes(route.params?.tab) ? route.params.tab : 'friends');
   const [data, setData] = useState([]);
   const [friends, setFriends] = useState(null);
+  const [leagues, setLeagues] = useState(null);
+  const [leagueInvites, setLeagueInvites] = useState(0);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [query, setQuery] = useState('');
@@ -40,14 +46,19 @@ export default function SocialScreen({ navigation, route }) {
   const [topScope, setTopScope] = useState('sede');
   const [topCategory, setTopCategory] = useState('goals');
   const [myId, setMyId] = useState(null);
+  const [isAdmin, setIsAdmin] = useState(false);
   const searching = query.trim().length >= 2;
 
   useEffect(() => {
-    AsyncStorage.getItem('user').then((raw) => setMyId(raw ? JSON.parse(raw)?.id ?? null : null)).catch(() => {});
+    AsyncStorage.getItem('user').then((raw) => {
+      const user = raw ? JSON.parse(raw) : null;
+      setMyId(user?.id ?? null);
+      setIsAdmin(isAdminUser(user));
+    }).catch(() => {});
   }, []);
   useEffect(() => {
     const tabParam = route.params?.tab;
-    if (tabParam === 'requests' || tabParam === 'invitations' || tabParam === 'top') setTab(tabParam);
+    if (LINKED_TABS.includes(tabParam)) setTab(tabParam);
   }, [route.params?.tab]);
 
   const loadSummary = useCallback(async () => {
@@ -58,6 +69,7 @@ export default function SocialScreen({ navigation, route }) {
     } catch (_) {
       setInviteCount(0);
     }
+    api.get('/friend-leagues').then((response) => setLeagueInvites(Number(response.data?.pending_invites || 0))).catch(() => setLeagueInvites(0));
   }, []);
 
   const loadSuggestions = useCallback(async () => {
@@ -89,6 +101,9 @@ export default function SocialScreen({ navigation, route }) {
       if (tab === 'friends') {
         const response = await api.get('/social/friends/overview');
         setFriends(response.data?.items || []);
+      } else if (tab === 'leagues') {
+        const response = await api.get('/friend-leagues');
+        setLeagues(response.data?.items || []);
       } else if (tab === 'top') {
         const response = await api.get('/social/top', { params: { period: topPeriod, scope: topScope } });
         setTop(response.data);
@@ -99,7 +114,9 @@ export default function SocialScreen({ navigation, route }) {
         if (tab === 'invitations') await loadSummary();
       }
     } catch (error) {
-      Alert.alert('Social', error.response?.data?.msg || 'No se pudo cargar esta sección');
+      // Si la lista falla se sigue pudiendo crear una liga o ver el ejemplo.
+      if (tab === 'leagues') setLeagues((current) => current || []);
+      if (tab !== 'leagues' || error.response?.status !== 404) Alert.alert('Social', error.response?.data?.msg || 'No se pudo cargar esta sección');
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -255,11 +272,16 @@ export default function SocialScreen({ navigation, route }) {
     </>;
   };
 
-  const badge = (key) => (key === 'invitations' ? inviteCount : key === 'requests' ? requestCount : 0);
+  const renderLeagues = () => {
+    if (!leagues) return <ActivityIndicator color="#ff5a00" style={styles.loading} />;
+    return <FriendLeaguesList items={leagues} onOpen={(leagueId)=>navigation.navigate('FriendLeagueDetail',{leagueId})} onCreate={()=>navigation.navigate('FriendLeagueEdit')} onOpenDemo={isAdmin?()=>navigation.navigate('FriendLeagueDetail',{demo:true}):null}/>;
+  };
+
+  const badge = (key) => (key === 'invitations' ? inviteCount : key === 'requests' ? requestCount : key === 'leagues' ? leagueInvites : 0);
 
   return (
     <View style={styles.page}>
-      <ScreenHeader eyebrow="TU COMUNIDAD" title="Social" description="Tus amigos, quién juega pronto y los que más destacan." action={<TouchableOpacity accessibilityLabel="Privacidad social" style={styles.privacyButton} onPress={()=>navigation.navigate('SocialPrivacy')}><Ionicons name="shield-checkmark-outline" color="#fff" size={20}/></TouchableOpacity>} />
+      <View style={styles.header}><ScreenHeader eyebrow="TU COMUNIDAD" title="Social" description="Tus amigos, quién juega pronto y los que más destacan." action={<TouchableOpacity accessibilityLabel="Privacidad social" style={styles.privacyButton} onPress={()=>navigation.navigate('SocialPrivacy')}><Ionicons name="shield-checkmark-outline" color="#fff" size={20}/></TouchableOpacity>} /></View>
       <View style={[styles.search,searching&&styles.searchActive]}><Ionicons name="search" color={searching?'#ff6a1a':'#777'} size={20}/><TextInput value={query} onChangeText={setQuery} placeholder="Buscar jugadores por nombre o correo" placeholderTextColor="#666" style={styles.input} autoCapitalize="none" returnKeyType="search" />{query?<TouchableOpacity onPress={()=>setQuery('')} hitSlop={8}><Ionicons name="close-circle" color="#777" size={20}/></TouchableOpacity>:null}</View>
       {!searching?<ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.tabsScroll} contentContainerStyle={styles.tabs}>
         {TABS.map(([key,label,icon]) => <TouchableOpacity key={key} onPress={() => setTab(key)} style={[styles.tab, tab === key && styles.tabOn]} accessibilityRole="tab" accessibilityState={{selected:tab===key}}>
@@ -269,7 +291,7 @@ export default function SocialScreen({ navigation, route }) {
         </TouchableOpacity>)}
       </ScrollView>:null}
       <ScrollView style={styles.list} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled" refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); load(); loadSummary(); loadSuggestions(); }} tintColor="#ff5a00" />}>
-        {searching ? renderSearch() : tab === 'friends' ? renderFriends() : tab === 'top' ? renderTop() : renderList()}
+        {searching ? renderSearch() : tab === 'friends' ? renderFriends() : tab === 'leagues' ? renderLeagues() : tab === 'top' ? renderTop() : renderList()}
       </ScrollView>
     </View>
   );
@@ -293,7 +315,7 @@ function Chip({ label, active, onPress, small }) {
 }
 
 const styles = StyleSheet.create({
-  page:{flex:1,backgroundColor:'#0b0b0d'}, tabsScroll:{flexGrow:0,maxHeight:58}, tabs:{paddingHorizontal:16,paddingVertical:10,gap:8}, tabOn:{backgroundColor:'#ff5a00'}, tabText:{color:'#999',fontWeight:'800',fontSize:12}, tabTextOn:{color:'#fff'}, search:{marginHorizontal:16,marginTop:2,marginBottom:4,backgroundColor:'#18181b',borderRadius:16,height:50,flexDirection:'row',alignItems:'center',paddingHorizontal:14,gap:9,borderWidth:1,borderColor:'#28282d'},searchActive:{borderColor:'rgba(255,90,0,.55)',backgroundColor:'#1d1815'}, input:{flex:1,color:'#fff',fontSize:15}, list:{flex:1}, content:{padding:16,paddingTop:8,paddingBottom:110},resultsHeading:{marginBottom:12},resultsTitle:{color:'#fff',fontSize:17,fontWeight:'900'},resultsHint:{color:'#77777e',fontSize:11,marginTop:3},frequentCard:{flexDirection:'row',alignItems:'center',gap:12,backgroundColor:'rgba(255,255,255,.055)',borderColor:'rgba(255,255,255,.09)',borderWidth:1,borderRadius:18,padding:13,marginBottom:10},frequentCopy:{flex:1},playedTogether:{flexDirection:'row',alignItems:'center',gap:5,marginTop:4},playedText:{color:'#ff8b4b',fontSize:11,fontWeight:'800'},frequentLocation:{color:'#77777e',fontSize:10,marginTop:3},addFrequent:{backgroundColor:'#ff5a00',borderRadius:11,paddingHorizontal:12,paddingVertical:9},addFrequentText:{color:'#fff',fontSize:11,fontWeight:'900'},friendPill:{flexDirection:'row',alignItems:'center',gap:3,backgroundColor:'#202b23',borderRadius:10,paddingHorizontal:9,paddingVertical:7},friendPillText:{color:'#7bcb90',fontSize:9,fontWeight:'900'}, loading:{marginTop:50}, matchCard:{flexDirection:'row',alignItems:'center',gap:12,backgroundColor:'rgba(255,255,255,.055)',borderColor:'rgba(255,255,255,.09)',borderWidth:1,borderRadius:18,padding:13,marginBottom:10}, matchCopy:{flex:1}, friendName:{color:'#fff',fontSize:16,fontWeight:'900'}, plusName:{color:'#F4C95D'}, matchTitle:{color:'#d4d4d7',fontSize:13,fontWeight:'700',marginTop:3}, matchDate:{color:'#ff7a32',fontSize:11,fontWeight:'800',marginTop:4,textTransform:'capitalize'}, statsCard:{backgroundColor:'rgba(255,255,255,.055)',borderColor:'rgba(255,255,255,.09)',borderWidth:1,borderRadius:18,padding:14,marginBottom:10}, statsIdentity:{flexDirection:'row',alignItems:'center',gap:12}, metrics:{flexDirection:'row',marginTop:14,paddingTop:12,borderTopWidth:1,borderTopColor:'rgba(255,255,255,.08)'}, metric:{flex:1,alignItems:'center'}, metricValue:{color:'#fff',fontSize:20,fontWeight:'900',marginTop:3}, metricLabel:{color:'#888',fontSize:10,fontWeight:'700',marginTop:1}, invitationCard:{backgroundColor:'#17191e',borderRadius:21,borderWidth:1,borderColor:'#30343d',padding:15,marginBottom:11},invitationInactive:{opacity:.58},invitationTop:{flexDirection:'row',alignItems:'center',gap:11},invitationEyebrow:{color:'#ff6a1a',fontSize:8,fontWeight:'900',letterSpacing:1,marginBottom:3},newPill:{backgroundColor:'#ff5a00',borderRadius:9,paddingHorizontal:8,paddingVertical:5},newPillText:{color:'#fff',fontSize:8,fontWeight:'900'},invitationMatch:{marginTop:13,padding:13,borderRadius:15,backgroundColor:'#101216'},invitationTitle:{color:'#fff',fontSize:15,fontWeight:'900'},invitationCapacity:{flexDirection:'row',alignItems:'center',gap:5,marginTop:9},capacityText:{color:'#70c98a',fontSize:10,fontWeight:'800'},invitationActions:{flexDirection:'row',gap:8,marginTop:12},openInvite:{flex:1,minHeight:43,borderRadius:13,backgroundColor:'#ff5a00',flexDirection:'row',alignItems:'center',justifyContent:'center',gap:6},openInviteText:{color:'#080808',fontWeight:'900',fontSize:12},declineInvite:{minHeight:43,paddingHorizontal:15,borderRadius:13,borderWidth:1,borderColor:'#3b3e46',alignItems:'center',justifyContent:'center'},declineInviteText:{color:'#a8abb2',fontWeight:'800',fontSize:11},closedStatus:{color:'#777b84',fontSize:11,fontWeight:'800',marginTop:12,textAlign:'right'},
+  page:{flex:1,backgroundColor:'#0b0b0d'}, header:{paddingHorizontal:16}, tabsScroll:{flexGrow:0,maxHeight:58}, tabs:{paddingHorizontal:16,paddingVertical:10,gap:8}, tabOn:{backgroundColor:'#ff5a00'}, tabText:{color:'#999',fontWeight:'800',fontSize:12}, tabTextOn:{color:'#fff'}, search:{marginHorizontal:16,marginTop:2,marginBottom:4,backgroundColor:'#18181b',borderRadius:16,height:50,flexDirection:'row',alignItems:'center',paddingHorizontal:14,gap:9,borderWidth:1,borderColor:'#28282d'},searchActive:{borderColor:'rgba(255,90,0,.55)',backgroundColor:'#1d1815'}, input:{flex:1,color:'#fff',fontSize:15}, list:{flex:1}, content:{padding:16,paddingTop:8,paddingBottom:110},resultsHeading:{marginBottom:12},resultsTitle:{color:'#fff',fontSize:17,fontWeight:'900'},resultsHint:{color:'#77777e',fontSize:11,marginTop:3},frequentCard:{flexDirection:'row',alignItems:'center',gap:12,backgroundColor:'rgba(255,255,255,.055)',borderColor:'rgba(255,255,255,.09)',borderWidth:1,borderRadius:18,padding:13,marginBottom:10},frequentCopy:{flex:1},playedTogether:{flexDirection:'row',alignItems:'center',gap:5,marginTop:4},playedText:{color:'#ff8b4b',fontSize:11,fontWeight:'800'},frequentLocation:{color:'#77777e',fontSize:10,marginTop:3},addFrequent:{backgroundColor:'#ff5a00',borderRadius:11,paddingHorizontal:12,paddingVertical:9},addFrequentText:{color:'#fff',fontSize:11,fontWeight:'900'},friendPill:{flexDirection:'row',alignItems:'center',gap:3,backgroundColor:'#202b23',borderRadius:10,paddingHorizontal:9,paddingVertical:7},friendPillText:{color:'#7bcb90',fontSize:9,fontWeight:'900'}, loading:{marginTop:50}, matchCard:{flexDirection:'row',alignItems:'center',gap:12,backgroundColor:'rgba(255,255,255,.055)',borderColor:'rgba(255,255,255,.09)',borderWidth:1,borderRadius:18,padding:13,marginBottom:10}, matchCopy:{flex:1}, friendName:{color:'#fff',fontSize:16,fontWeight:'900'}, plusName:{color:'#F4C95D'}, matchTitle:{color:'#d4d4d7',fontSize:13,fontWeight:'700',marginTop:3}, matchDate:{color:'#ff7a32',fontSize:11,fontWeight:'800',marginTop:4,textTransform:'capitalize'}, statsCard:{backgroundColor:'rgba(255,255,255,.055)',borderColor:'rgba(255,255,255,.09)',borderWidth:1,borderRadius:18,padding:14,marginBottom:10}, statsIdentity:{flexDirection:'row',alignItems:'center',gap:12}, metrics:{flexDirection:'row',marginTop:14,paddingTop:12,borderTopWidth:1,borderTopColor:'rgba(255,255,255,.08)'}, metric:{flex:1,alignItems:'center'}, metricValue:{color:'#fff',fontSize:20,fontWeight:'900',marginTop:3}, metricLabel:{color:'#888',fontSize:10,fontWeight:'700',marginTop:1}, invitationCard:{backgroundColor:'#17191e',borderRadius:21,borderWidth:1,borderColor:'#30343d',padding:15,marginBottom:11},invitationInactive:{opacity:.58},invitationTop:{flexDirection:'row',alignItems:'center',gap:11},invitationEyebrow:{color:'#ff6a1a',fontSize:8,fontWeight:'900',letterSpacing:1,marginBottom:3},newPill:{backgroundColor:'#ff5a00',borderRadius:9,paddingHorizontal:8,paddingVertical:5},newPillText:{color:'#fff',fontSize:8,fontWeight:'900'},invitationMatch:{marginTop:13,padding:13,borderRadius:15,backgroundColor:'#101216'},invitationTitle:{color:'#fff',fontSize:15,fontWeight:'900'},invitationCapacity:{flexDirection:'row',alignItems:'center',gap:5,marginTop:9},capacityText:{color:'#70c98a',fontSize:10,fontWeight:'800'},invitationActions:{flexDirection:'row',gap:8,marginTop:12},openInvite:{flex:1,minHeight:43,borderRadius:13,backgroundColor:'#ff5a00',flexDirection:'row',alignItems:'center',justifyContent:'center',gap:6},openInviteText:{color:'#080808',fontWeight:'900',fontSize:12},declineInvite:{minHeight:43,paddingHorizontal:15,borderRadius:13,borderWidth:1,borderColor:'#3b3e46',alignItems:'center',justifyContent:'center'},declineInviteText:{color:'#a8abb2',fontWeight:'800',fontSize:11},closedStatus:{color:'#777b84',fontSize:11,fontWeight:'800',marginTop:12,textAlign:'right'},
   quickRow:{flexDirection:'row',gap:9,marginBottom:12},quickAction:{flex:1,alignItems:'center',gap:7,paddingVertical:13,borderRadius:18,backgroundColor:'#17171a',borderWidth:1,borderColor:'#26262b'},quickIcon:{width:40,height:40,borderRadius:14,backgroundColor:'rgba(255,90,0,.13)',alignItems:'center',justifyContent:'center'},quickLabel:{color:'#fff',fontSize:12,fontWeight:'900'},
   requestsBanner:{flexDirection:'row',alignItems:'center',gap:10,padding:13,borderRadius:16,backgroundColor:'rgba(255,90,0,.10)',borderWidth:1,borderColor:'rgba(255,90,0,.35)',marginBottom:12},requestsDot:{minWidth:26,height:26,borderRadius:13,backgroundColor:'#ff5a00',alignItems:'center',justifyContent:'center',paddingHorizontal:6},requestsDotText:{color:'#fff',fontWeight:'900',fontSize:12},requestsText:{color:'#fff',fontWeight:'800',fontSize:13,flex:1},
   suggestions:{marginBottom:10},suggestionRow:{gap:10,paddingTop:12,paddingBottom:4},suggestionCard:{width:142,alignItems:'center',padding:13,borderRadius:20,backgroundColor:'rgba(255,255,255,.055)',borderWidth:1,borderColor:'rgba(255,255,255,.09)'},suggestionName:{color:'#fff',fontSize:13,fontWeight:'900',marginTop:9,maxWidth:'100%'},suggestionReason:{color:'#ff8b4b',fontSize:10,fontWeight:'800',textAlign:'center',marginTop:4,minHeight:26},

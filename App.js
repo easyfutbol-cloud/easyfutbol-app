@@ -94,6 +94,8 @@ import SocialScreen from './src/screens/SocialScreen';
 import SocialPrivacyScreen from './src/screens/SocialPrivacyScreen';
 import PlayerSocialProfileScreen from './src/screens/PlayerSocialProfileScreen';
 import FriendGroupDetailScreen from './src/screens/FriendGroupDetailScreen';
+import FriendLeagueDetailScreen from './src/screens/FriendLeagueDetailScreen';
+import FriendLeagueEditScreen from './src/screens/FriendLeagueEditScreen';
 import NotificationsScreen from './src/screens/NotificationsScreen';
 import NotificationPreferencesScreen from './src/screens/NotificationPreferencesScreen';
 import LeaguesHomeScreen from './src/screens/leagues/LeaguesHomeScreen';
@@ -773,6 +775,8 @@ function AppShell({ currentRouteName }) {
         <Stack.Screen name="SocialPrivacy" component={SocialPrivacyScreen} />
         <Stack.Screen name="PlayerSocialProfile" component={PlayerSocialProfileScreen} />
         <Stack.Screen name="FriendGroupDetail" component={FriendGroupDetailScreen} />
+        <Stack.Screen name="FriendLeagueDetail" component={FriendLeagueDetailScreen} />
+        <Stack.Screen name="FriendLeagueEdit" component={FriendLeagueEditScreen} />
         <Stack.Screen name="Notifications" component={NotificationsScreen} />
         <Stack.Screen name="NotificationPreferences" component={NotificationPreferencesScreen} />
         <Stack.Screen name="LeagueHome" component={LeaguesHomeScreen} />
