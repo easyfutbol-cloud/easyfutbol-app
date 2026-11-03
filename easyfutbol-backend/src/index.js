@@ -50,6 +50,7 @@ import { startRetentionScheduler } from './services/retentionService.js';
 import { startFriendJoinedScheduler } from './services/teammateService.js';
 import retention from './routes/retention.js';
 import friendLeagues from './routes/friendLeagues.js';
+import adminFriendLeagues from './routes/adminFriendLeagues.js';
 import { startFriendLeagueScheduler } from './services/friendLeagueService.js';
 import adminOrganizers from './routes/adminOrganizers.js';
 
@@ -174,6 +175,7 @@ app.use('/api/admin/matches/:matchId/events', adminMatchEvents);
 app.use('/api/admin/weekly-lineup', adminWeeklyLineup);
 app.use('/api/weekly-lineup', weeklyLineup);
 app.use('/api/admin/popups', adminPopups);
+app.use('/api/admin/friend-leagues', adminFriendLeagues);
 app.use('/api/popups', popups);
 app.use('/', claimLink);
 app.use('/', publicProfileLink);
