@@ -55,6 +55,7 @@ const migrationOrder = [
   '20261104_profile_reactions.sql',
   '20261105_match_video.sql',
   '20261106_match_events_occurred_at.sql',
+  '20261107_waitlist_easypass_hold.sql',
 ];
 
 const currentFile = fileURLToPath(import.meta.url);

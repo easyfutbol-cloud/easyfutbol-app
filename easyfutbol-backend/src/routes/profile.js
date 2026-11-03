@@ -326,7 +326,7 @@ router.get('/me/match-recommendations', requireAuth, async (req,res) => {
               COALESCE(l.name,m.city) location_name,f.name field_name,WEEKDAY(m.starts_at) weekday,HOUR(m.starts_at) start_hour,
               GREATEST(m.capacity-m.spots_taken,0) spots_remaining
        FROM matches m JOIN fields f ON f.id=m.field_id LEFT JOIN locations l ON l.id=m.location_id
-       WHERE m.starts_at>NOW() AND m.status IN ('scheduled','open') AND m.spots_taken<m.capacity
+       WHERE m.starts_at>NOW() AND m.status IN ('scheduled','open') AND m.spots_taken<m.capacity AND COALESCE(m.is_private,0)=0
          AND NOT EXISTS (SELECT 1 FROM inscriptions i WHERE i.match_id=m.id AND COALESCE(i.assigned_user_id,i.user_id)=? AND i.status IN ('pending','confirmed'))
        ORDER BY m.starts_at ASC LIMIT 100`,[req.user.id]
     );

@@ -4,7 +4,8 @@ import crypto from 'crypto';
 import Stripe from 'stripe';
 import { pool } from '../config/db.js';
 import { activePlusSql } from '../services/subscriptionService.js';
-import { requireAuth } from '../middlewares/auth.js';
+import { getOptionalUser, requireAuth } from '../middlewares/auth.js';
+import { canViewPrivateMatch, getWaitlistBookingBlock } from '../services/waitlistService.js';
 
 const stripeSecret = process.env.STRIPE_SECRET_KEY;
 if (!stripeSecret) {
@@ -85,7 +86,8 @@ router.get('/matches', async (req, res) => {
        FROM matches m
        JOIN fields f ON f.id = m.field_id
        LEFT JOIN locations l ON l.id = m.location_id
-       ${onlyOpen ? "WHERE m.status IN ('scheduled','open','full')" : ''}
+       WHERE COALESCE(m.is_private, 0) = 0
+       ${onlyOpen ? "AND m.status IN ('scheduled','open','full')" : ''}
        ORDER BY m.starts_at ASC`
     );
 
@@ -187,6 +189,7 @@ router.get('/matches/:id', async (req, res) => {
               m.spots_taken,
               m.status,
               COALESCE(m.has_aftergame, 0) AS has_aftergame,
+              COALESCE(m.is_private, 0) AS is_private,
               (m.capacity - m.spots_taken - (SELECT COUNT(*) FROM match_waitlist mw WHERE mw.match_id=m.id AND mw.status='offered' AND mw.offer_expires_at > NOW())) AS spots_remaining,
               CASE WHEN m.spots_taken + (SELECT COUNT(*) FROM match_waitlist mw WHERE mw.match_id=m.id AND mw.status='offered' AND mw.offer_expires_at > NOW()) >= m.capacity THEN 1 ELSE 0 END AS is_full,
               f.name AS field_name,
@@ -205,6 +208,10 @@ router.get('/matches/:id', async (req, res) => {
     );
 
     if (!rows.length) {
+      return res.status(404).json({ ok: false, msg: 'Partido no encontrado' });
+    }
+
+    if (Number(rows[0].is_private) === 1 && !await canViewPrivateMatch(pool, id, getOptionalUser(req))) {
       return res.status(404).json({ ok: false, msg: 'Partido no encontrado' });
     }
 
@@ -268,7 +275,8 @@ router.post('/matches/:id/join-with-easypass', requireAuth, async (req, res) => 
               COALESCE(easypass_cost, 1) AS easypass_cost,
               capacity,
               spots_taken,
-              status
+              status,
+              COALESCE(is_private, 0) AS is_private
        FROM matches
        WHERE id=?
        FOR UPDATE`,
@@ -283,6 +291,12 @@ router.post('/matches/:id/join-with-easypass', requireAuth, async (req, res) => 
     if (!['scheduled', 'open'].includes(match.status)) {
       await conn.rollback();
       return res.status(400).json({ ok: false, msg: 'El partido no está disponible' });
+    }
+
+    const bookingBlock = await getWaitlistBookingBlock(conn, match, userId);
+    if (bookingBlock) {
+      await conn.rollback();
+      return res.status(bookingBlock.status).json({ ok: false, code: bookingBlock.code, msg: bookingBlock.msg });
     }
 
     const capacity = Number(match.capacity) || 0;
@@ -485,7 +499,8 @@ router.post('/matches/:id/pay', requireAuth, async (req, res) => {
               COALESCE(easypass_cost, 1) AS easypass_cost,
               capacity,
               spots_taken,
-              status
+              status,
+              COALESCE(is_private, 0) AS is_private
        FROM matches
        WHERE id=?
        FOR UPDATE`,
@@ -500,6 +515,12 @@ router.post('/matches/:id/pay', requireAuth, async (req, res) => {
     if (!['scheduled', 'open'].includes(match.status)) {
       await conn.rollback();
       return res.status(400).json({ ok: false, msg: 'El partido no está disponible para pago' });
+    }
+
+    const bookingBlock = await getWaitlistBookingBlock(conn, match, userId);
+    if (bookingBlock) {
+      await conn.rollback();
+      return res.status(bookingBlock.status).json({ ok: false, code: bookingBlock.code, msg: bookingBlock.msg });
     }
 
     const capacity = Number(match.capacity) || 0;

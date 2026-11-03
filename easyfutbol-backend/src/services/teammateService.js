@@ -60,6 +60,7 @@ export async function sendFriendJoinedAlerts({ db = pool, now = new Date() } = {
      LEFT JOIN user_social_privacy usp ON usp.user_id = u.id
      WHERE ${ACTIVE_INSCRIPTION} AND i.created_at >= ?
        AND m.status IN ('scheduled','open') AND m.spots_taken < m.capacity AND m.starts_at > ?
+       AND COALESCE(m.is_private, 0) = 0
        AND COALESCE(usp.show_upcoming_to_friends, 1) = 1`,
     [new Date(now.getTime() - LOOKBACK_HOURS * HOUR_MS), new Date(now.getTime() + 2 * HOUR_MS)]
   );

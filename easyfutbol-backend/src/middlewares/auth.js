@@ -56,6 +56,19 @@ export function requireAuth(req, res, next) {
   }
 }
 
+// Para rutas públicas que muestran algo distinto si hay sesión. Nunca devuelve 401.
+export function getOptionalUser(req) {
+  const header = req.headers.authorization || req.headers.Authorization || '';
+  const token = String(header.startsWith('Bearer ') ? header.slice(7) : header).trim().replace(/^"|"$/g, '');
+  if (!token || token === 'null' || token === 'undefined') return null;
+  try {
+    const decoded = jwt.verify(token, JWT_SECRET);
+    return { ...decoded, id: decoded.id || decoded.userId || decoded.sub };
+  } catch {
+    return null;
+  }
+}
+
 export function requireAdmin(req, res, next) {
   if (!req.user) return res.status(401).json({ ok:false, msg:'No autenticado' });
   if (req.user.role !== 'admin') return res.status(403).json({ ok:false, msg:'Solo admin' });

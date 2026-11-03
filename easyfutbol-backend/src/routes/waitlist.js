@@ -1,38 +1,63 @@
 import { Router } from 'express';
 import { pool } from '../config/db.js';
 import { requireAuth } from '../middlewares/auth.js';
-import { processWaitlistForMatch } from '../services/waitlistService.js';
+import {
+  acceptExtraInvitation,
+  declineExtraInvitation,
+  getActiveExtraInvitation,
+  joinWaitlist,
+  leaveWaitlist,
+  processWaitlistForMatch,
+  WaitlistError,
+} from '../services/waitlistService.js';
+import { WAITLIST_AUTO_ENTRY_CUTOFF_HOURS } from '../services/waitlistPolicyService.js';
 import { getPlusFairPlayStatus } from '../services/plusFairPlayService.js';
 
 const router = Router();
 
-const serialize = (row) => ({
-  joined: Boolean(row),
+const serialize = (row, extraInvitation = null) => ({
+  joined: ['waiting', 'offered'].includes(row?.status),
   status: row?.status || null,
   position: row?.position ? Number(row.position) : null,
   is_plus: Boolean(row?.is_plus_snapshot),
+  held_easypass: Number(row?.held_easypass || 0),
+  preferred_ticket_type: row?.preferred_ticket_type || null,
+  cutoff_hours: WAITLIST_AUTO_ENTRY_CUTOFF_HOURS,
   offer_expires_at: row?.offer_expires_at || null,
   offer_active: row?.status === 'offered' && new Date(row.offer_expires_at).getTime() > Date.now(),
+  extra_invitation: extraInvitation,
 });
+
+const WAITLIST_POSITION_SQL = `CASE WHEN mw.status = 'waiting' THEN (
+                SELECT COUNT(*) + 1 FROM match_waitlist ahead
+                WHERE ahead.match_id = mw.match_id AND ahead.status = 'waiting'
+                  AND (ahead.is_plus_snapshot > mw.is_plus_snapshot
+                    OR (ahead.is_plus_snapshot = mw.is_plus_snapshot AND ahead.created_at < mw.created_at))
+              ) ELSE NULL END AS position`;
+
+const sendWaitlistError = (res, error, label, fallbackMsg) => {
+  if (error instanceof WaitlistError) {
+    return res.status(error.status).json({ ok: false, code: error.code, msg: error.message, ...error.extra });
+  }
+  console.error(label, error);
+  return res.status(500).json({ ok: false, msg: fallbackMsg });
+};
 
 router.get('/matches/:id/waitlist', requireAuth, async (req, res) => {
   try {
     const matchId = Number(req.params.id);
     const userId = req.user.id;
     const [[entry]] = await pool.query(
-      `SELECT mw.*,
-              CASE WHEN mw.status = 'waiting' THEN (
-                SELECT COUNT(*) + 1 FROM match_waitlist ahead
-                WHERE ahead.match_id = mw.match_id AND ahead.status = 'waiting'
-                  AND (ahead.is_plus_snapshot > mw.is_plus_snapshot
-                    OR (ahead.is_plus_snapshot = mw.is_plus_snapshot AND ahead.created_at < mw.created_at))
-              ) ELSE NULL END AS position
+      `SELECT mw.*, ${WAITLIST_POSITION_SQL}
        FROM match_waitlist mw
        WHERE mw.match_id = ? AND mw.user_id = ? AND mw.status IN ('waiting','offered')
        LIMIT 1`,
       [matchId, userId]
     );
-    return res.json({ ok: true, data: serialize(entry) });
+    const invitation = entry?.status === 'waiting'
+      ? await getActiveExtraInvitation(pool, { sourceMatchId: matchId, userId })
+      : null;
+    return res.json({ ok: true, data: serialize(entry, invitation) });
   } catch (error) {
     console.error('[GET waitlist]', error);
     return res.status(500).json({ ok: false, msg: 'No se pudo consultar la lista de espera' });
@@ -53,64 +78,79 @@ router.post('/matches/:id/waitlist', requireAuth, async (req, res) => {
     );
     if (!token) return res.status(400).json({ ok: false, code: 'PUSH_REQUIRED', msg: 'Activa las notificaciones para entrar en la lista de espera' });
 
-    const [[match]] = await pool.query(
-      'SELECT id, starts_at, capacity, spots_taken, status FROM matches WHERE id = ? LIMIT 1',
-      [matchId]
-    );
-    if (!match || new Date(match.starts_at).getTime() <= Date.now()) return res.status(400).json({ ok: false, msg: 'Este partido ya no admite lista de espera' });
-
-    const [[activeOffers]] = await pool.query(
-      `SELECT COUNT(*) AS count FROM match_waitlist
-       WHERE match_id = ? AND status='offered' AND offer_expires_at > NOW()`,
-      [matchId]
-    );
-    const effectiveFreeSpots = Number(match.capacity || 0) - Number(match.spots_taken || 0) - Number(activeOffers?.count || 0);
-    if (effectiveFreeSpots > 0) {
-      return res.status(409).json({ ok: false, msg: 'Ahora mismo hay una plaza disponible; puedes reservarla directamente' });
+    // Las versiones antiguas de la app no avisan de la retención: no se cobra sin ese aviso.
+    if (req.body?.easypass_hold_consent !== true) {
+      return res.status(400).json({ ok: false, code: 'HOLD_CONSENT_REQUIRED', msg: 'Actualiza la app para entrar en la lista de espera' });
     }
 
-    const [[inscription]] = await pool.query(
-      `SELECT id FROM inscriptions WHERE match_id = ? AND user_id = ? AND status IN ('pending','confirmed') LIMIT 1`,
-      [matchId, userId]
-    );
-    if (inscription) return res.status(409).json({ ok: false, msg: 'Ya tienes una entrada para este partido' });
-
     const plus = await getPlusFairPlayStatus(pool, userId);
+    const requestedColor = req.body?.ticketType;
+    await joinWaitlist({
+      matchId,
+      userId,
+      isPlus: plus.eligible,
+      preferredTicketType: ['white', 'black'].includes(requestedColor) ? requestedColor : null,
+    });
 
-    await pool.query(
-      `INSERT INTO match_waitlist
-         (match_id, user_id, status, is_plus_snapshot, notifications_consent_at, notified_at, offer_expires_at)
-       VALUES (?, ?, 'waiting', ?, NOW(), NULL, NULL)
-       ON DUPLICATE KEY UPDATE status='waiting', is_plus_snapshot=VALUES(is_plus_snapshot),
-         notifications_consent_at=NOW(), notified_at=NULL, offer_expires_at=NULL`,
-      [matchId, userId, plus.eligible ? 1 : 0]
-    );
-
-    await processWaitlistForMatch(matchId);
+    await processWaitlistForMatch(matchId).catch((error) => {
+      console.error('[WAITLIST] Error tras entrar en la lista:', error);
+    });
     const [[entry]] = await pool.query(
-      `SELECT * FROM match_waitlist WHERE match_id = ? AND user_id = ? LIMIT 1`,
+      `SELECT mw.*, ${WAITLIST_POSITION_SQL} FROM match_waitlist mw WHERE mw.match_id = ? AND mw.user_id = ? LIMIT 1`,
       [matchId, userId]
     );
-    return res.json({ ok: true, data: serialize(entry), msg: 'Ya estás en la lista de espera' });
+    return res.json({
+      ok: true,
+      data: serialize(entry),
+      msg: entry?.status === 'claimed'
+        ? '¡Había una plaza libre y ya es tuya!'
+        : `Estás en la lista. Te hemos retenido ${Number(entry?.held_easypass || 0)} EasyPass.`,
+    });
   } catch (error) {
-    console.error('[POST waitlist]', error);
-    return res.status(500).json({ ok: false, msg: 'No se pudo entrar en la lista de espera' });
+    return sendWaitlistError(res, error, '[POST waitlist]', 'No se pudo entrar en la lista de espera');
   }
 });
 
 router.delete('/matches/:id/waitlist', requireAuth, async (req, res) => {
   try {
     const matchId = Number(req.params.id);
-    await pool.query(
-      `UPDATE match_waitlist SET status='cancelled', offer_expires_at=NULL
-       WHERE match_id = ? AND user_id = ? AND status IN ('waiting','offered')`,
-      [matchId, req.user.id]
-    );
-    await processWaitlistForMatch(matchId);
-    return res.json({ ok: true, msg: 'Has salido de la lista de espera' });
+    const { refunded } = await leaveWaitlist({ matchId, userId: req.user.id });
+    await processWaitlistForMatch(matchId).catch((error) => {
+      console.error('[WAITLIST] Error tras salir de la lista:', error);
+    });
+    return res.json({
+      ok: true,
+      refundedEasyPass: refunded,
+      msg: refunded > 0
+        ? `Has salido de la lista y te hemos devuelto ${refunded} EasyPass`
+        : 'Has salido de la lista de espera',
+    });
   } catch (error) {
-    console.error('[DELETE waitlist]', error);
-    return res.status(500).json({ ok: false, msg: 'No se pudo salir de la lista de espera' });
+    return sendWaitlistError(res, error, '[DELETE waitlist]', 'No se pudo salir de la lista de espera');
+  }
+});
+
+router.post('/waitlist/extra-invitations/:id/accept', requireAuth, async (req, res) => {
+  try {
+    const requestedColor = req.body?.ticketType;
+    const result = await acceptExtraInvitation({
+      invitationId: Number(req.params.id),
+      userId: req.user.id,
+      preferredTicketType: ['white', 'black'].includes(requestedColor) ? requestedColor : null,
+    });
+    return res.json({ ok: true, ...result, msg: '¡Estás dentro del partido extra!' });
+  } catch (error) {
+    return sendWaitlistError(res, error, '[ACCEPT extra invitation]', 'No se pudo aceptar la invitación');
+  }
+});
+
+router.post('/waitlist/extra-invitations/:id/decline', requireAuth, async (req, res) => {
+  try {
+    const declined = await declineExtraInvitation({ invitationId: Number(req.params.id), userId: req.user.id });
+    if (!declined) return res.status(404).json({ ok: false, msg: 'Esta invitación ya no está disponible' });
+    return res.json({ ok: true, msg: 'Invitación rechazada. Sigues en la lista de espera.' });
+  } catch (error) {
+    return sendWaitlistError(res, error, '[DECLINE extra invitation]', 'No se pudo rechazar la invitación');
   }
 });
 

@@ -4,6 +4,12 @@ import { requireAuth, requireAdmin } from '../middlewares/auth.js';
 import { formatMadridAdminDateTime, madridWallTimeToUtc, toMysqlUtc } from '../utils/madridDateTime.js';
 import { createSocialNotification } from '../services/socialService.js';
 import { resolveOrganizerId } from './adminOrganizers.js';
+import {
+  createExtraMatchFromWaitlist,
+  releaseWaitlistHolds,
+  sendWaitlistPushes,
+  WaitlistError,
+} from '../services/waitlistService.js';
 
 const router = express.Router();
 
@@ -100,6 +106,7 @@ router.get('/', requireAuth, requireAdmin, async (req, res) => {
         1 AS easypass_required,
         NULL AS shirt_color,
         COALESCE(m.has_aftergame, 0) AS has_aftergame,
+        COALESCE(m.is_private, 0) AS is_private,
         m.created_at,
         m.created_at AS updated_at
       FROM matches m LEFT JOIN fields f ON f.id=m.field_id LEFT JOIN locations l ON l.id=m.location_id
@@ -186,7 +193,7 @@ router.post('/:id/video-available', requireAuth, requireAdmin, async (req, res) 
 router.get('/:id/roster', requireAuth, requireAdmin, async (req,res) => {
   try {
     const matchId=Number(req.params.id);
-    const [[match]]=await pool.query(`SELECT m.id,m.title,m.starts_at,m.capacity,m.spots_taken,m.status,f.name field_name FROM matches m LEFT JOIN fields f ON f.id=m.field_id WHERE m.id=?`,[matchId]);
+    const [[match]]=await pool.query(`SELECT m.id,m.title,m.starts_at,m.duration_min,m.capacity,m.spots_taken,m.status,COALESCE(m.is_private,0) is_private,f.name field_name FROM matches m LEFT JOIN fields f ON f.id=m.field_id WHERE m.id=?`,[matchId]);
     if(!match)return res.status(404).json({error:'Partido no encontrado'});
     const hasAssignedUser = await hasAssignedUserIdColumn();
     const rosterSql = hasAssignedUser
@@ -200,7 +207,7 @@ router.get('/:id/roster', requireAuth, requireAdmin, async (req,res) => {
          WHERE i.match_id=? AND i.status IN ('pending','confirmed','paid','active') ORDER BY i.created_at ASC`;
     const [players]=await pool.query(rosterSql,[matchId]);
     const [waitlist]=await pool.query(
-      `SELECT mw.id,mw.status,mw.created_at,mw.offer_expires_at,u.id user_id,u.name,u.avatar_url
+      `SELECT mw.id,mw.status,mw.created_at,mw.offer_expires_at,mw.is_plus_snapshot is_plus,mw.held_easypass,u.id user_id,u.name,u.avatar_url
        FROM match_waitlist mw JOIN users u ON u.id=mw.user_id WHERE mw.match_id=? AND mw.status IN ('waiting','offered')
        ORDER BY FIELD(mw.status,'offered','waiting'),mw.is_plus_snapshot DESC,mw.created_at ASC`,[matchId]
     );
@@ -222,6 +229,32 @@ router.post('/:id/duplicate', requireAuth, requireAdmin, async (req,res) => {
     const[result]=await pool.query(`INSERT INTO matches(title,field_id,city,location_id,starts_at,duration_min,price_eur,easypass_cost,capacity,spots_taken,status,has_aftergame,organizer_id) VALUES (?,?,?,?,?,?,?,?,?,0,'scheduled',?,?)`,[source.title,source.field_id,source.city,source.location_id,startsAt,source.duration_min,source.price_eur,source.easypass_cost,source.capacity,source.has_aftergame||0,source.organizer_id||null]);
     res.status(201).json({ok:true,id:result.insertId,starts_at:startsAt});
   }catch(error){console.error('[ADMIN DUPLICATE MATCH]',error);res.status(500).json({error:'No se pudo duplicar el partido'});}
+});
+
+// Partido extra por demanda: oculto al público e invitación privada a la lista de espera.
+router.post('/:id/extra-match', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const startsAt = new Date(req.body?.starts_at);
+    if (Number.isNaN(startsAt.getTime())) return res.status(400).json({ error: 'Fecha no válida' });
+    const result = await createExtraMatchFromWaitlist({ sourceMatchId: Number(req.params.id), startsAt });
+    res.status(201).json({ ok: true, ...result });
+  } catch (error) {
+    if (error instanceof WaitlistError) return res.status(error.status).json({ error: error.message, code: error.code });
+    console.error('[ADMIN EXTRA MATCH]', error);
+    res.status(500).json({ error: 'No se pudo crear el partido extra' });
+  }
+});
+
+// Si el partido extra no se llena con invitados, el admin puede abrirlo a todo el mundo.
+router.post('/:id/make-public', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const [result] = await pool.query('UPDATE matches SET is_private = 0 WHERE id = ?', [Number(req.params.id)]);
+    if (!result.affectedRows) return res.status(404).json({ error: 'Partido no encontrado' });
+    res.json({ ok: true });
+  } catch (error) {
+    console.error('[ADMIN MAKE PUBLIC]', error);
+    res.status(500).json({ error: 'No se pudo hacer público el partido' });
+  }
 });
 
 // Obtener detalle de un partido
@@ -550,6 +583,10 @@ router.delete('/:id', requireAuth, requireAdmin, async (req, res) => {
       );
     }
 
+    const waitlistPushes = await releaseWaitlistHolds(conn, match, 'cancelled');
+    await conn.query('DELETE FROM match_extra_invitations WHERE extra_match_id=? OR source_match_id=?', [matchId, matchId]);
+    await conn.query('DELETE FROM match_waitlist WHERE match_id=?', [matchId]);
+
     await conn.query('UPDATE inscriptions SET status=\'cancelled\' WHERE match_id=? AND status=\'confirmed\'', [matchId]);
     await conn.query('DELETE FROM match_live_events WHERE match_id=?', [matchId]);
     await conn.query('DELETE FROM match_player_stats WHERE match_id=?', [matchId]);
@@ -557,6 +594,8 @@ router.delete('/:id', requireAuth, requireAdmin, async (req, res) => {
     await conn.query('DELETE FROM matches WHERE id=?', [matchId]);
 
     await conn.commit();
+
+    await sendWaitlistPushes(waitlistPushes);
 
     await Promise.all(buyers.map(({ user_id: userId }) => createSocialNotification(pool, {
       userId,

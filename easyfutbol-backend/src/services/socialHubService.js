@@ -146,6 +146,7 @@ export async function getFriendsOverview(db, userId) {
     `SELECT i.user_id, m.id, m.title, m.starts_at
      FROM inscriptions i JOIN matches m ON m.id = i.match_id
      WHERE i.user_id IN (?) AND i.status IN ('pending','confirmed') AND m.starts_at > NOW() AND m.status <> 'cancelled'
+       AND COALESCE(m.is_private, 0) = 0
      ORDER BY m.starts_at ASC`,
     [ids]
   );

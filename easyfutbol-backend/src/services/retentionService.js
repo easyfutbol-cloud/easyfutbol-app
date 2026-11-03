@@ -21,7 +21,7 @@ import {
 const HOUR_MS = 60 * 60 * 1000;
 const DAY_MS = 24 * HOUR_MS;
 const ACTIVE_INSCRIPTION = "i.status IN ('confirmed','paid','active')";
-const OPEN_MATCH = "m.status IN ('scheduled','open') AND m.spots_taken < m.capacity";
+const OPEN_MATCH = "m.status IN ('scheduled','open') AND m.spots_taken < m.capacity AND COALESCE(m.is_private, 0) = 0";
 // Tope por pasada para no mandar cientos de avisos de golpe el primer día.
 const MAX_SENDS_PER_RUN = 150;
 
