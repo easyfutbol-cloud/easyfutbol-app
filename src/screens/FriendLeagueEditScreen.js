@@ -22,11 +22,13 @@ export default function FriendLeagueEditScreen({ navigation, route }) {
   const [rules, setRules] = useState(DEFAULT_LEAGUE_RULES);
   const [friends, setFriends] = useState([]);
   const [selected, setSelected] = useState([]);
-  const [maxMembers, setMaxMembers] = useState(MAX_LEAGUE_MEMBERS);
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [isPublic, setIsPublic] = useState(false);
+  const maxMembers = isAdmin ? ADMIN_MAX_LEAGUE_MEMBERS : MAX_LEAGUE_MEMBERS;
 
   useEffect(() => {
     AsyncStorage.getItem('user').then((raw) => {
-      if (raw && isAdminUser(JSON.parse(raw))) setMaxMembers(ADMIN_MAX_LEAGUE_MEMBERS);
+      if (raw && isAdminUser(JSON.parse(raw))) setIsAdmin(true);
     }).catch(() => {});
   }, []);
 
@@ -38,6 +40,7 @@ export default function FriendLeagueEditScreen({ navigation, route }) {
         setMatchesGoal(data.league.matches_goal);
         setDurationDays(data.league.duration_days);
         setRules(data.league.rules);
+        setIsPublic(Boolean(data.league.is_public));
       }).catch((error) => {
         Alert.alert('Liga', error.response?.data?.msg || 'No se pudo cargar la liga');
         navigation.goBack();
@@ -61,7 +64,7 @@ export default function FriendLeagueEditScreen({ navigation, route }) {
   };
 
   const save = async () => {
-    const body = { name: name.trim(), team_size: teamSize, matches_goal: matchesGoal, duration_days: durationDays, rules };
+    const body = { name: name.trim(), team_size: teamSize, matches_goal: matchesGoal, duration_days: durationDays, rules, ...(isAdmin ? { is_public: isPublic } : {}) };
     setSaving(true);
     try {
       if (leagueId) {
@@ -94,11 +97,21 @@ export default function FriendLeagueEditScreen({ navigation, route }) {
         <TextInput value={name} onChangeText={setName} maxLength={60} placeholder="Los del jueves" placeholderTextColor="#666" style={styles.input}/>
       </Section>
 
+      {isAdmin ? <View style={[styles.section, styles.doubleCard]}>
+        <View style={styles.publicIcon}><Ionicons name="earth" color="#7fb0ff" size={18}/></View>
+        <View style={styles.doubleCopy}>
+          <Text style={styles.ruleLabel}>Liga pública</Text>
+          <Text style={styles.doubleBody}>Todos pueden verla y unirse, con un enlace para compartir. Solo pueden crearla los administradores y es individual.</Text>
+        </View>
+        <Switch value={isPublic} onValueChange={(value) => { setIsPublic(value); if (value) setTeamSize(1); }} trackColor={{ true: '#ff5a00', false: '#3a3a40' }} thumbColor="#fff"/>
+      </View> : null}
+
       <Section icon="people-outline" title="Cómo se juega" hint={teamSize > 1 ? 'Cada uno juega sus partidos por su cuenta y se suman los puntos del equipo. No hace falta coincidir.' : null}>
         <View style={styles.formats}>
           {FORMATS.map((format) => {
             const active = teamSize === format.size;
-            return <TouchableOpacity key={format.size} onPress={() => setTeamSize(format.size)} style={[styles.format, active && styles.choiceOn]} accessibilityRole="button" accessibilityState={{ selected: active }}>
+            const locked = isPublic && format.size !== 1;
+            return <TouchableOpacity key={format.size} disabled={locked} onPress={() => setTeamSize(format.size)} style={[styles.format, active && styles.choiceOn, locked && styles.formatLocked]} accessibilityRole="button" accessibilityState={{ selected: active }}>
               <Ionicons name={format.icon} color={active ? '#fff' : '#a5a8ae'} size={22}/>
               <Text style={[styles.choiceText, active && styles.choiceTextOn]}>{format.label}</Text>
             </TouchableOpacity>;
@@ -211,6 +224,8 @@ const styles = StyleSheet.create({
   spread: { gap: 11, alignItems: 'flex-start' },
   formats: { flexDirection: 'row', gap: 8 },
   format: { flex: 1, alignItems: 'center', gap: 5, paddingVertical: 12, borderRadius: 14, backgroundColor: '#212125' },
+  formatLocked: { opacity: 0.35 },
+  publicIcon: { width: 36, height: 36, borderRadius: 12, backgroundColor: 'rgba(127,176,255,.14)', alignItems: 'center', justifyContent: 'center' },
   choice: { minHeight: 38, paddingHorizontal: 13, borderRadius: 12, backgroundColor: '#212125', alignItems: 'center', justifyContent: 'center' },
   choiceOn: { backgroundColor: '#ff5a00' },
   choiceText: { color: '#a5a8ae', fontSize: 13, fontWeight: '900' },

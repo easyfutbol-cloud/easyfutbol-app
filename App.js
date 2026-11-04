@@ -140,13 +140,14 @@ const navTheme = {
 // === Navigation Ref para navegar desde fuera de las screens ===
 export const navigationRef = createNavigationContainerRef();
 
-// === Enlaces: reclamar entrada (easyfutbol://claim/<token>) y perfil (easyfutbol://jugador/<slug>) ===
+// === Enlaces: reclamar entrada (easyfutbol://claim/<token>), perfil (easyfutbol://jugador/<slug>) y liga pública (easyfutbol://liga/<código>) ===
 const linking = {
   prefixes: [ExpoLinking.createURL('/'), 'easyfutbol://'],
   config: {
     screens: {
       ClaimTicket: 'claim/:token',
       PlayerSocialProfile: 'jugador/:slug',
+      FriendLeagueDetail: 'liga/:code',
     },
   },
 };

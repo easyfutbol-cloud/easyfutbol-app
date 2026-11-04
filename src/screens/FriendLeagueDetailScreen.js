@@ -1,5 +1,5 @@
-import React, { useCallback, useMemo, useState } from 'react';
-import { ActivityIndicator, Alert, Modal, RefreshControl, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { ActivityIndicator, Alert, Modal, RefreshControl, ScrollView, Share, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { api } from '../api/client';
@@ -15,7 +15,12 @@ const TEAM_CARD_WIDTH = 104;
 
 export default function FriendLeagueDetailScreen({ navigation, route }) {
   const demo = route.params?.demo === true;
-  const leagueId = Number(route.params?.leagueId);
+  const paramId = Number(route.params?.leagueId) || null;
+  // Desde un enlace de unión llega el código, y con él se busca la liga.
+  const code = route.params?.code;
+  const [codeId, setCodeId] = useState(null);
+  const [needsAuth, setNeedsAuth] = useState(false);
+  const leagueId = paramId || codeId;
   const [data, setData] = useState(demo ? DEMO_LEAGUE_DETAIL : null);
   const [refreshing, setRefreshing] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -26,16 +31,27 @@ export default function FriendLeagueDetailScreen({ navigation, route }) {
   const [expanded, setExpanded] = useState(null);
 
   const back = () => navigation.navigate('Social', { tab: 'leagues' });
-  const load = useCallback(() => {
-    if (demo) { setRefreshing(false); return Promise.resolve(); }
-    return api.get(`/friend-leagues/${leagueId}`)
-      .then((response) => setData(response.data))
-      .catch((error) => {
-        Alert.alert('Liga', error.response?.data?.msg || 'No se pudo cargar la liga');
-        navigation.navigate('Social', { tab: 'leagues' });
-      })
-      .finally(() => setRefreshing(false));
-  }, [demo, leagueId, navigation]);
+  useEffect(() => { setCodeId(null); }, [code]);
+  const load = useCallback(async () => {
+    if (demo) { setRefreshing(false); return; }
+    try {
+      let id = paramId;
+      if (!id && code) {
+        const found = await api.get(`/friend-leagues/by-code/${encodeURIComponent(code)}`);
+        id = found.data.id;
+        setCodeId(id);
+      }
+      const response = await api.get(`/friend-leagues/${id}`);
+      setData(response.data);
+      setNeedsAuth(false);
+    } catch (error) {
+      if (error.response?.status === 401) { setNeedsAuth(true); return; }
+      Alert.alert('Liga', error.response?.data?.msg || 'No se pudo cargar la liga');
+      navigation.navigate('Social', { tab: 'leagues' });
+    } finally {
+      setRefreshing(false);
+    }
+  }, [demo, paramId, code, navigation]);
   useFocusEffect(useCallback(() => { load(); }, [load]));
 
   const acceptedMembers = useMemo(() => (data?.members || []).filter((member) => member.status === 'accepted'), [data?.members]);
@@ -51,6 +67,12 @@ export default function FriendLeagueDetailScreen({ navigation, route }) {
     finally { setBusy(false); }
   };
 
+  if (needsAuth) return <View style={[styles.page, styles.authPage]}>
+    <Ionicons name="trophy" color="#ff5a00" size={44}/>
+    <Text style={styles.authTitle}>Inicia sesión para ver esta liga</Text>
+    <Text style={styles.authBody}>Después vuelve a abrir el enlace para unirte.</Text>
+    <TouchableOpacity style={styles.authButton} onPress={() => navigation.navigate('Access')} accessibilityRole="button"><Text style={styles.primaryText}>Iniciar sesión</Text></TouchableOpacity>
+  </View>;
   if (!data) return <View style={styles.page}><ActivityIndicator color="#ff5a00" style={styles.loader}/></View>;
   const { league, me, members, standings } = data;
   const isDraft = league.status === 'draft';
@@ -63,6 +85,9 @@ export default function FriendLeagueDetailScreen({ navigation, route }) {
     await api.post(`/friend-leagues/${leagueId}/respond`, { accept });
     if (!accept) back();
   }, 'No se pudo responder a la invitación');
+
+  const join = () => run(() => api.post(`/friend-leagues/${leagueId}/join`), 'No se pudo unir a la liga');
+  const shareLink = () => Share.share({ message: `🏆 Únete a la liga "${league.name}" en EasyFutbol: ${data.join_url}` }).catch(() => {});
 
   const openInvite = async () => {
     try {
@@ -105,12 +130,12 @@ export default function FriendLeagueDetailScreen({ navigation, route }) {
 
   const myEntry = standings.find((entry) => entry.players.some((player) => player.user_id === me.user_id));
   const myLine = myEntry?.players.find((player) => player.user_id === me.user_id);
-  const canLeave = !demo && !me.is_owner && !invited && league.status !== 'finished' && (isDraft || teamSize === 1);
+  const canLeave = !demo && !me.is_owner && me.status === 'accepted' && league.status !== 'finished' && (isDraft || teamSize === 1);
 
   return <View style={styles.page}>
     <View style={styles.header}>
       <ScreenHeader
-        eyebrow="LIGA ENTRE AMIGOS"
+        eyebrow={league.is_public ? 'LIGA PÚBLICA' : 'LIGA ENTRE AMIGOS'}
         title={league.name}
         description={`${formatLabel(teamSize)} · ${league.matches_goal} partidos · ${league.duration_days} días`}
         action={<TouchableOpacity accessibilityLabel="Volver a mis ligas" style={styles.iconButton} onPress={back}><Ionicons name="arrow-back" color="#fff" size={20}/></TouchableOpacity>}
@@ -125,6 +150,17 @@ export default function FriendLeagueDetailScreen({ navigation, route }) {
           <TouchableOpacity disabled={busy} style={styles.secondary} onPress={() => respond(false)}><Text style={styles.secondaryText}>Rechazar</Text></TouchableOpacity>
         </View>
       </View> : <LeagueHero league={league} myEntry={myEntry} myLine={myLine} standings={standings} acceptedCount={acceptedMembers.length} invitedCount={invitedCount}/>}
+
+      {data.can_join && !invited ? <View style={styles.joinCard}>
+        <Text style={styles.inviteTitle}>Únete a esta liga</Text>
+        <Text style={styles.inviteBody}>Si te unes, cualquiera podrá ver tus resultados, goles, asistencias, paradas y MVP de los partidos de la liga.</Text>
+        <TouchableOpacity disabled={busy} style={styles.joinButton} onPress={join} accessibilityRole="button"><Ionicons name="add" color="#fff" size={20}/><Text style={styles.primaryText}>Unirme</Text></TouchableOpacity>
+      </View> : null}
+
+      {data.join_url ? <TouchableOpacity style={styles.linkButton} onPress={shareLink} accessibilityRole="button">
+        <Ionicons name="link" color="#ff7a32" size={18}/>
+        <Text style={styles.linkText}>Enviar enlace de unión</Text>
+      </TouchableOpacity> : null}
 
       {demo ? <Text style={styles.demoNote}>Así se ve una liga en marcha. Los jugadores y los puntos son inventados.</Text> : null}
 
@@ -245,6 +281,14 @@ const styles = StyleSheet.create({
   primaryText: { color: '#fff', fontSize: 14, fontWeight: '900' },
   secondary: { paddingHorizontal: 18, height: 44, borderRadius: 13, borderWidth: 1, borderColor: '#3b3e46', alignItems: 'center', justifyContent: 'center' },
   secondaryText: { color: '#a8abb2', fontSize: 13, fontWeight: '800' },
+  authPage: { alignItems: 'center', justifyContent: 'center', padding: 28 },
+  authTitle: { color: '#fff', fontSize: 19, fontWeight: '900', textAlign: 'center', marginTop: 14 },
+  authBody: { color: '#a5a8ae', fontSize: 13, textAlign: 'center', marginTop: 6 },
+  authButton: { marginTop: 18, height: 48, paddingHorizontal: 26, borderRadius: 14, backgroundColor: '#ff5a00', alignItems: 'center', justifyContent: 'center' },
+  joinCard: { padding: 16, borderRadius: 20, backgroundColor: 'rgba(255,90,0,.10)', borderWidth: 1, borderColor: 'rgba(255,90,0,.4)', marginBottom: 12 },
+  joinButton: { flexDirection: 'row', gap: 5, marginTop: 13, height: 46, borderRadius: 13, backgroundColor: '#ff5a00', alignItems: 'center', justifyContent: 'center' },
+  linkButton: { flexDirection: 'row', gap: 8, height: 46, borderRadius: 14, borderWidth: 1, borderColor: 'rgba(255,122,50,.5)', alignItems: 'center', justifyContent: 'center', marginBottom: 16 },
+  linkText: { color: '#ff8b4b', fontSize: 14, fontWeight: '900' },
   demoNote: { color: '#a5a8ae', fontSize: 12, lineHeight: 17, textAlign: 'center', marginBottom: 14 },
   demoCta: { flexDirection: 'row', gap: 6, marginTop: 20, height: 52, borderRadius: 15, backgroundColor: '#ff5a00', alignItems: 'center', justifyContent: 'center' },
   cards: { gap: 10, paddingTop: 16, paddingRight: 8 },

@@ -34,6 +34,7 @@ export default function SocialScreen({ navigation, route }) {
   const [data, setData] = useState([]);
   const [friends, setFriends] = useState(null);
   const [leagues, setLeagues] = useState(null);
+  const [publicLeagues, setPublicLeagues] = useState([]);
   const [leagueInvites, setLeagueInvites] = useState(0);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -109,6 +110,7 @@ export default function SocialScreen({ navigation, route }) {
       } else if (tab === 'leagues') {
         const response = await api.get('/friend-leagues');
         setLeagues(response.data?.items || []);
+        setPublicLeagues(response.data?.public_items || []);
       } else if (tab === 'top') {
         const response = await api.get('/social/top', { params: { period: topPeriod, scope: topScope } });
         setTop(response.data);
@@ -279,7 +281,7 @@ export default function SocialScreen({ navigation, route }) {
 
   const renderLeagues = () => {
     if (!leagues) return <ActivityIndicator color="#ff5a00" style={styles.loading} />;
-    return <FriendLeaguesList items={leagues} onOpen={(leagueId)=>navigation.navigate('FriendLeagueDetail',{leagueId})} onCreate={()=>navigation.navigate('FriendLeagueEdit')} onOpenDemo={isAdmin?()=>navigation.navigate('FriendLeagueDetail',{demo:true}):null}/>;
+    return <FriendLeaguesList items={leagues} publicItems={publicLeagues} onOpen={(leagueId)=>navigation.navigate('FriendLeagueDetail',{leagueId})} onCreate={()=>navigation.navigate('FriendLeagueEdit')} onOpenDemo={isAdmin?()=>navigation.navigate('FriendLeagueDetail',{demo:true}):null}/>;
   };
 
   const badge = (key) => (key === 'invitations' ? inviteCount : key === 'requests' ? requestCount : key === 'leagues' ? leagueInvites : 0);

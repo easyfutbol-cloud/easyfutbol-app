@@ -47,6 +47,7 @@ export function LeagueHero({ league, myEntry, myLine, standings, acceptedCount, 
   return <LinearGradient colors={status.colors} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.hero}>
     <View style={styles.heroPills}>
       <View style={styles.pill}><View style={[styles.pillDot, { backgroundColor: status.color }]}/><Text style={[styles.pillText, { color: status.color }]}>{status.label}</Text></View>
+      {league.is_public ? <View style={styles.publicPill}><Ionicons name="earth" color="#fff" size={10}/><Text style={styles.demoPillText}>PÚBLICA</Text></View> : null}
       {league.demo ? <View style={styles.demoPill}><Text style={styles.demoPillText}>EJEMPLO</Text></View> : null}
     </View>
 
@@ -73,9 +74,14 @@ export function LeagueHero({ league, myEntry, myLine, standings, acceptedCount, 
       <Meter icon="time-outline" label="Tiempo" value={league.days_left === 1 ? 'Queda 1 día' : `Quedan ${league.days_left} días`} current={elapsed} total={league.duration_days} color="#d4d4d7"/>
     </> : null}
 
+    {league.status === 'active' && !myEntry ? <>
+      <Text style={styles.heroTitle}>{standings.length} {standings.length === 1 ? 'jugador compitiendo' : 'jugadores compitiendo'}</Text>
+      <Text style={styles.heroBody}>{league.days_left === 1 ? 'Queda 1 día' : `Quedan ${league.days_left} días`} · {league.matches_goal} partidos</Text>
+    </> : null}
+
     {league.status === 'draft' ? <>
       <Text style={styles.heroTitle}>{acceptedCount} {acceptedCount === 1 ? 'jugador listo' : 'jugadores listos'}</Text>
-      <Text style={styles.heroBody}>{invitedCount ? `${invitedCount === 1 ? 'Falta 1 invitación' : `Faltan ${invitedCount} invitaciones`} por responder.` : 'Nadie tiene invitaciones por responder.'}</Text>
+      <Text style={styles.heroBody}>{league.is_public ? 'Cualquiera puede unirse antes de que empiece y también con la liga en marcha.' : invitedCount ? `${invitedCount === 1 ? 'Falta 1 invitación' : `Faltan ${invitedCount} invitaciones`} por responder.` : 'Nadie tiene invitaciones por responder.'}</Text>
     </> : null}
   </LinearGradient>;
 }
@@ -203,6 +209,7 @@ const styles = StyleSheet.create({
   pill: { flexDirection: 'row', alignItems: 'center', gap: 6, alignSelf: 'flex-start', paddingHorizontal: 10, paddingVertical: 5, borderRadius: 11, backgroundColor: 'rgba(0,0,0,.32)' },
   pillDot: { width: 6, height: 6, borderRadius: 3 },
   pillText: { fontSize: 9, fontWeight: '900', letterSpacing: 1 },
+  publicPill: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 11, backgroundColor: '#2c6fd6' },
   demoPill: { paddingHorizontal: 10, paddingVertical: 5, borderRadius: 11, backgroundColor: '#ff5a00' },
   demoPillText: { color: '#fff', fontSize: 9, fontWeight: '900', letterSpacing: 1 },
   heroEmoji: { fontSize: 38, textAlign: 'center' },

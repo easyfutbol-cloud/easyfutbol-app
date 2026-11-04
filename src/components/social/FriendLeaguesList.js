@@ -13,8 +13,14 @@ const statusLine = (item) => {
   return item.days_left === 1 ? 'Queda 1 día' : `Quedan ${item.days_left} días`;
 };
 
+const publicStatusLine = (item) => {
+  if (item.status === 'finished') return item.leader_name ? `Terminada · Ganó ${item.leader_name}` : 'Terminada';
+  if (item.status === 'draft') return 'Empieza pronto · Únete ya';
+  return item.leader_name ? `Va líder ${item.leader_name} con ${item.leader_points} pts · Únete` : 'En juego · Únete';
+};
+
 // Pestaña "Ligas" de Social: tus ligas entre amigos y crear otra. Sin onOpenDemo no se ofrece el ejemplo.
-export default function FriendLeaguesList({ items, onOpen, onCreate, onOpenDemo }) {
+export default function FriendLeaguesList({ items, publicItems = [], onOpen, onCreate, onOpenDemo }) {
   return <>
     <TouchableOpacity activeOpacity={0.88} onPress={onCreate} accessibilityRole="button">
       <LinearGradient colors={['#ff6a1a', '#c94400']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.create}>
@@ -26,6 +32,20 @@ export default function FriendLeaguesList({ items, onOpen, onCreate, onOpenDemo 
         <Ionicons name="add-circle" color="#fff" size={26}/>
       </LinearGradient>
     </TouchableOpacity>
+
+    {publicItems.length ? <>
+      <Text style={styles.section}>LIGAS PÚBLICAS</Text>
+      {publicItems.map((item) => <TouchableOpacity key={item.id} activeOpacity={0.85} style={[styles.card, styles.cardPublic]} onPress={() => onOpen(item.id)} accessibilityRole="button">
+        <View style={styles.publicIcon}><Ionicons name="earth" color="#7fb0ff" size={20}/></View>
+        <View style={styles.copy}>
+          <Text style={styles.name} numberOfLines={1}>{item.name}</Text>
+          <Text style={styles.meta}>{item.members_count} {item.members_count === 1 ? 'jugador' : 'jugadores'} · {item.matches_goal} partidos{item.days_left !== null ? ` · ${item.days_left} días` : ''}</Text>
+          <Text style={styles.status} numberOfLines={1}>{publicStatusLine(item)}</Text>
+        </View>
+        <Ionicons name="chevron-forward" color="#666" size={18}/>
+      </TouchableOpacity>)}
+      {items.length ? <Text style={styles.section}>TUS LIGAS</Text> : null}
+    </> : null}
 
     {!items.length ? <View style={styles.explainer}>
       <Line icon="options-outline" text="Decide cuánto vale cada victoria, gol, asistencia, parada y MVP."/>
@@ -43,6 +63,7 @@ export default function FriendLeaguesList({ items, onOpen, onCreate, onOpenDemo 
         <View style={styles.copy}>
           <View style={styles.titleRow}>
             <Text style={styles.name} numberOfLines={1}>{item.name}</Text>
+            {item.is_public ? <Ionicons name="earth" color="#7fb0ff" size={14}/> : null}
             {item.my_status === 'invited' ? <View style={styles.newPill}><Text style={styles.newPillText}>NUEVA</Text></View> : null}
           </View>
           <Text style={styles.meta}>{formatLabel(item.team_size)} · {item.matches_goal} partidos</Text>
@@ -80,6 +101,9 @@ const styles = StyleSheet.create({
   line: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   lineIcon: { width: 30, height: 30, borderRadius: 10, backgroundColor: 'rgba(255,90,0,.13)', alignItems: 'center', justifyContent: 'center' },
   lineText: { flex: 1, color: '#c9cbd0', fontSize: 13, lineHeight: 17 },
+  section: { color: '#9b9ba1', fontSize: 11, fontWeight: '900', letterSpacing: 1.2, marginTop: 6, marginBottom: 9 },
+  cardPublic: { borderColor: 'rgba(127,176,255,.35)' },
+  publicIcon: { width: 42, height: 42, borderRadius: 21, backgroundColor: 'rgba(127,176,255,.14)', alignItems: 'center', justifyContent: 'center' },
   card: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14, borderRadius: 19, backgroundColor: '#17171a', borderWidth: 1, borderColor: '#26262b', marginBottom: 10 },
   cardInvited: { borderColor: 'rgba(255,90,0,.6)', backgroundColor: 'rgba(255,90,0,.07)' },
   leagueIcon: { width: 42, height: 42, borderRadius: 21, backgroundColor: 'rgba(255,90,0,.13)', alignItems: 'center', justifyContent: 'center' },

@@ -84,7 +84,7 @@ export default function AdminFriendLeaguesScreen({ navigation }) {
           <TouchableOpacity style={styles.cardTop} onPress={() => toggle(item.id)} accessibilityRole="button" accessibilityState={{ expanded: open }}>
             <View style={styles.cardCopy}>
               <Text numberOfLines={1} style={styles.name}>{item.name}</Text>
-              <Text numberOfLines={1} style={styles.meta}>De {item.owner_name} · {shortDate(item.created_at)}</Text>
+              <Text numberOfLines={1} style={styles.meta}>{item.is_public ? 'Pública · ' : ''}De {item.owner_name} · {shortDate(item.created_at)}</Text>
               <Text style={styles.meta}>{formatLabel(item.team_size)} · {item.matches_goal} partidos · {item.accepted} {item.accepted === 1 ? 'jugador' : 'jugadores'}{item.invited ? ` · ${item.invited} sin responder` : ''}</Text>
             </View>
             <View style={styles.status}><View style={[styles.dot, { backgroundColor: status.color }]}/><Text style={[styles.statusText, { color: status.color }]}>{status.label}</Text></View>
