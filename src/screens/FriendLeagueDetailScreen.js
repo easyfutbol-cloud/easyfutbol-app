@@ -12,6 +12,8 @@ import { DEMO_LEAGUE_DETAIL } from '../utils/friendLeagueDemo';
 import { formatLabel, playerShortName, shuffleTeams, syncTeams, teamsAreComplete, toggleTeamMember } from '../utils/friendLeagueRules';
 
 const TEAM_CARD_WIDTH = 104;
+// Con ligas grandes la clasificación se abre poco a poco para no pintar cientos de filas.
+const STANDINGS_PAGE = 50;
 
 export default function FriendLeagueDetailScreen({ navigation, route }) {
   const demo = route.params?.demo === true;
@@ -29,6 +31,7 @@ export default function FriendLeagueDetailScreen({ navigation, route }) {
   const [shareOpen, setShareOpen] = useState(false);
   const [friends, setFriends] = useState([]);
   const [expanded, setExpanded] = useState(null);
+  const [visibleRows, setVisibleRows] = useState(STANDINGS_PAGE);
 
   const back = () => navigation.navigate('Social', { tab: 'leagues' });
   useEffect(() => { setCodeId(null); }, [code]);
@@ -157,6 +160,8 @@ export default function FriendLeagueDetailScreen({ navigation, route }) {
         <TouchableOpacity disabled={busy} style={styles.joinButton} onPress={join} accessibilityRole="button"><Ionicons name="add" color="#fff" size={20}/><Text style={styles.primaryText}>Unirme</Text></TouchableOpacity>
       </View> : null}
 
+      {league.is_public && league.status !== 'finished' && me.status === 'none' && !data.can_join ? <Text style={styles.fullNote}>Esta liga ya está completa</Text> : null}
+
       {data.join_url ? <TouchableOpacity style={styles.linkButton} onPress={shareLink} accessibilityRole="button">
         <Ionicons name="link" color="#ff7a32" size={18}/>
         <Text style={styles.linkText}>Enviar enlace de unión</Text>
@@ -175,7 +180,7 @@ export default function FriendLeagueDetailScreen({ navigation, route }) {
 
         <SectionTitle title="CLASIFICACIÓN" icon="share-social-outline" action="Compartir" onPress={() => setShareOpen(true)}/>
         <View style={styles.card}>
-          {standings.map((entry, index) => {
+          {standings.slice(0, visibleRows).map((entry, index) => {
             const key = entry.players[0].user_id;
             const open = expanded === key;
             return <View key={key} style={index > 0 && styles.divider}>
@@ -183,6 +188,7 @@ export default function FriendLeagueDetailScreen({ navigation, route }) {
             </View>;
           })}
         </View>
+        {standings.length > visibleRows ? <TouchableOpacity style={styles.moreRows} onPress={() => setVisibleRows(visibleRows + STANDINGS_PAGE)} accessibilityRole="button"><Text style={styles.sectionActionText}>Ver más · quedan {standings.length - visibleRows}</Text></TouchableOpacity> : null}
         <Text style={styles.hint}>Toca una fila para ver el detalle. El rayo marca las victorias contra rivales de la liga.</Text>
       </> : null}
 
@@ -226,7 +232,7 @@ export default function FriendLeagueDetailScreen({ navigation, route }) {
         {me.is_owner
           ? <TouchableOpacity disabled={!canStart || busy} style={[styles.start, (!canStart || busy) && styles.startOff]} onPress={start} accessibilityRole="button"><Ionicons name="play" color="#fff" size={16}/><Text style={styles.primaryText}>Empezar la liga</Text></TouchableOpacity>
           : <Text style={styles.waiting}>Esperando a que el creador empiece la liga.</Text>}
-        {me.is_owner && !canStart ? <Text style={styles.hint}>{teamSize === 1 ? 'Necesitas que al menos un amigo acepte.' : 'Necesitas al menos dos equipos completos, con todos colocados.'}</Text> : null}
+        {me.is_owner && !canStart ? <Text style={styles.hint}>{league.is_public ? 'Necesitas que se una al menos otro jugador.' : teamSize === 1 ? 'Necesitas que al menos un amigo acepte.' : 'Necesitas al menos dos equipos completos, con todos colocados.'}</Text> : null}
       </> : null}
 
       <SectionTitle title="CÓMO SE PUNTÚA" icon={isDraft && me.is_owner ? 'pencil' : null} action={isDraft && me.is_owner ? 'Editar' : null} onPress={() => navigation.navigate('FriendLeagueEdit', { leagueId })}/>
@@ -287,6 +293,8 @@ const styles = StyleSheet.create({
   authButton: { marginTop: 18, height: 48, paddingHorizontal: 26, borderRadius: 14, backgroundColor: '#ff5a00', alignItems: 'center', justifyContent: 'center' },
   joinCard: { padding: 16, borderRadius: 20, backgroundColor: 'rgba(255,90,0,.10)', borderWidth: 1, borderColor: 'rgba(255,90,0,.4)', marginBottom: 12 },
   joinButton: { flexDirection: 'row', gap: 5, marginTop: 13, height: 46, borderRadius: 13, backgroundColor: '#ff5a00', alignItems: 'center', justifyContent: 'center' },
+  moreRows: { alignItems: 'center', padding: 13, marginTop: 8, borderRadius: 13, backgroundColor: '#17171a' },
+  fullNote: { color: '#ffb020', fontSize: 13, fontWeight: '800', textAlign: 'center', marginBottom: 12 },
   linkButton: { flexDirection: 'row', gap: 8, height: 46, borderRadius: 14, borderWidth: 1, borderColor: 'rgba(255,122,50,.5)', alignItems: 'center', justifyContent: 'center', marginBottom: 16 },
   linkText: { color: '#ff8b4b', fontSize: 14, fontWeight: '900' },
   demoNote: { color: '#a5a8ae', fontSize: 12, lineHeight: 17, textAlign: 'center', marginBottom: 14 },

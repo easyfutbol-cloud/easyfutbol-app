@@ -11,7 +11,11 @@ export const RULE_FIELDS = [
 ];
 
 export const MAX_LEAGUE_MEMBERS = 20;
-export const ADMIN_MAX_LEAGUE_MEMBERS = 100;
+export const ADMIN_DEFAULT_LEAGUE_MEMBERS = 100;
+export const ADMIN_MIN_LEAGUE_MEMBERS = 2;
+export const ADMIN_MAX_LEAGUE_MEMBERS = 500;
+export const ADMIN_MEMBERS_OPTIONS = [20, 50, 100, 200, 500];
+export const ADMIN_MEMBERS_STEP = 10;
 export const POINTS_MIN = -10;
 export const POINTS_MAX = 20;
 export const MATCHES_MIN = 3;

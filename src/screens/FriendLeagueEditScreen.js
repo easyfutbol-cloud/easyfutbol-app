@@ -6,7 +6,7 @@ import { api } from '../api/client';
 import ScreenHeader from '../components/ScreenHeader';
 import { SocialAvatar } from '../components/social/SocialComponents';
 import {
-  ADMIN_MAX_LEAGUE_MEMBERS, DEFAULT_LEAGUE_RULES, DURATION_OPTIONS, FORMATS, LEAGUE_PRESETS, MAX_LEAGUE_MEMBERS, MATCHES_MAX, MATCHES_MIN, MATCHES_OPTIONS,
+  ADMIN_DEFAULT_LEAGUE_MEMBERS, ADMIN_MAX_LEAGUE_MEMBERS, ADMIN_MEMBERS_OPTIONS, ADMIN_MEMBERS_STEP, ADMIN_MIN_LEAGUE_MEMBERS, DEFAULT_LEAGUE_RULES, DURATION_OPTIONS, FORMATS, LEAGUE_PRESETS, MAX_LEAGUE_MEMBERS, MATCHES_MAX, MATCHES_MIN, MATCHES_OPTIONS,
   POINTS_MAX, POINTS_MIN, RULE_FIELDS, exampleMatchText, isAdminUser, presetKeyFor,
 } from '../utils/friendLeagueRules';
 
@@ -24,7 +24,8 @@ export default function FriendLeagueEditScreen({ navigation, route }) {
   const [selected, setSelected] = useState([]);
   const [isAdmin, setIsAdmin] = useState(false);
   const [isPublic, setIsPublic] = useState(false);
-  const maxMembers = isAdmin ? ADMIN_MAX_LEAGUE_MEMBERS : MAX_LEAGUE_MEMBERS;
+  const [adminMaxMembers, setAdminMaxMembers] = useState(ADMIN_DEFAULT_LEAGUE_MEMBERS);
+  const maxMembers = isAdmin ? adminMaxMembers : MAX_LEAGUE_MEMBERS;
 
   useEffect(() => {
     AsyncStorage.getItem('user').then((raw) => {
@@ -41,6 +42,7 @@ export default function FriendLeagueEditScreen({ navigation, route }) {
         setDurationDays(data.league.duration_days);
         setRules(data.league.rules);
         setIsPublic(Boolean(data.league.is_public));
+        setAdminMaxMembers(data.league.max_members || ADMIN_DEFAULT_LEAGUE_MEMBERS);
       }).catch((error) => {
         Alert.alert('Liga', error.response?.data?.msg || 'No se pudo cargar la liga');
         navigation.goBack();
@@ -64,7 +66,7 @@ export default function FriendLeagueEditScreen({ navigation, route }) {
   };
 
   const save = async () => {
-    const body = { name: name.trim(), team_size: teamSize, matches_goal: matchesGoal, duration_days: durationDays, rules, ...(isAdmin ? { is_public: isPublic } : {}) };
+    const body = { name: name.trim(), team_size: teamSize, matches_goal: matchesGoal, duration_days: durationDays, rules, ...(isAdmin ? { is_public: isPublic, max_members: adminMaxMembers } : {}) };
     setSaving(true);
     try {
       if (leagueId) {
@@ -105,6 +107,19 @@ export default function FriendLeagueEditScreen({ navigation, route }) {
         </View>
         <Switch value={isPublic} onValueChange={(value) => { setIsPublic(value); if (value) setTeamSize(1); }} trackColor={{ true: '#ff5a00', false: '#3a3a40' }} thumbColor="#fff"/>
       </View> : null}
+
+      {isAdmin ? <Section icon="resize-outline" title="Máximo de jugadores" hint={`Cuenta al creador y a los invitados. Se puede cambiar hasta que empiece la liga. Solo los administradores pueden elegirlo.`}>
+        <View style={styles.spread}>
+          <View style={styles.row}>
+            {ADMIN_MEMBERS_OPTIONS.map((value) => <Choice key={value} label={String(value)} active={adminMaxMembers === value} onPress={() => setAdminMaxMembers(value)}/>)}
+          </View>
+          <Stepper
+            value={adminMaxMembers}
+            onMinus={() => setAdminMaxMembers(Math.max(ADMIN_MIN_LEAGUE_MEMBERS, adminMaxMembers - ADMIN_MEMBERS_STEP))}
+            onPlus={() => setAdminMaxMembers(Math.min(ADMIN_MAX_LEAGUE_MEMBERS, adminMaxMembers + ADMIN_MEMBERS_STEP))}
+          />
+        </View>
+      </Section> : null}
 
       <Section icon="people-outline" title="Cómo se juega" hint={teamSize > 1 ? 'Cada uno juega sus partidos por su cuenta y se suman los puntos del equipo. No hace falta coincidir.' : null}>
         <View style={styles.formats}>
