@@ -9,6 +9,7 @@ import {
   isValidJoinCode,
   maxMembersFor,
   normalizeLeagueInput,
+  normalizeMaxMembers,
   normalizeRules,
   publicLeagueError,
   validateTeams,
@@ -26,6 +27,25 @@ describe('maxMembersFor', () => {
     assert.equal(maxMembersFor('user'), 20);
     assert.equal(maxMembersFor(undefined), 20);
     assert.equal(maxMembersFor('admin'), 100);
+  });
+});
+
+describe('normalizeMaxMembers', () => {
+  test('un usuario siempre se queda en 20 aunque pida más', () => {
+    assert.equal(normalizeMaxMembers({ raw: 500, role: 'user' }).value, 20);
+    assert.equal(normalizeMaxMembers({ role: 'user' }).value, 20);
+  });
+  test('un administrador elige, con 100 por defecto', () => {
+    assert.equal(normalizeMaxMembers({ role: 'admin' }).value, 100);
+    assert.equal(normalizeMaxMembers({ raw: 300, role: 'admin' }).value, 300);
+    assert.ok(normalizeMaxMembers({ raw: 501, role: 'admin' }).error);
+    assert.ok(normalizeMaxMembers({ raw: 1, role: 'admin' }).error);
+    assert.ok(normalizeMaxMembers({ raw: 10.5, role: 'admin' }).error);
+  });
+  test('editar conserva el máximo y no baja de los que ya hay', () => {
+    assert.equal(normalizeMaxMembers({ role: 'admin', current: 250 }).value, 250);
+    assert.equal(normalizeMaxMembers({ role: 'user', raw: 500, current: 100 }).value, 100);
+    assert.ok(normalizeMaxMembers({ raw: 5, role: 'admin', membersCount: 8 }).error);
   });
 });
 

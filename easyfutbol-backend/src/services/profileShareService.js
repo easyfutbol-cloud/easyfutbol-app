@@ -61,14 +61,11 @@ export async function getRecentForm(db, userId, { showGoals, showAssists }) {
   }));
 }
 
-export async function getSeasonStats(db, userId) {
-  const [[row]] = await db.query(
-    `SELECT COUNT(*) AS matches_played, COALESCE(SUM(goals),0) AS goals, COALESCE(SUM(assists),0) AS assists,
+const SEASON_STATS_COLUMNS = `COUNT(*) AS matches_played, COALESCE(SUM(goals),0) AS goals, COALESCE(SUM(assists),0) AS assists,
             COALESCE(SUM(saves),0) AS saves, COALESCE(SUM(is_mvp),0) AS mvp_count,
-            COALESCE(SUM(result='win'),0) AS wins, COALESCE(SUM(result='loss'),0) AS losses, COALESCE(SUM(result='draw'),0) AS draws
-     FROM match_player_stats WHERE user_id=?`,
-    [userId]
-  );
+            COALESCE(SUM(result='win'),0) AS wins, COALESCE(SUM(result='loss'),0) AS losses, COALESCE(SUM(result='draw'),0) AS draws`;
+
+function seasonStatsFromRow(row) {
   const decided = Number(row.wins) + Number(row.losses) + Number(row.draws);
   return {
     matches_played: Number(row.matches_played),
@@ -78,4 +75,16 @@ export async function getSeasonStats(db, userId) {
     mvp_count: Number(row.mvp_count),
     win_rate: decided ? Math.round((Number(row.wins) / decided) * 100) : 0,
   };
+}
+
+export async function getSeasonStats(db, userId) {
+  const [[row]] = await db.query(`SELECT ${SEASON_STATS_COLUMNS} FROM match_player_stats WHERE user_id=?`, [userId]);
+  return seasonStatsFromRow(row);
+}
+
+/** Lo mismo para muchos jugadores de una vez. Devuelve Map usuario → estadísticas (sin los que no han jugado). */
+export async function getSeasonStatsForUsers(db, userIds) {
+  if (!userIds.length) return new Map();
+  const [rows] = await db.query(`SELECT user_id, ${SEASON_STATS_COLUMNS} FROM match_player_stats WHERE user_id IN (?) GROUP BY user_id`, [userIds]);
+  return new Map(rows.map((row) => [row.user_id, seasonStatsFromRow(row)]));
 }

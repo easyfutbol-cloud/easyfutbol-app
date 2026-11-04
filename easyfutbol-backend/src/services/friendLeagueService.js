@@ -4,17 +4,17 @@ import { pool } from '../config/db.js';
 import { createSocialNotification } from './socialService.js';
 import { activePlusSql } from './subscriptionService.js';
 import { computeLineupCard } from './playerCardService.js';
-import { PUBLIC_LINK_BASE, getSeasonStats } from './profileShareService.js';
+import { PUBLIC_LINK_BASE, getSeasonStatsForUsers } from './profileShareService.js';
 import { markSchedulerFailure, markSchedulerSuccess, registerScheduler } from './operationalHealthService.js';
 import { isSendingHour } from './retentionRules.js';
-import { LEAGUE_LIMITS, computeStandings, findOvertaken, isLeagueComplete } from './friendLeagueRules.js';
+import { computeStandings, findOvertaken, isLeagueComplete } from './friendLeagueRules.js';
 
 // Las actas se cierran después del partido: se espera antes de dar la liga por acabada.
 const CLOSING_GRACE_DAYS = 2;
 const REMINDER_DAYS = 5;
 const PUBLIC_LIST_LIMIT = 20;
 const PUBLIC_FINISHED_VISIBLE_DAYS = 30;
-const LEAGUE_COLUMNS = `l.id, l.name, l.owner_id, l.team_size, l.matches_goal, l.duration_days, l.rules, l.status, l.is_public, l.join_code,
+const LEAGUE_COLUMNS = `l.id, l.name, l.owner_id, l.team_size, l.max_members, l.matches_goal, l.duration_days, l.rules, l.status, l.is_public, l.join_code,
   l.started_at, l.ends_at, l.finished_at, l.created_at,
   GREATEST(TIMESTAMPDIFF(DAY, NOW(), l.ends_at), 0) AS days_left,
   (l.ends_at + INTERVAL ${CLOSING_GRACE_DAYS} DAY <= NOW()) AS closing_passed`;
@@ -152,17 +152,16 @@ export async function getLeagueDetail(db, leagueId, userId) {
     members: members.map(publicMember),
     standings: [],
     join_url: league.is_public && joinCode ? `${PUBLIC_LINK_BASE}/liga/${joinCode}` : null,
-    can_join: league.is_public && league.status !== 'finished' && me?.status !== 'accepted' && members.length < LEAGUE_LIMITS.adminMembers,
+    can_join: league.is_public && league.status !== 'finished' && me?.status !== 'accepted' && (Boolean(me) || members.length < league.max_members),
   };
   if (league.status === 'draft' || (detail.me.status !== 'accepted' && !league.is_public)) return detail;
 
   const standings = await getStandings(db, league, members);
   const memberById = new Map(members.map((member) => [member.user_id, member]));
   // Misma media que en el perfil, sin atributos: no es necesario enseñarlos aquí.
-  const cards = new Map(await Promise.all(members.filter((member) => member.status === 'accepted').map(async (member) => [
-    member.user_id,
-    computeLineupCard(await getSeasonStats(db, member.user_id), member.primary_position, null),
-  ])));
+  const accepted = members.filter((member) => member.status === 'accepted');
+  const seasonStats = await getSeasonStatsForUsers(db, accepted.map((member) => member.user_id));
+  const cards = new Map(accepted.map((member) => [member.user_id, computeLineupCard(seasonStats.get(member.user_id), member.primary_position, null)]));
   detail.standings = standings.entries.map(({ user_ids: userIds, key: _key, ...entry }) => ({
     ...entry,
     players: userIds.map((id) => {
@@ -226,6 +225,7 @@ async function sendRankAlerts(db, league, members, standings) {
   }
   for (const entry of standings.entries) {
     for (const userId of entry.user_ids) {
+      if (previousRanks.get(userId) === entry.rank) continue;
       await db.query('UPDATE friend_league_members SET last_rank=? WHERE league_id=? AND user_id=?', [entry.rank, league.id, userId]);
     }
   }

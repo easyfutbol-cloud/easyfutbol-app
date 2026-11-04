@@ -59,6 +59,7 @@ const migrationOrder = [
   '20261108_friend_leagues.sql',
   '20261109_feature_usage.sql',
   '20261110_public_friend_leagues.sql',
+  '20261111_friend_league_max_members.sql',
 ];
 
 const currentFile = fileURLToPath(import.meta.url);

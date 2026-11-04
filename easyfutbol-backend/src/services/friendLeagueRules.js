@@ -10,11 +10,27 @@ export const LEAGUE_LIMITS = {
   points: { min: -10, max: 20 },
   members: 20,
   adminMembers: 100,
+  adminMin: 2,
+  adminMax: 500,
 };
 const TEAM_SIZES = [1, 2, 3];
 
-/** Jugadores que caben en una liga según quién la crea, contando al creador e invitados. */
+/** Máximo por defecto según quién crea la liga, contando al creador e invitados. */
 export const maxMembersFor = (role) => (role === 'admin' ? LEAGUE_LIMITS.adminMembers : LEAGUE_LIMITS.members);
+
+/**
+ * Máximo de jugadores con el que queda la liga. Solo un administrador puede
+ * elegirlo. Devuelve { value } o { error } con un texto para el usuario.
+ */
+export function normalizeMaxMembers({ raw, role, current = null, membersCount = 0 }) {
+  if (role !== 'admin' || raw === undefined || raw === null) return { value: current ?? maxMembersFor(role) };
+  const value = Number(raw);
+  if (!inRange(value, { min: LEAGUE_LIMITS.adminMin, max: LEAGUE_LIMITS.adminMax })) {
+    return { error: `El máximo debe estar entre ${LEAGUE_LIMITS.adminMin} y ${LEAGUE_LIMITS.adminMax} jugadores` };
+  }
+  if (value < membersCount) return { error: `La liga ya tiene ${membersCount} jugadores` };
+  return { value };
+}
 
 export const isValidJoinCode = (code) => /^[A-Za-z0-9_-]{6,16}$/.test(String(code || ''));
 

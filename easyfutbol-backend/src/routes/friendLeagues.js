@@ -3,7 +3,7 @@ import { Router } from 'express';
 import { pool } from '../config/db.js';
 import { requireAuth } from '../middlewares/auth.js';
 import { areFriends, createSocialNotification, positiveId } from '../services/socialService.js';
-import { LEAGUE_LIMITS, isValidJoinCode, maxMembersFor, normalizeLeagueInput, publicLeagueError, validateTeams } from '../services/friendLeagueRules.js';
+import { isValidJoinCode, normalizeLeagueInput, normalizeMaxMembers, publicLeagueError, validateTeams } from '../services/friendLeagueRules.js';
 import { getLeague, getLeagueDetail, getMembers, listLeaguesForUser, listPublicLeagues } from '../services/friendLeagueService.js';
 
 const router = Router();
@@ -70,21 +70,23 @@ router.post('/', async (req, res) => {
   const isPublic = req.body?.is_public === true;
   const publicError = publicLeagueError({ isPublic, role: req.user.role, teamSize: value.team_size });
   if (publicError) return fail(res, publicError.code, publicError.msg);
+  const { value: maxMembers, error: invalidMax } = normalizeMaxMembers({ raw: req.body?.max_members, role: req.user.role });
+  if (invalidMax) return fail(res, 400, invalidMax);
   const conn = await pool.getConnection();
   try {
     const [[{ open_count: openCount }]] = await conn.query(`SELECT COUNT(*) AS open_count FROM friend_leagues WHERE owner_id=? AND status IN ('draft','active')`, [req.user.id]);
     if (Number(openCount) >= MAX_OPEN_LEAGUES_OWNED) return fail(res, 409, `Ya tienes ${MAX_OPEN_LEAGUES_OWNED} ligas abiertas`);
     await conn.beginTransaction();
     const [result] = await conn.query(
-      'INSERT INTO friend_leagues (name, owner_id, team_size, matches_goal, duration_days, rules, is_public, join_code) VALUES (?, ?, ?, ?, ?, CAST(? AS JSON), ?, ?)',
-      [value.name, req.user.id, value.team_size, value.matches_goal, value.duration_days, JSON.stringify(value.rules), isPublic ? 1 : 0, isPublic ? newJoinCode() : null]
+      'INSERT INTO friend_leagues (name, owner_id, team_size, max_members, matches_goal, duration_days, rules, is_public, join_code) VALUES (?, ?, ?, ?, ?, ?, CAST(? AS JSON), ?, ?)',
+      [value.name, req.user.id, value.team_size, maxMembers, value.matches_goal, value.duration_days, JSON.stringify(value.rules), isPublic ? 1 : 0, isPublic ? newJoinCode() : null]
     );
     await conn.query(`INSERT INTO friend_league_members (league_id, user_id, status) VALUES (?, ?, 'accepted')`, [result.insertId, req.user.id]);
     const { invited, full } = await inviteFriends(conn, {
       league: { id: result.insertId, name: value.name },
       ownerId: Number(req.user.id),
       userIds: req.body?.friend_ids,
-      maxMembers: maxMembersFor(req.user.role),
+      maxMembers,
     });
     await conn.commit();
     res.status(201).json({ ok: true, id: result.insertId, invited, full });
@@ -116,7 +118,7 @@ router.get('/:id', async (req, res) => {
     const leagueId = positiveId(req.params.id);
     const detail = leagueId ? await getLeagueDetail(pool, leagueId, req.user.id) : null;
     if (!detail) return fail(res, 404, 'Liga no encontrada');
-    res.json({ ok: true, ...detail, max_members: detail.me.is_owner ? maxMembersFor(req.user.role) : undefined });
+    res.json({ ok: true, ...detail, max_members: detail.me.is_owner ? detail.league.max_members : undefined });
   } catch (error) {
     console.error('[FRIEND LEAGUES detail]', error);
     fail(res, 500, 'No se pudo cargar la liga');
@@ -132,9 +134,12 @@ router.patch('/:id', async (req, res) => {
     const isPublic = req.body?.is_public === undefined ? league.is_public : req.body.is_public === true;
     const publicError = publicLeagueError({ isPublic, role: req.user.role, teamSize: value.team_size });
     if (publicError) return fail(res, publicError.code, publicError.msg);
+    const [[{ total }]] = await pool.query('SELECT COUNT(*) AS total FROM friend_league_members WHERE league_id=?', [league.id]);
+    const { value: maxMembers, error: invalidMax } = normalizeMaxMembers({ raw: req.body?.max_members, role: req.user.role, current: league.max_members, membersCount: Number(total) });
+    if (invalidMax) return fail(res, 400, invalidMax);
     await pool.query(
-      `UPDATE friend_leagues SET name=?, team_size=?, matches_goal=?, duration_days=?, rules=CAST(? AS JSON), is_public=?, join_code=COALESCE(join_code, ?) WHERE id=? AND status='draft'`,
-      [value.name, value.team_size, value.matches_goal, value.duration_days, JSON.stringify(value.rules), isPublic ? 1 : 0, isPublic ? newJoinCode() : null, league.id]
+      `UPDATE friend_leagues SET name=?, team_size=?, max_members=?, matches_goal=?, duration_days=?, rules=CAST(? AS JSON), is_public=?, join_code=COALESCE(join_code, ?) WHERE id=? AND status='draft'`,
+      [value.name, value.team_size, maxMembers, value.matches_goal, value.duration_days, JSON.stringify(value.rules), isPublic ? 1 : 0, isPublic ? newJoinCode() : null, league.id]
     );
     res.json({ ok: true });
   } catch (error) {
@@ -147,7 +152,7 @@ router.post('/:id/invite', async (req, res) => {
   try {
     const league = await loadOwnedDraft(req, res);
     if (!league) return;
-    const maxMembers = maxMembersFor(req.user.role);
+    const maxMembers = league.max_members;
     const { invited, full } = await inviteFriends(pool, { league, ownerId: Number(req.user.id), userIds: req.body?.user_ids, maxMembers });
     if (full && !invited) return fail(res, 409, `La liga ya tiene el máximo de ${maxMembers} jugadores`);
     res.status(201).json({ ok: true, invited, full });
@@ -182,11 +187,11 @@ router.post('/:id/join', async (req, res) => {
   const conn = await pool.getConnection();
   try {
     await conn.beginTransaction();
-    const [[league]] = await conn.query('SELECT status, is_public FROM friend_leagues WHERE id=? FOR UPDATE', [leagueId]);
+    const [[league]] = await conn.query('SELECT status, is_public, max_members FROM friend_leagues WHERE id=? FOR UPDATE', [leagueId]);
     if (!league || !Number(league.is_public)) { await conn.rollback(); return fail(res, 404, 'Liga no encontrada'); }
     if (league.status === 'finished') { await conn.rollback(); return fail(res, 409, 'Esta liga ya ha terminado'); }
     const [[{ total }]] = await conn.query('SELECT COUNT(*) AS total FROM friend_league_members WHERE league_id=? AND user_id<>?', [leagueId, req.user.id]);
-    if (Number(total) >= LEAGUE_LIMITS.adminMembers) { await conn.rollback(); return fail(res, 409, 'Esta liga ya está completa'); }
+    if (Number(total) >= Number(league.max_members)) { await conn.rollback(); return fail(res, 409, 'Esta liga ya está completa'); }
     await conn.query(
       `INSERT INTO friend_league_members (league_id, user_id, status) VALUES (?, ?, 'accepted')
        ON DUPLICATE KEY UPDATE status='accepted'`,
