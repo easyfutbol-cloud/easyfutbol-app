@@ -125,7 +125,6 @@ router.get('/matches/:id/attendees', async (req, res) => {
               u.id AS user_id,
               u.name AS username,
               u.avatar_url,
-              u.worldcup_team,
               ${activePlusSql('u.id')} AS is_plus,
               SUM(CASE WHEN i.ticket_type = 'white' THEN 1 ELSE 0 END) AS white_tickets,
               SUM(CASE WHEN i.ticket_type = 'black' THEN 1 ELSE 0 END) AS black_tickets,
@@ -146,8 +145,7 @@ router.get('/matches/:id/attendees', async (req, res) => {
        GROUP BY
          u.id,
          u.name,
-         u.avatar_url,
-         u.worldcup_team
+         u.avatar_url
        ORDER BY
          CASE ticket_color
            WHEN 'white' THEN 0
