@@ -6,9 +6,11 @@ import {
   computeStandings,
   findOvertaken,
   isLeagueComplete,
+  isValidJoinCode,
   maxMembersFor,
   normalizeLeagueInput,
   normalizeRules,
+  publicLeagueError,
   validateTeams,
 } from '../src/services/friendLeagueRules.js';
 
@@ -24,6 +26,21 @@ describe('maxMembersFor', () => {
     assert.equal(maxMembersFor('user'), 20);
     assert.equal(maxMembersFor(undefined), 20);
     assert.equal(maxMembersFor('admin'), 100);
+  });
+});
+
+describe('ligas públicas', () => {
+  test('solo las crea un administrador y son individuales', () => {
+    assert.equal(publicLeagueError({ isPublic: false, role: 'user', teamSize: 2 }), null);
+    assert.equal(publicLeagueError({ isPublic: true, role: 'admin', teamSize: 1 }), null);
+    assert.equal(publicLeagueError({ isPublic: true, role: 'user', teamSize: 1 }).code, 403);
+    assert.equal(publicLeagueError({ isPublic: true, role: 'admin', teamSize: 2 }).code, 400);
+  });
+  test('valida el código del enlace', () => {
+    assert.equal(isValidJoinCode('aB3_x-9z'), true);
+    assert.equal(isValidJoinCode('abc'), false);
+    assert.equal(isValidJoinCode("a'; DROP--"), false);
+    assert.equal(isValidJoinCode(null), false);
   });
 });
 

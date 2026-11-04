@@ -51,6 +51,7 @@ import retention from './routes/retention.js';
 import featureUsage from './routes/featureUsage.js';
 import friendLeagues from './routes/friendLeagues.js';
 import adminFriendLeagues from './routes/adminFriendLeagues.js';
+import leagueLink from './routes/leagueLink.js';
 import { startFriendLeagueScheduler } from './services/friendLeagueService.js';
 import adminOrganizers from './routes/adminOrganizers.js';
 
@@ -178,6 +179,7 @@ app.use('/api/admin/friend-leagues', adminFriendLeagues);
 app.use('/api/popups', popups);
 app.use('/', claimLink);
 app.use('/', publicProfileLink);
+app.use('/', leagueLink);
 app.use('/api/player-profile', playerPublicProfile);
 app.use('/api/easypoints', easypoints);
 app.use('/api', retention);

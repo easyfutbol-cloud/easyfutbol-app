@@ -4,15 +4,17 @@ import { pool } from '../config/db.js';
 import { createSocialNotification } from './socialService.js';
 import { activePlusSql } from './subscriptionService.js';
 import { computeLineupCard } from './playerCardService.js';
-import { getSeasonStats } from './profileShareService.js';
+import { PUBLIC_LINK_BASE, getSeasonStats } from './profileShareService.js';
 import { markSchedulerFailure, markSchedulerSuccess, registerScheduler } from './operationalHealthService.js';
 import { isSendingHour } from './retentionRules.js';
-import { computeStandings, findOvertaken, isLeagueComplete } from './friendLeagueRules.js';
+import { LEAGUE_LIMITS, computeStandings, findOvertaken, isLeagueComplete } from './friendLeagueRules.js';
 
 // Las actas se cierran después del partido: se espera antes de dar la liga por acabada.
 const CLOSING_GRACE_DAYS = 2;
 const REMINDER_DAYS = 5;
-const LEAGUE_COLUMNS = `l.id, l.name, l.owner_id, l.team_size, l.matches_goal, l.duration_days, l.rules, l.status,
+const PUBLIC_LIST_LIMIT = 20;
+const PUBLIC_FINISHED_VISIBLE_DAYS = 30;
+const LEAGUE_COLUMNS = `l.id, l.name, l.owner_id, l.team_size, l.matches_goal, l.duration_days, l.rules, l.status, l.is_public, l.join_code,
   l.started_at, l.ends_at, l.finished_at, l.created_at,
   GREATEST(TIMESTAMPDIFF(DAY, NOW(), l.ends_at), 0) AS days_left,
   (l.ends_at + INTERVAL ${CLOSING_GRACE_DAYS} DAY <= NOW()) AS closing_passed`;
@@ -22,6 +24,7 @@ function parseLeague(row) {
   return {
     ...row,
     rules: typeof row.rules === 'string' ? JSON.parse(row.rules) : row.rules,
+    is_public: Boolean(Number(row.is_public)),
     days_left: row.days_left === null ? null : Number(row.days_left),
     closing_passed: Boolean(Number(row.closing_passed)),
   };
@@ -80,6 +83,7 @@ export async function listLeaguesForUser(db, userId) {
       id: league.id,
       name: league.name,
       status: league.status,
+      is_public: league.is_public,
       my_status: row.my_status,
       team_size: league.team_size,
       matches_goal: league.matches_goal,
@@ -97,6 +101,38 @@ export async function listLeaguesForUser(db, userId) {
   }));
 }
 
+/** Ligas públicas en las que aún no estás, para descubrirlas desde la pestaña Ligas. */
+export async function listPublicLeagues(db, userId) {
+  const [rows] = await db.query(
+    `SELECT ${LEAGUE_COLUMNS}
+     FROM friend_leagues l
+     WHERE l.is_public=1
+       AND (l.status IN ('draft','active') OR l.finished_at >= NOW() - INTERVAL ${PUBLIC_FINISHED_VISIBLE_DAYS} DAY)
+       AND NOT EXISTS (SELECT 1 FROM friend_league_members me WHERE me.league_id=l.id AND me.user_id=? AND me.status='accepted')
+     ORDER BY FIELD(l.status,'active','draft','finished'), l.created_at DESC
+     LIMIT ${PUBLIC_LIST_LIMIT}`,
+    [userId]
+  );
+  return Promise.all(rows.map(async (row) => {
+    const league = parseLeague(row);
+    const members = await getMembers(db, league.id);
+    const summary = {
+      id: league.id,
+      name: league.name,
+      status: league.status,
+      matches_goal: league.matches_goal,
+      days_left: league.status === 'active' ? league.days_left : null,
+      members_count: members.filter((member) => member.status === 'accepted').length,
+      leader_name: null,
+      leader_points: null,
+    };
+    if (league.status === 'draft' || !summary.members_count) return summary;
+    const [leader] = (await getStandings(db, league, members)).entries;
+    const member = members.find((item) => item.user_id === leader.user_ids[0]);
+    return { ...summary, leader_name: member?.nickname || member?.name || null, leader_points: leader.points };
+  }));
+}
+
 const publicMember = ({ last_rank: _lastRank, primary_position: _position, ...member }) => member;
 
 /** Detalle completo. La clasificación solo la ven los que han aceptado participar. */
@@ -105,15 +141,20 @@ export async function getLeagueDetail(db, leagueId, userId) {
   if (!league) return null;
   const members = await getMembers(db, leagueId);
   const me = members.find((member) => member.user_id === Number(userId));
-  if (!me) return null;
-  const { closing_passed: _closing, ...publicLeague } = league;
+  // Una liga pública la puede ver cualquiera, esté dentro o no.
+  if (!me && !league.is_public) return null;
+  const { closing_passed: _closing, join_code: joinCode, ...publicLeague } = league;
   const detail = {
     league: publicLeague,
-    me: { user_id: me.user_id, status: me.status, is_owner: league.owner_id === me.user_id, team_no: me.team_no },
+    me: me
+      ? { user_id: me.user_id, status: me.status, is_owner: league.owner_id === me.user_id, team_no: me.team_no }
+      : { user_id: Number(userId), status: 'none', is_owner: false, team_no: null },
     members: members.map(publicMember),
     standings: [],
+    join_url: league.is_public && joinCode ? `${PUBLIC_LINK_BASE}/liga/${joinCode}` : null,
+    can_join: league.is_public && league.status !== 'finished' && me?.status !== 'accepted' && members.length < LEAGUE_LIMITS.adminMembers,
   };
-  if (league.status === 'draft' || me.status !== 'accepted') return detail;
+  if (league.status === 'draft' || (detail.me.status !== 'accepted' && !league.is_public)) return detail;
 
   const standings = await getStandings(db, league, members);
   const memberById = new Map(members.map((member) => [member.user_id, member]));

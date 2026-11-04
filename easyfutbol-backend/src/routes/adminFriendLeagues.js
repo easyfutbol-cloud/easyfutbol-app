@@ -23,14 +23,14 @@ router.get('/', async (_req, res) => {
     );
     const [[players]] = await pool.query(`SELECT COUNT(DISTINCT user_id) AS players FROM friend_league_members WHERE status='accepted'`);
     const [items] = await pool.query(
-      `SELECT l.id, l.name, l.status, l.team_size, l.matches_goal, l.duration_days, l.created_at, l.started_at, l.ends_at,
+      `SELECT l.id, l.name, l.status, l.is_public, l.team_size, l.matches_goal, l.duration_days, l.created_at, l.started_at, l.ends_at,
               u.name AS owner_name,
               COALESCE(SUM(m.status='accepted'),0) AS accepted,
               COALESCE(SUM(m.status='invited'),0) AS invited
        FROM friend_leagues l
        JOIN users u ON u.id=l.owner_id
        LEFT JOIN friend_league_members m ON m.league_id=l.id
-       GROUP BY l.id, l.name, l.status, l.team_size, l.matches_goal, l.duration_days, l.created_at, l.started_at, l.ends_at, u.name
+       GROUP BY l.id, l.name, l.status, l.is_public, l.team_size, l.matches_goal, l.duration_days, l.created_at, l.started_at, l.ends_at, u.name
        ORDER BY l.created_at DESC
        LIMIT ?`,
       [MAX_ITEMS]

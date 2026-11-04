@@ -16,6 +16,17 @@ const TEAM_SIZES = [1, 2, 3];
 /** Jugadores que caben en una liga según quién la crea, contando al creador e invitados. */
 export const maxMembersFor = (role) => (role === 'admin' ? LEAGUE_LIMITS.adminMembers : LEAGUE_LIMITS.members);
 
+export const isValidJoinCode = (code) => /^[A-Za-z0-9_-]{6,16}$/.test(String(code || ''));
+
+/** Por qué no se puede crear esta liga como pública, o null si se puede. */
+export function publicLeagueError({ isPublic, role, teamSize }) {
+  if (!isPublic) return null;
+  if (role !== 'admin') return { code: 403, msg: 'Solo los administradores pueden crear ligas públicas' };
+  // Quien se une por el enlace no tiene con quién formar pareja o trío.
+  if (teamSize !== 1) return { code: 400, msg: 'Las ligas públicas son individuales' };
+  return null;
+}
+
 const inRange = (value, { min, max }) => Number.isInteger(value) && value >= min && value <= max;
 
 /** Devuelve las reglas limpias, o null si algún valor no es válido o todas valen 0. */

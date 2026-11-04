@@ -58,6 +58,7 @@ const migrationOrder = [
   '20261107_waitlist_easypass_hold.sql',
   '20261108_friend_leagues.sql',
   '20261109_feature_usage.sql',
+  '20261110_public_friend_leagues.sql',
 ];
 
 const currentFile = fileURLToPath(import.meta.url);

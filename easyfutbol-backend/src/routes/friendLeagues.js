@@ -1,15 +1,17 @@
+import crypto from 'crypto';
 import { Router } from 'express';
 import { pool } from '../config/db.js';
 import { requireAuth } from '../middlewares/auth.js';
 import { areFriends, createSocialNotification, positiveId } from '../services/socialService.js';
-import { maxMembersFor, normalizeLeagueInput, validateTeams } from '../services/friendLeagueRules.js';
-import { getLeague, getLeagueDetail, getMembers, listLeaguesForUser } from '../services/friendLeagueService.js';
+import { LEAGUE_LIMITS, isValidJoinCode, maxMembersFor, normalizeLeagueInput, publicLeagueError, validateTeams } from '../services/friendLeagueRules.js';
+import { getLeague, getLeagueDetail, getMembers, listLeaguesForUser, listPublicLeagues } from '../services/friendLeagueService.js';
 
 const router = Router();
 router.use(requireAuth);
 
 const MAX_OPEN_LEAGUES_OWNED = 10;
 const fail = (res, code, msg) => res.status(code).json({ ok: false, msg });
+const newJoinCode = () => crypto.randomBytes(6).toString('base64url');
 
 const notifyInvite = (db, { userId, actorId, actorName, league }) => createSocialNotification(db, {
   userId,
@@ -54,7 +56,8 @@ async function loadOwnedDraft(req, res) {
 router.get('/', async (req, res) => {
   try {
     const items = await listLeaguesForUser(pool, req.user.id);
-    res.json({ ok: true, items, pending_invites: items.filter((item) => item.my_status === 'invited').length });
+    const publicItems = await listPublicLeagues(pool, req.user.id);
+    res.json({ ok: true, items, public_items: publicItems, pending_invites: items.filter((item) => item.my_status === 'invited').length });
   } catch (error) {
     console.error('[FRIEND LEAGUES list]', error);
     fail(res, 500, 'No se pudieron cargar tus ligas');
@@ -64,14 +67,17 @@ router.get('/', async (req, res) => {
 router.post('/', async (req, res) => {
   const { value, error: invalid } = normalizeLeagueInput(req.body);
   if (invalid) return fail(res, 400, invalid);
+  const isPublic = req.body?.is_public === true;
+  const publicError = publicLeagueError({ isPublic, role: req.user.role, teamSize: value.team_size });
+  if (publicError) return fail(res, publicError.code, publicError.msg);
   const conn = await pool.getConnection();
   try {
     const [[{ open_count: openCount }]] = await conn.query(`SELECT COUNT(*) AS open_count FROM friend_leagues WHERE owner_id=? AND status IN ('draft','active')`, [req.user.id]);
     if (Number(openCount) >= MAX_OPEN_LEAGUES_OWNED) return fail(res, 409, `Ya tienes ${MAX_OPEN_LEAGUES_OWNED} ligas abiertas`);
     await conn.beginTransaction();
     const [result] = await conn.query(
-      'INSERT INTO friend_leagues (name, owner_id, team_size, matches_goal, duration_days, rules) VALUES (?, ?, ?, ?, ?, CAST(? AS JSON))',
-      [value.name, req.user.id, value.team_size, value.matches_goal, value.duration_days, JSON.stringify(value.rules)]
+      'INSERT INTO friend_leagues (name, owner_id, team_size, matches_goal, duration_days, rules, is_public, join_code) VALUES (?, ?, ?, ?, ?, CAST(? AS JSON), ?, ?)',
+      [value.name, req.user.id, value.team_size, value.matches_goal, value.duration_days, JSON.stringify(value.rules), isPublic ? 1 : 0, isPublic ? newJoinCode() : null]
     );
     await conn.query(`INSERT INTO friend_league_members (league_id, user_id, status) VALUES (?, ?, 'accepted')`, [result.insertId, req.user.id]);
     const { invited, full } = await inviteFriends(conn, {
@@ -88,6 +94,20 @@ router.post('/', async (req, res) => {
     fail(res, 500, 'No se pudo crear la liga');
   } finally {
     conn.release();
+  }
+});
+
+// Antes que /:id. El enlace de unión lleva el código, no el id de la liga.
+router.get('/by-code/:code', async (req, res) => {
+  try {
+    const code = String(req.params.code || '');
+    if (!isValidJoinCode(code)) return fail(res, 404, 'Este enlace ya no es válido');
+    const [[league]] = await pool.query('SELECT id FROM friend_leagues WHERE join_code=? AND is_public=1', [code]);
+    if (!league) return fail(res, 404, 'Este enlace ya no es válido');
+    res.json({ ok: true, id: league.id });
+  } catch (error) {
+    console.error('[FRIEND LEAGUES by-code]', error);
+    fail(res, 500, 'No se pudo abrir el enlace');
   }
 });
 
@@ -109,9 +129,12 @@ router.patch('/:id', async (req, res) => {
     if (!league) return;
     const { value, error: invalid } = normalizeLeagueInput(req.body);
     if (invalid) return fail(res, 400, invalid);
+    const isPublic = req.body?.is_public === undefined ? league.is_public : req.body.is_public === true;
+    const publicError = publicLeagueError({ isPublic, role: req.user.role, teamSize: value.team_size });
+    if (publicError) return fail(res, publicError.code, publicError.msg);
     await pool.query(
-      `UPDATE friend_leagues SET name=?, team_size=?, matches_goal=?, duration_days=?, rules=CAST(? AS JSON) WHERE id=? AND status='draft'`,
-      [value.name, value.team_size, value.matches_goal, value.duration_days, JSON.stringify(value.rules), league.id]
+      `UPDATE friend_leagues SET name=?, team_size=?, matches_goal=?, duration_days=?, rules=CAST(? AS JSON), is_public=?, join_code=COALESCE(join_code, ?) WHERE id=? AND status='draft'`,
+      [value.name, value.team_size, value.matches_goal, value.duration_days, JSON.stringify(value.rules), isPublic ? 1 : 0, isPublic ? newJoinCode() : null, league.id]
     );
     res.json({ ok: true });
   } catch (error) {
@@ -148,6 +171,35 @@ router.post('/:id/respond', async (req, res) => {
   } catch (error) {
     console.error('[FRIEND LEAGUES respond]', error);
     fail(res, 500, 'No se pudo responder a la invitación');
+  }
+});
+
+// Unirse a una liga pública, también con la liga en marcha. La fila se bloquea
+// para que dos personas a la vez no puedan pasarse del máximo.
+router.post('/:id/join', async (req, res) => {
+  const leagueId = positiveId(req.params.id);
+  if (!leagueId) return fail(res, 404, 'Liga no encontrada');
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
+    const [[league]] = await conn.query('SELECT status, is_public FROM friend_leagues WHERE id=? FOR UPDATE', [leagueId]);
+    if (!league || !Number(league.is_public)) { await conn.rollback(); return fail(res, 404, 'Liga no encontrada'); }
+    if (league.status === 'finished') { await conn.rollback(); return fail(res, 409, 'Esta liga ya ha terminado'); }
+    const [[{ total }]] = await conn.query('SELECT COUNT(*) AS total FROM friend_league_members WHERE league_id=? AND user_id<>?', [leagueId, req.user.id]);
+    if (Number(total) >= LEAGUE_LIMITS.adminMembers) { await conn.rollback(); return fail(res, 409, 'Esta liga ya está completa'); }
+    await conn.query(
+      `INSERT INTO friend_league_members (league_id, user_id, status) VALUES (?, ?, 'accepted')
+       ON DUPLICATE KEY UPDATE status='accepted'`,
+      [leagueId, req.user.id]
+    );
+    await conn.commit();
+    res.json({ ok: true });
+  } catch (error) {
+    await conn.rollback().catch(() => {});
+    console.error('[FRIEND LEAGUES join]', error);
+    fail(res, 500, 'No se pudo unir a la liga');
+  } finally {
+    conn.release();
   }
 });
 
