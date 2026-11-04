@@ -23,6 +23,7 @@ import PlayerStatsShareModal from '../components/PlayerStatsShareCard';
 import SegmentedControl from '../components/SegmentedControl';
 import { colors, layout, radii, spacing } from '../theme';
 import { cancellationPolicyMessage, getCancellationPolicy } from '../utils/cancellationPolicy';
+import { countTeamPlayers, groupAttendeesByTeam } from '../utils/matchTeams';
 
 const PUBLIC_BASE = String(api?.defaults?.baseURL || '').replace(/\/api\/?$/, '');
 
@@ -171,18 +172,10 @@ function getFieldDetails(fieldName) {
 function getTicketColor(ticketType) {
   const normalized = normalizeText(ticketType);
 
-  if (normalized.includes('blanca') || normalized.includes('blanco')) return 'Blanca';
-  if (normalized.includes('negra') || normalized.includes('negro')) return 'Negra';
+  if (normalized.includes('blanc') || normalized.includes('white')) return 'Blanca';
+  if (normalized.includes('negr') || normalized.includes('black')) return 'Negra';
 
   return ticketType || 'Por confirmar';
-}
-
-function getPlayerName(player) {
-  return player?.name || player?.nombre || player?.username || player?.user_name || 'Jugador';
-}
-
-function getPlayerTicket(player) {
-  return player?.ticket_type || player?.ticketType || player?.camiseta || player?.shirt || '';
 }
 
 function getItemUserId(item) {
@@ -363,29 +356,36 @@ export default function MisPartidosScreen({ navigation }) {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [statsCard, setStatsCard] = useState(null);
+  const [teams, setTeams] = useState(() => groupAttendeesByTeam([]));
+  const [teamsStatus, setTeamsStatus] = useState('loading');
 
   const selectedField = useMemo(() => {
     if (!selectedMatch) return null;
     return getFieldDetails(selectedMatch.field || selectedMatch.campo || selectedMatch.location);
   }, [selectedMatch]);
 
-  const teamWhite = useMemo(() => {
-    const players = selectedMatch?.players || selectedMatch?.inscritos || selectedMatch?.attendees || [];
-    return players.filter((player) => normalizeText(getPlayerTicket(player)).includes('blanc'));
-  }, [selectedMatch]);
+  const selectedMatchId = selectedMatch?.id;
+  const selectedInscriptions = selectedMatch?.inscriptions;
 
-  const teamBlack = useMemo(() => {
-    const players = selectedMatch?.players || selectedMatch?.inscritos || selectedMatch?.attendees || [];
-    return players.filter((player) => normalizeText(getPlayerTicket(player)).includes('negr'));
-  }, [selectedMatch]);
-
-  const playersWithoutTeam = useMemo(() => {
-    const players = selectedMatch?.players || selectedMatch?.inscritos || selectedMatch?.attendees || [];
-    return players.filter((player) => {
-      const ticket = normalizeText(getPlayerTicket(player));
-      return !ticket.includes('blanc') && !ticket.includes('negr');
-    });
-  }, [selectedMatch]);
+  // /me/inscriptions solo trae mis entradas: los equipos salen de los asistentes.
+  // Se recargan al reclamar o cancelar una entrada, que cambia las inscripciones.
+  useEffect(() => {
+    if (!selectedMatchId) return undefined;
+    let cancelled = false;
+    api.get(`/matches/${selectedMatchId}/attendees`)
+      .then((response) => {
+        if (cancelled) return;
+        setTeams(groupAttendeesByTeam(response.data?.data?.attendees));
+        setTeamsStatus('ready');
+      })
+      .catch(() => {
+        if (!cancelled) setTeamsStatus('error');
+      });
+    return () => {
+      cancelled = true;
+      setTeamsStatus('loading');
+    };
+  }, [selectedMatchId, selectedInscriptions]);
 
   const loadMatches = async () => {
     try {
@@ -662,7 +662,18 @@ export default function MisPartidosScreen({ navigation }) {
     const endTime = selectedMatch.end_time || selectedMatch.hora_fin;
     const ticket = getTicketColor(selectedMatch.camiseta || selectedMatch.ticket_type || selectedMatch.ticketType);
     const status = selectedMatch.status || selectedMatch.estado || 'Confirmado';
-    const totalPlayers = teamWhite.length + teamBlack.length + playersWithoutTeam.length;
+    const totalPlayers = countTeamPlayers(teams);
+    const emptyTeamText =
+      teamsStatus === 'loading'
+        ? 'Cargando jugadores…'
+        : teamsStatus === 'error'
+          ? 'No se pudieron cargar los jugadores'
+          : 'Sin jugadores asignados';
+    const renderTeamPlayer = (player, index) => (
+      <Text key={player.id} style={styles.playerText}>
+        {index + 1}. {player.name}{player.tickets > 1 ? ` ×${player.tickets}` : ''}
+      </Text>
+    );
     const isPastMatch = new Date(date).getTime() < Date.now() - 2 * 60 * 60 * 1000;
     const inscriptions = selectedMatch.inscriptions || [];
     const firstInscription = inscriptions[0] || selectedMatch;
@@ -922,39 +933,27 @@ export default function MisPartidosScreen({ navigation }) {
           <View style={styles.teamsContainer}>
             <View style={styles.teamBox}>
               <Text style={styles.teamTitle}>Equipo blanco</Text>
-              {teamWhite.length > 0 ? (
-                teamWhite.map((player, index) => (
-                  <Text key={`white-${getInscriptionId(player) || player.id || index}-${index}`} style={styles.playerText}>
-                    {index + 1}. {getPlayerName(player)}
-                  </Text>
-                ))
+              {teamsStatus === 'ready' && teams.white.length > 0 ? (
+                teams.white.map(renderTeamPlayer)
               ) : (
-                <Text style={styles.emptyTeamText}>Sin jugadores asignados</Text>
+                <Text style={styles.emptyTeamText}>{emptyTeamText}</Text>
               )}
             </View>
 
             <View style={styles.teamBox}>
               <Text style={styles.teamTitle}>Equipo negro</Text>
-              {teamBlack.length > 0 ? (
-                teamBlack.map((player, index) => (
-                  <Text key={`black-${getInscriptionId(player) || player.id || index}-${index}`} style={styles.playerText}>
-                    {index + 1}. {getPlayerName(player)}
-                  </Text>
-                ))
+              {teamsStatus === 'ready' && teams.black.length > 0 ? (
+                teams.black.map(renderTeamPlayer)
               ) : (
-                <Text style={styles.emptyTeamText}>Sin jugadores asignados</Text>
+                <Text style={styles.emptyTeamText}>{emptyTeamText}</Text>
               )}
             </View>
           </View>
 
-          {playersWithoutTeam.length > 0 && (
+          {teamsStatus === 'ready' && teams.pending.length > 0 && (
             <View style={styles.pendingPlayersBox}>
               <Text style={styles.teamTitle}>Por confirmar camiseta</Text>
-              {playersWithoutTeam.map((player, index) => (
-                <Text key={`pending-${getInscriptionId(player) || player.id || index}-${index}`} style={styles.playerText}>
-                  {index + 1}. {getPlayerName(player)}
-                </Text>
-              ))}
+              {teams.pending.map(renderTeamPlayer)}
             </View>
           )}
         </View>
