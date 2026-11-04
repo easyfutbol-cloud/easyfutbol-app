@@ -74,22 +74,6 @@ const getFieldConfig = (fieldName) => {
   return matchedKey ? FIELD_CONFIGS[matchedKey] : null;
 };
 
-const WORLD_CUP_FLAGS = {
-  spain: '🇪🇸',
-  argentina: '🇦🇷',
-  brazil: '🇧🇷',
-  ecuador: '🇪🇨',
-  dominican_republic: '🇩🇴',
-  south_korea: '🇰🇷',
-  nicaragua: '🇳🇮',
-  germany: '🇩🇪',
-};
-
-const getWorldCupFlag = (team) => {
-  if (!team) return null;
-  return WORLD_CUP_FLAGS[String(team).trim().toLowerCase()] || null;
-};
-
 export default function MatchScreen({ route, navigation }) {
   const matchId = route?.params?.matchId;
   const [match, setMatch] = useState(null);
@@ -142,7 +126,6 @@ export default function MatchScreen({ route, navigation }) {
       }
 
       const ticketColor = a.ticket_color || a.ticketColor || a.ticket_type || a.ticketType || 'orange';
-      const worldcupTeam = a.worldcup_team || a.worldcupTeam || null;
 
       out.push({
         key: stableId,
@@ -151,8 +134,6 @@ export default function MatchScreen({ route, navigation }) {
         avatar,
         rawAvatar: a.avatar_url || a.avatarUrl || a.avatar || '',
         ticketColor,
-        worldcupTeam,
-        flag: getWorldCupFlag(worldcupTeam),
         isFriend: matchFriends.some((friend) => Number(friend.id) === Number(userId)),
         isPlus: Boolean(Number(a.is_plus || 0)),
       });
@@ -332,10 +313,22 @@ export default function MatchScreen({ route, navigation }) {
         return;
       }
       await api.post('/push/register-token', { pushToken, platform: Platform.OS });
-      const { data } = await api.post(`/matches/${matchId}/waitlist`, { notifications_consent: true });
+      const { data } = await api.post(`/matches/${matchId}/waitlist`, {
+        notifications_consent: true,
+        easypass_hold_consent: true,
+        ticketType,
+      });
       setWaitlist(data?.data || null);
+      loadEasyPassCredits();
       Alert.alert('Lista de espera', data?.msg || 'Te avisaremos cuando haya una plaza para ti.');
     } catch (error) {
+      if (error?.response?.data?.code === 'NO_EASYPASS') {
+        Alert.alert('Sin EasyPass', error.response.data.msg, [
+          { text: 'Cancelar', style: 'cancel' },
+          { text: 'Comprar EasyPass', onPress: handleGoToEasyPass },
+        ]);
+        return;
+      }
       Alert.alert('No se pudo entrar', error?.response?.data?.msg || 'Inténtalo de nuevo.');
     } finally {
       setWaitlistLoading(false);
@@ -343,23 +336,86 @@ export default function MatchScreen({ route, navigation }) {
   };
 
   const handleJoinWaitlist = () => {
+    const holdAmount = Math.max(1, Number(match?.easypass_cost || 1));
     Alert.alert(
       'Entrar en la lista de espera',
-      'Debes aceptar las notificaciones. Cuando llegue tu turno tendrás 30 minutos para reservar; si no lo haces, la plaza pasará a la siguiente persona.',
+      `Te retendremos ${holdAmount} EasyPass${match?.location_name ? ` de ${match.location_name}` : ''} ahora mismo.\n\n`
+        + '• Si se libera una plaza, entras automáticamente y te avisamos. Desde ese momento se aplica la política normal de cancelación.\n'
+        + '• Puedes salir de la lista cuando quieras y recuperas el EasyPass al instante.\n'
+        + '• Si no sale plaza 2 horas antes del partido, te lo devolvemos.\n'
+        + '• Si hay mucha gente esperando puede salir otro partido después, y te avisaríamos en privado.\n'
+        + '• Los usuarios Plus tienen prioridad.\n\n'
+        + 'Necesitamos que tengas las notificaciones activadas.',
       [
         { text: 'Ahora no', style: 'cancel' },
-        { text: 'Aceptar y continuar', onPress: confirmJoinWaitlist },
+        { text: `Retener ${holdAmount} y entrar`, onPress: confirmJoinWaitlist },
       ]
     );
   };
 
-  const handleLeaveWaitlist = async () => {
+  const leaveWaitlist = async () => {
     try {
       setWaitlistLoading(true);
-      await api.delete(`/matches/${matchId}/waitlist`);
+      const { data } = await api.delete(`/matches/${matchId}/waitlist`);
       setWaitlist(null);
+      loadEasyPassCredits();
+      if (data?.refundedEasyPass > 0) Alert.alert('Lista de espera', data.msg);
     } catch (error) {
       Alert.alert('No se pudo salir', error?.response?.data?.msg || 'Inténtalo de nuevo.');
+    } finally {
+      setWaitlistLoading(false);
+    }
+  };
+
+  const handleLeaveWaitlist = () => {
+    const held = Number(waitlist?.held_easypass || 0);
+    Alert.alert(
+      'Cancelar tu puesto',
+      held > 0
+        ? `Perderás tu puesto en la lista y te devolveremos ${held} EasyPass al instante.`
+        : 'Perderás tu puesto en la lista de espera.',
+      [
+        { text: 'Seguir en la lista', style: 'cancel' },
+        { text: 'Cancelar puesto', style: 'destructive', onPress: leaveWaitlist },
+      ]
+    );
+  };
+
+  const acceptExtraInvitation = async () => {
+    try {
+      setWaitlistLoading(true);
+      const { data } = await api.post(`/waitlist/extra-invitations/${waitlist.extra_invitation.id}/accept`, { ticketType });
+      setWaitlist(null);
+      loadEasyPassCredits();
+      Alert.alert('Partido extra', data?.msg || '¡Estás dentro!', [
+        { text: 'Ver partido', onPress: () => navigation?.replace?.('Match', { matchId: data.matchId }) },
+      ]);
+    } catch (error) {
+      Alert.alert('No se pudo aceptar', error?.response?.data?.msg || 'Inténtalo de nuevo.');
+      loadWaitlist();
+    } finally {
+      setWaitlistLoading(false);
+    }
+  };
+
+  const handleAcceptExtraInvitation = () => {
+    Alert.alert(
+      'Pasarte al partido extra',
+      'Tu EasyPass retenido se usará en el partido extra y saldrás de esta lista de espera. Después se aplica la política normal de cancelación.',
+      [
+        { text: 'Ahora no', style: 'cancel' },
+        { text: 'Aceptar', onPress: acceptExtraInvitation },
+      ]
+    );
+  };
+
+  const handleDeclineExtraInvitation = async () => {
+    try {
+      setWaitlistLoading(true);
+      await api.post(`/waitlist/extra-invitations/${waitlist.extra_invitation.id}/decline`);
+      await loadWaitlist();
+    } catch (error) {
+      Alert.alert('No se pudo rechazar', error?.response?.data?.msg || 'Inténtalo de nuevo.');
     } finally {
       setWaitlistLoading(false);
     }
@@ -447,7 +503,8 @@ export default function MatchScreen({ route, navigation }) {
   const hasActiveWaitlistOffer = waitlist?.offer_active === true;
   const isFullByCapacity = match?.is_full === true || Number(match?.is_full) === 1 || (capacity !== null && spotsTaken >= capacity);
   const isFull = isFullByCapacity && !hasActiveWaitlistOffer;
-  const canPay = isPayable && !isFull && !paying;
+  const hasWaitlistHold = waitlist?.status === 'waiting' && Number(waitlist?.held_easypass) > 0;
+  const canPay = isPayable && !isFull && !paying && !hasWaitlistHold;
 
   const isAdmin = match?.is_admin === true;
 
@@ -676,9 +733,9 @@ export default function MatchScreen({ route, navigation }) {
     <ImageBackground
       source={SCREEN_BACKGROUND}
       style={styles.container}
-      imageStyle={styles.worldCupBgImage}
+      imageStyle={styles.screenBgImage}
     >
-      <View style={styles.worldCupOverlay} />
+      <View style={styles.screenOverlay} />
       <StatusBar barStyle="light-content" />
       <ScrollView
         showsVerticalScrollIndicator={false}
@@ -841,12 +898,6 @@ export default function MatchScreen({ route, navigation }) {
                     />
                   )}
                 </View>
-
-                {!!p.flag && (
-                  <View style={styles.attendeeFlagBadge}>
-                    <Text style={styles.attendeeFlagText}>{p.flag}</Text>
-                  </View>
-                )}
               </View>
               <Text style={[styles.attendeeName, p.isPlus && styles.attendeeNamePlus]} numberOfLines={1}>
                 {p.username}
@@ -905,16 +956,53 @@ export default function MatchScreen({ route, navigation }) {
                 {waitlist?.status === 'offered'
                   ? `Esta plaza está reservada para ti durante ${offerMinutes}:${offerSeconds}. Completa la reserva antes de que termine el tiempo.`
                   : waitlist?.joined
-                  ? `${waitlist.is_plus ? 'Tienes prioridad Plus. ' : ''}Recibirás una notificación cuando llegue tu turno y tendrás 30 minutos para apuntarte.`
-                  : 'Acepta las notificaciones y entra en la cola. Cada plaza se ofrece durante 30 minutos siguiendo el orden de la lista.'}
+                  ? hasWaitlistHold
+                    ? `${waitlist.is_plus ? 'Tienes prioridad Plus. ' : ''}Tienes ${waitlist.held_easypass} EasyPass retenido. Si se libera una plaza entras automáticamente y te avisamos. Si no sale plaza ${waitlist.cutoff_hours || 2} horas antes del partido, te lo devolvemos.`
+                    : `${waitlist.is_plus ? 'Tienes prioridad Plus. ' : ''}Recibirás una notificación cuando llegue tu turno y tendrás 30 minutos para apuntarte.`
+                  : `Entra en la cola con ${Math.max(1, Number(match?.easypass_cost || 1))} EasyPass retenido: si se libera una plaza entras automáticamente, y si cancelas tu puesto lo recuperas. Los usuarios Plus tienen prioridad.`}
               </Text>
+              {hasWaitlistHold && (
+                <Text style={styles.waitlistNote}>Si hay mucha gente esperando puede salir otro partido después. Si es así, te avisaremos en privado.</Text>
+              )}
+              {!waitlist?.joined && (
+                <View style={styles.waitlistColorRow}>
+                  {[['white', 'Camiseta blanca'], ['black', 'Camiseta negra']].map(([value, label]) => (
+                    <TouchableOpacity
+                      key={value}
+                      style={[styles.waitlistColorChip, ticketType === value && styles.waitlistColorChipActive]}
+                      onPress={() => setTicketType(value)}
+                      accessibilityRole="button"
+                      accessibilityState={{ selected: ticketType === value }}
+                    >
+                      <Text style={[styles.waitlistColorText, ticketType === value && styles.waitlistColorTextActive]}>{label}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              )}
+              {waitlist?.extra_invitation && (
+                <View style={styles.waitlistExtraBox}>
+                  <Text style={styles.waitlistEyebrow}>INVITACIÓN PRIVADA</Text>
+                  <Text style={styles.waitlistTitle}>Sale un partido extra</Text>
+                  <Text style={styles.waitlistText}>
+                    {new Date(waitlist.extra_invitation.starts_at).toLocaleString('es-ES', { weekday: 'long', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' })}
+                    {waitlist.extra_invitation.field_name ? ` · ${waitlist.extra_invitation.field_name}` : ''}
+                    {` · ${waitlist.extra_invitation.spots_remaining} plazas`}
+                  </Text>
+                  <TouchableOpacity style={styles.waitlistPrimaryButton} onPress={handleAcceptExtraInvitation} disabled={waitlistLoading}>
+                    <Text style={styles.waitlistPrimaryText}>Aceptar con mi EasyPass retenido</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity style={styles.waitlistSecondaryButton} onPress={handleDeclineExtraInvitation} disabled={waitlistLoading}>
+                    <Text style={styles.waitlistSecondaryText}>No, sigo en la lista</Text>
+                  </TouchableOpacity>
+                </View>
+              )}
               {!waitlist?.joined ? (
                 <TouchableOpacity style={styles.waitlistPrimaryButton} onPress={handleJoinWaitlist} disabled={waitlistLoading}>
-                  <Text style={styles.waitlistPrimaryText}>{waitlistLoading ? 'Activando…' : 'Aceptar notificaciones y entrar'}</Text>
+                  <Text style={styles.waitlistPrimaryText}>{waitlistLoading ? 'Activando…' : 'Entrar en la lista de espera'}</Text>
                 </TouchableOpacity>
               ) : waitlist?.status !== 'offered' ? (
                 <TouchableOpacity style={styles.waitlistSecondaryButton} onPress={handleLeaveWaitlist} disabled={waitlistLoading}>
-                  <Text style={styles.waitlistSecondaryText}>{waitlistLoading ? 'Saliendo…' : 'Salir de la lista'}</Text>
+                  <Text style={styles.waitlistSecondaryText}>{waitlistLoading ? 'Saliendo…' : 'Cancelar mi puesto en la lista'}</Text>
                 </TouchableOpacity>
               ) : null}
             </LinearGradient>
@@ -1110,11 +1198,11 @@ const styles = StyleSheet.create({
   attendeeAddText: { color: '#fff', fontSize: 9, fontWeight: '900' },
   attendeeSentText: { color: '#7bcb90', fontSize: 9, fontWeight: '900', marginTop: 3 },
   container:{ flex:1, backgroundColor:colors.background, paddingHorizontal:spacing(2) },
-  worldCupBgImage: {
+  screenBgImage: {
     resizeMode: 'cover',
     opacity: 0.72,
   },
-  worldCupOverlay: {
+  screenOverlay: {
     ...StyleSheet.absoluteFillObject,
     backgroundColor: 'rgba(5,7,10,0.82)',
   },
@@ -1353,6 +1441,13 @@ const styles = StyleSheet.create({
   waitlistEyebrow:{ color:colors.warning, ...typography.overline, fontSize:9 },
   waitlistTitle:{ color:colors.white, ...typography.bodyStrong, marginTop:2 },
   waitlistText:{ color:colors.textMuted, ...typography.body, marginTop:spacing(1) },
+  waitlistNote:{ color:colors.textMuted, ...typography.body, fontSize:12, marginTop:spacing(1) },
+  waitlistColorRow:{ flexDirection:'row', gap:spacing(1), marginTop:spacing(1.5) },
+  waitlistColorChip:{ flex:1, minHeight:layout.minTouchTarget, alignItems:'center', justifyContent:'center', borderWidth:1, borderColor:colors.border, borderRadius:radii.medium },
+  waitlistColorChipActive:{ borderColor:colors.warning, backgroundColor:'rgba(255,176,32,0.14)' },
+  waitlistColorText:{ color:colors.textMuted, ...typography.bodyStrong, fontSize:13 },
+  waitlistColorTextActive:{ color:colors.white },
+  waitlistExtraBox:{ marginTop:spacing(2), padding:spacing(1.5), borderRadius:radii.medium, borderWidth:1, borderColor:colors.warning, backgroundColor:'rgba(255,176,32,0.08)' },
   waitlistPrimaryButton:{ minHeight:layout.minTouchTarget, alignItems:'center', justifyContent:'center', backgroundColor:colors.warning, borderRadius:radii.medium, paddingHorizontal:spacing(1.5), marginTop:spacing(1.5) },
   waitlistPrimaryText:{ color:colors.black, ...typography.bodyStrong, fontWeight:'900', textAlign:'center' },
   waitlistSecondaryButton:{ minHeight:layout.minTouchTarget, alignItems:'center', justifyContent:'center', borderWidth:1, borderColor:colors.border, borderRadius:radii.medium, paddingHorizontal:spacing(1.5), marginTop:spacing(1.5) },
@@ -1521,22 +1616,6 @@ attendeesSectionTitle: {
   attendeeAvatar: {
     width: 52,
     height: 52,
-  },
-  attendeeFlagBadge: {
-    position: 'absolute',
-    right: 0,
-    bottom: 3,
-    width: 22,
-    height: 22,
-    borderRadius: 11,
-    backgroundColor: '#050505',
-    borderWidth: 1,
-    borderColor: '#ffffff',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  attendeeFlagText: {
-    fontSize: 13,
   },
   attendeeName: {
     color: colors.white,

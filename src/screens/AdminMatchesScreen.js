@@ -263,7 +263,7 @@ export default function AdminMatchesScreen({ navigation }) {
         onPress={() => handleEditPress(item)}
       >
         <View style={styles.cardHeader}>
-          <Text style={styles.title}>{item.title || 'Partido sin nombre'}</Text>
+          <Text style={styles.title}>{Number(item.is_private) === 1 ? '🔒 ' : ''}{item.title || 'Partido sin nombre'}</Text>
           <View style={styles.statusBadge}>
             <Text style={styles.statusText}>{statusLabel}</Text>
           </View>

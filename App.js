@@ -70,6 +70,8 @@ import AdminBusinessKpisScreen from './src/screens/AdminBusinessKpisScreen';
 import AdminRetentionScreen from './src/screens/AdminRetentionScreen';
 import AdminMatchReviewsScreen from './src/screens/AdminMatchReviewsScreen';
 import AdminFriendLeaguesScreen from './src/screens/AdminFriendLeaguesScreen';
+import AdminFeatureUsageScreen from './src/screens/AdminFeatureUsageScreen';
+import { trackRoute } from './src/utils/featureUsage';
 import AdminOrganizersScreen from './src/screens/AdminOrganizersScreen';
 import AdminOrganizerEditScreen from './src/screens/AdminOrganizerEditScreen';
 import AdminPlusSubscribersScreen from './src/screens/AdminPlusSubscribersScreen';
@@ -804,6 +806,7 @@ function AppShell({ currentRouteName }) {
         <Stack.Screen name="AdminRetention" component={AdminRetentionScreen} />
         <Stack.Screen name="AdminMatchReviews" component={AdminMatchReviewsScreen} />
         <Stack.Screen name="AdminFriendLeagues" component={AdminFriendLeaguesScreen} />
+        <Stack.Screen name="AdminFeatureUsage" component={AdminFeatureUsageScreen} />
         <Stack.Screen name="AdminOrganizers" component={AdminOrganizersScreen} />
         <Stack.Screen name="AdminOrganizerEdit" component={AdminOrganizerEditScreen} />
         <Stack.Screen name="AdminPlusSubscribers" component={AdminPlusSubscribersScreen} />
@@ -968,10 +971,12 @@ export default function App() {
           onReady={() => {
             const route = navigationRef.getCurrentRoute();
             setCurrentRouteName(route?.name ?? null);
+            trackRoute(route?.name);
           }}
           onStateChange={() => {
             const route = navigationRef.getCurrentRoute();
             setCurrentRouteName(route?.name ?? null);
+            trackRoute(route?.name);
           }}
         >
           <AppShell currentRouteName={currentRouteName} />

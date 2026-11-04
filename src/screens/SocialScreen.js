@@ -10,6 +10,7 @@ import FriendTile, { shortMatchDate } from '../components/social/FriendTile';
 import TopPlayers from '../components/social/TopPlayers';
 import FriendLeaguesList from '../components/social/FriendLeaguesList';
 import { isAdminUser } from '../utils/friendLeagueRules';
+import { trackFeature } from '../utils/featureUsage';
 
 // Social: tus amigos (cuadrícula), tus ligas, los tops de jugadores, invitaciones y
 // solicitudes. Al escribir en el buscador se ven resultados en cualquier pestaña.
@@ -60,6 +61,10 @@ export default function SocialScreen({ navigation, route }) {
     const tabParam = route.params?.tab;
     if (LINKED_TABS.includes(tabParam)) setTab(tabParam);
   }, [route.params?.tab]);
+  useEffect(() => {
+    if (tab === 'leagues') trackFeature('friend_leagues');
+    if (tab === 'top') trackFeature('social_top');
+  }, [tab]);
 
   const loadSummary = useCallback(async () => {
     try {
