@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   View,
   Text,
@@ -15,12 +15,16 @@ import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { api } from '../api/client';
 import { avatarSource } from '../utils/defaultAvatar';
+import { eventTimeLabel, formatClockTime, minuteSinceStart, withClockTime } from '../utils/matchEventTime';
 
 const TYPE_LABEL = { goal: 'Gol', save: 'Parada', mvp: 'MVP' };
 const TYPE_ICON = { goal: 'football', save: 'hand-left', mvp: 'star' };
 
-function pad2(n) {
-  return String(n).padStart(2, '0');
+// Orden cronológico; los eventos antiguos sin hora real se quedan con su minuto.
+function compareEvents(a, b) {
+  return (a.minute ?? -1) - (b.minute ?? -1)
+    || new Date(a.occurred_at || 0).getTime() - new Date(b.occurred_at || 0).getTime()
+    || a.id - b.id;
 }
 
 function PlayerRow({ player, onPress }) {
@@ -39,17 +43,11 @@ export default function AdminMatchLiveScreen({ navigation, route }) {
 
   const [events, setEvents] = useState([]);
   const [loading, setLoading] = useState(true);
-
-  const [running, setRunning] = useState(false);
-  const [startedAt, setStartedAt] = useState(null);
-  const [offsetMinutes, setOffsetMinutes] = useState(0);
-  const [, setTick] = useState(0);
-  const [editingMinute, setEditingMinute] = useState(false);
-  const [minuteInput, setMinuteInput] = useState('');
+  const [matchStartsAt, setMatchStartsAt] = useState(null);
 
   const [roster, setRoster] = useState({ white: [], black: [] });
 
-  // picker: { mode: 'goal-scorer'|'goal-assist'|'save'|'mvp', minute, scorer? }
+  // picker: { mode: 'goal-scorer'|'goal-assist'|'save'|'mvp', occurredAt, scorer? }
   const [picker, setPicker] = useState(null);
   const [submitting, setSubmitting] = useState(false);
 
@@ -67,33 +65,6 @@ export default function AdminMatchLiveScreen({ navigation, route }) {
 
   const [applyingResult, setApplyingResult] = useState(false);
 
-  const intervalRef = useRef(null);
-
-  useEffect(() => {
-    if (running) {
-      intervalRef.current = setInterval(() => setTick((t) => t + 1), 1000);
-    } else if (intervalRef.current) {
-      clearInterval(intervalRef.current);
-      intervalRef.current = null;
-    }
-    return () => {
-      if (intervalRef.current) clearInterval(intervalRef.current);
-    };
-  }, [running]);
-
-  const currentMinute = useMemo(() => {
-    const elapsed = running && startedAt ? Math.floor((Date.now() - startedAt) / 60000) : 0;
-    return Math.max(0, offsetMinutes + elapsed);
-  }, [running, startedAt, offsetMinutes]);
-
-  const elapsedLabel = useMemo(() => {
-    if (!running || !startedAt) return `${pad2(offsetMinutes)}:00`;
-    const totalSeconds = Math.floor((Date.now() - startedAt) / 1000) + offsetMinutes * 60;
-    const mm = Math.max(0, Math.floor(totalSeconds / 60));
-    const ss = Math.max(0, totalSeconds % 60);
-    return `${pad2(mm)}:${pad2(ss)}`;
-  }, [running, startedAt, offsetMinutes]);
-
   const allPlayers = useMemo(
     () => [
       ...roster.white.map((p) => ({ ...p, user_id: p.user_id, color: 'white' })),
@@ -107,6 +78,7 @@ export default function AdminMatchLiveScreen({ navigation, route }) {
       setLoading(true);
       const res = await api.get(`/admin/matches/${matchId}/events`);
       setEvents(Array.isArray(res.data?.data) ? res.data.data : []);
+      setMatchStartsAt(res.data?.match?.starts_at || null);
     } catch (e) {
       Alert.alert('Error', e?.response?.data?.msg || e.message || 'No se pudieron cargar los eventos');
     } finally {
@@ -129,32 +101,6 @@ export default function AdminMatchLiveScreen({ navigation, route }) {
       fetchRoster();
     }, [fetchEvents, fetchRoster])
   );
-
-  const handleStartStop = () => {
-    if (running) {
-      setOffsetMinutes((prev) => prev + Math.floor((Date.now() - startedAt) / 60000));
-      setRunning(false);
-      setStartedAt(null);
-    } else {
-      setStartedAt(Date.now());
-      setRunning(true);
-    }
-  };
-
-  const adjustMinute = (delta) => setOffsetMinutes((prev) => Math.max(0, prev + delta));
-
-  const openMinuteEdit = () => {
-    setMinuteInput(String(currentMinute));
-    setEditingMinute(true);
-  };
-
-  const confirmMinuteEdit = () => {
-    const minute = Number(minuteInput);
-    if (!Number.isInteger(minute) || minute < 0) return Alert.alert('Minuto inválido', 'Escribe un número de minuto válido.');
-    setOffsetMinutes(minute);
-    if (running) setStartedAt(Date.now());
-    setEditingMinute(false);
-  };
 
   // --- flujo de registrar eventos con jugadores reales ---
 
@@ -195,16 +141,17 @@ export default function AdminMatchLiveScreen({ navigation, route }) {
     setGuestColor(null);
   };
 
+  // La hora se captura al pulsar el botón, no al terminar de elegir jugador.
   const startGoalFlow = () => {
     resetOtherSearch();
     resetGuestForm();
-    setPicker({ mode: 'goal-scorer', minute: currentMinute });
+    setPicker({ mode: 'goal-scorer', occurredAt: new Date().toISOString() });
   };
 
   const startSaveFlow = () => {
     resetOtherSearch();
     resetGuestForm();
-    setPicker({ mode: 'save', minute: currentMinute });
+    setPicker({ mode: 'save', occurredAt: new Date().toISOString() });
   };
 
   const startMvpFlow = () => {
@@ -216,12 +163,14 @@ export default function AdminMatchLiveScreen({ navigation, route }) {
   const submitEvent = async (body) => {
     try {
       setSubmitting(true);
-      const res = await api.post(`/admin/matches/${matchId}/events`, body);
+      // El minuto también viaja para que funcione con un backend que aún no guarde la hora.
+      const minute = body.occurred_at ? minuteSinceStart(body.occurred_at, matchStartsAt) : null;
+      const res = await api.post(`/admin/matches/${matchId}/events`, minute === null ? body : { ...body, minute });
       const created = res.data?.data;
       if (created) {
         setEvents((prev) => {
           const withoutOldMvp = created.type === 'mvp' ? prev.filter((e) => e.type !== 'mvp') : prev;
-          return [...withoutOldMvp, created].sort((a, b) => (a.minute ?? -1) - (b.minute ?? -1) || a.id - b.id);
+          return [...withoutOldMvp, created].sort(compareEvents);
         });
       }
       setPicker(null);
@@ -244,15 +193,15 @@ export default function AdminMatchLiveScreen({ navigation, route }) {
     if (picker.mode === 'goal-scorer') {
       resetOtherSearch();
       resetGuestForm();
-      setPicker({ mode: 'goal-assist', minute: picker.minute, scorer: player });
+      setPicker({ mode: 'goal-assist', occurredAt: picker.occurredAt, scorer: player });
       return;
     }
     if (picker.mode === 'goal-assist') {
-      submitEvent({ type: 'goal', minute: picker.minute, ...playerIdentity(picker.scorer), ...assistIdentity(player), team_color: picker.scorer.color });
+      submitEvent({ type: 'goal', occurred_at: picker.occurredAt, ...playerIdentity(picker.scorer), ...assistIdentity(player), team_color: picker.scorer.color });
       return;
     }
     if (picker.mode === 'save') {
-      submitEvent({ type: 'save', minute: picker.minute, ...playerIdentity(player), team_color: player.color });
+      submitEvent({ type: 'save', occurred_at: picker.occurredAt, ...playerIdentity(player), team_color: player.color });
       return;
     }
     if (picker.mode === 'mvp') {
@@ -261,7 +210,7 @@ export default function AdminMatchLiveScreen({ navigation, route }) {
   };
 
   const skipAssist = () => {
-    submitEvent({ type: 'goal', minute: picker.minute, ...playerIdentity(picker.scorer), team_color: picker.scorer.color });
+    submitEvent({ type: 'goal', occurred_at: picker.occurredAt, ...playerIdentity(picker.scorer), team_color: picker.scorer.color });
   };
 
   const toggleCandidate = async (event) => {
@@ -295,18 +244,26 @@ export default function AdminMatchLiveScreen({ navigation, route }) {
 
   const openEdit = (event) => {
     if (event.type === 'mvp') return; // el MVP se cambia eligiendo otro desde el botón MVP
-    setEditingEvent({ ...event, minuteInput: String(event.minute ?? '') });
+    setEditingEvent({ ...event, timeInput: event.occurred_at ? formatClockTime(event.occurred_at) : String(event.minute ?? '') });
   };
 
   const saveEdit = async () => {
     if (!editingEvent) return;
-    const minute = Number(editingEvent.minuteInput);
-    if (!Number.isInteger(minute) || minute < 0) return Alert.alert('Minuto inválido', 'Escribe un minuto válido.');
+    let body;
+    if (editingEvent.occurred_at) {
+      const occurredAt = withClockTime(editingEvent.occurred_at, editingEvent.timeInput);
+      if (!occurredAt) return Alert.alert('Hora inválida', 'Escribe la hora así: 21:37.');
+      body = { occurred_at: occurredAt.toISOString() };
+    } else {
+      const minute = Number(editingEvent.timeInput);
+      if (!Number.isInteger(minute) || minute < 0) return Alert.alert('Minuto inválido', 'Escribe un minuto válido.');
+      body = { minute };
+    }
     try {
       setSavingEdit(true);
-      const res = await api.put(`/admin/matches/${matchId}/events/${editingEvent.id}`, { minute });
+      const res = await api.put(`/admin/matches/${matchId}/events/${editingEvent.id}`, body);
       const updated = res.data?.data;
-      if (updated) setEvents((prev) => prev.map((e) => (e.id === updated.id ? updated : e)).sort((a, b) => (a.minute ?? -1) - (b.minute ?? -1) || a.id - b.id));
+      if (updated) setEvents((prev) => prev.map((e) => (e.id === updated.id ? updated : e)).sort(compareEvents));
       setEditingEvent(null);
     } catch (e) {
       Alert.alert('Error', e?.response?.data?.msg || e.message || 'No se pudo guardar');
@@ -353,45 +310,7 @@ export default function AdminMatchLiveScreen({ navigation, route }) {
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
         <Text style={styles.screenTitle}>{matchTitle || 'Partido en directo'}</Text>
 
-        <View style={styles.timerBox}>
-          <Text style={styles.timerLabel}>MINUTO</Text>
-          {editingMinute ? (
-            <View style={styles.minuteEditRow}>
-              <TextInput
-                style={styles.minuteEditInput}
-                value={minuteInput}
-                onChangeText={setMinuteInput}
-                keyboardType="number-pad"
-                autoFocus
-                selectTextOnFocus
-                onSubmitEditing={confirmMinuteEdit}
-              />
-              <TouchableOpacity style={styles.minuteEditConfirm} onPress={confirmMinuteEdit}>
-                <Ionicons name="checkmark" size={20} color="#fff" />
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.minuteEditCancel} onPress={() => setEditingMinute(false)}>
-                <Ionicons name="close" size={20} color="#999" />
-              </TouchableOpacity>
-            </View>
-          ) : (
-            <TouchableOpacity onPress={openMinuteEdit} activeOpacity={0.7}>
-              <Text style={styles.timerValue}>{elapsedLabel}</Text>
-              <Text style={styles.timerEditHint}>Toca para escribir el minuto</Text>
-            </TouchableOpacity>
-          )}
-          <View style={styles.timerControls}>
-            <TouchableOpacity style={styles.timerAdjustButton} onPress={() => adjustMinute(-1)}>
-              <Text style={styles.timerAdjustText}>-1</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.timerMainButton} onPress={handleStartStop}>
-              <Ionicons name={running ? 'pause' : 'play'} size={18} color="#fff" />
-              <Text style={styles.timerMainText}>{running ? 'Pausar' : 'Iniciar'}</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.timerAdjustButton} onPress={() => adjustMinute(1)}>
-              <Text style={styles.timerAdjustText}>+1</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
+        <Text style={styles.timeHint}>Se guarda la hora real al pulsar GOL o PARADA. Luego puedes marcarlo con la estrella.</Text>
 
         <View style={styles.actionRow}>
           <TouchableOpacity style={[styles.actionButton, styles.goalButton]} onPress={startGoalFlow}>
@@ -429,7 +348,7 @@ export default function AdminMatchLiveScreen({ navigation, route }) {
           timelineEvents.map((event) => (
             <TouchableOpacity key={event.id} style={styles.eventRow} activeOpacity={0.85} onPress={() => openEdit(event)}>
               <View style={styles.eventMinuteBox}>
-                <Text style={styles.eventMinuteText}>{event.minute}'</Text>
+                <Text style={styles.eventMinuteText}>{eventTimeLabel(event)}</Text>
               </View>
               <Ionicons name={TYPE_ICON[event.type]} size={20} color={event.type === 'goal' ? '#ff8c4d' : '#4db1ff'} />
               <View style={styles.eventBody}>
@@ -482,6 +401,7 @@ export default function AdminMatchLiveScreen({ navigation, route }) {
               {picker?.mode === 'save' && '¿Quién ha parado?'}
               {picker?.mode === 'mvp' && '¿Quién es el MVP?'}
             </Text>
+            {picker?.occurredAt ? <Text style={styles.pickerTime}>Hora: {formatClockTime(picker.occurredAt)}</Text> : null}
 
             {picker?.mode === 'goal-assist' && (
               <TouchableOpacity style={styles.skipAssistButton} onPress={skipAssist} disabled={submitting}>
@@ -570,18 +490,20 @@ export default function AdminMatchLiveScreen({ navigation, route }) {
         </View>
       </Modal>
 
-      {/* Editar minuto de un evento ya registrado */}
+      {/* Corregir la hora (o el minuto en eventos antiguos) de un evento ya registrado */}
       <Modal visible={!!editingEvent} transparent animationType="fade" onRequestClose={() => setEditingEvent(null)}>
         <View style={styles.modalOverlay}>
           <View style={styles.modalBox}>
             <Text style={styles.modalTitle}>{editingEvent ? `${TYPE_LABEL[editingEvent.type]} · ${editingEvent.player_name}` : ''}</Text>
 
-            <Text style={styles.modalLabel}>Minuto</Text>
+            <Text style={styles.modalLabel}>{editingEvent?.occurred_at ? 'Hora' : 'Minuto'}</Text>
             <TextInput
               style={styles.modalInput}
-              value={editingEvent?.minuteInput ?? ''}
-              onChangeText={(v) => setEditingEvent((prev) => ({ ...prev, minuteInput: v }))}
-              keyboardType="number-pad"
+              value={editingEvent?.timeInput ?? ''}
+              onChangeText={(v) => setEditingEvent((prev) => ({ ...prev, timeInput: v }))}
+              keyboardType={editingEvent?.occurred_at ? 'numbers-and-punctuation' : 'number-pad'}
+              placeholder={editingEvent?.occurred_at ? '21:37' : undefined}
+              placeholderTextColor="#666"
             />
 
             <View style={styles.modalButtonRow}>
@@ -605,19 +527,7 @@ const styles = StyleSheet.create({
   centeredContainer: { flex: 1, backgroundColor: '#000', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 24 },
   loadingText: { marginTop: 12, color: '#fff', fontSize: 16 },
   screenTitle: { color: '#fff', fontSize: 24, fontWeight: '800', marginBottom: 16 },
-  timerBox: { backgroundColor: '#111', borderRadius: 18, borderWidth: 1, borderColor: '#222', padding: 18, alignItems: 'center', marginBottom: 16 },
-  timerLabel: { color: '#888', fontSize: 11, fontWeight: '800', letterSpacing: 1 },
-  timerValue: { color: '#fff', fontSize: 44, fontWeight: '900', marginTop: 4, fontVariant: ['tabular-nums'], textAlign: 'center' },
-  timerEditHint: { color: '#666', fontSize: 10, fontWeight: '700', textAlign: 'center', marginTop: 2 },
-  minuteEditRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 6 },
-  minuteEditInput: { width: 100, backgroundColor: '#1c1c1c', borderWidth: 1, borderColor: '#333', borderRadius: 10, paddingVertical: 8, paddingHorizontal: 12, color: '#fff', fontSize: 24, fontWeight: '800', textAlign: 'center' },
-  minuteEditConfirm: { width: 40, height: 40, borderRadius: 10, backgroundColor: '#ff5a00', alignItems: 'center', justifyContent: 'center' },
-  minuteEditCancel: { width: 40, height: 40, borderRadius: 10, borderWidth: 1, borderColor: '#333', alignItems: 'center', justifyContent: 'center' },
-  timerControls: { flexDirection: 'row', alignItems: 'center', gap: 14, marginTop: 14 },
-  timerAdjustButton: { width: 44, height: 44, borderRadius: 12, borderWidth: 1, borderColor: '#333', alignItems: 'center', justifyContent: 'center' },
-  timerAdjustText: { color: '#fff', fontWeight: '800' },
-  timerMainButton: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: '#ff5a00', borderRadius: 14, paddingHorizontal: 20, paddingVertical: 12 },
-  timerMainText: { color: '#fff', fontWeight: '800', fontSize: 14 },
+  timeHint: { color: '#888', fontSize: 13, lineHeight: 18, marginBottom: 14 },
   actionRow: { flexDirection: 'row', gap: 12, marginBottom: 12 },
   actionButton: { flex: 1, borderRadius: 18, paddingVertical: 26, alignItems: 'center', gap: 6 },
   goalButton: { backgroundColor: '#ff5a00' },
@@ -631,7 +541,7 @@ const styles = StyleSheet.create({
   emptyState: { backgroundColor: '#111', borderRadius: 16, padding: 20, borderWidth: 1, borderColor: '#1f1f1f', alignItems: 'center' },
   emptyText: { color: '#888', fontSize: 13, textAlign: 'center' },
   eventRow: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#111', borderRadius: 14, borderWidth: 1, borderColor: '#222', padding: 12, marginBottom: 10, gap: 10 },
-  eventMinuteBox: { width: 40, height: 34, borderRadius: 9, backgroundColor: '#1a1a1a', alignItems: 'center', justifyContent: 'center' },
+  eventMinuteBox: { minWidth: 40, paddingHorizontal: 8, height: 34, borderRadius: 9, backgroundColor: '#1a1a1a', alignItems: 'center', justifyContent: 'center' },
   eventMinuteText: { color: '#fff', fontWeight: '800', fontSize: 13 },
   eventBody: { flex: 1 },
   eventType: { color: '#fff', fontWeight: '700', fontSize: 14 },
@@ -652,6 +562,7 @@ const styles = StyleSheet.create({
   pickerOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' },
   pickerSheet: { backgroundColor: '#141414', borderTopLeftRadius: 22, borderTopRightRadius: 22, borderWidth: 1, borderColor: '#262626', padding: 18, maxHeight: '80%' },
   pickerTitle: { color: '#fff', fontSize: 18, fontWeight: '800', marginBottom: 12, textAlign: 'center' },
+  pickerTime: { color: '#888', fontSize: 12, fontWeight: '700', marginTop: -8, marginBottom: 12, textAlign: 'center' },
   skipAssistButton: { backgroundColor: '#222', borderRadius: 12, paddingVertical: 13, alignItems: 'center', marginBottom: 12 },
   skipAssistButtonText: { color: '#ccc', fontSize: 14, fontWeight: '800' },
   pickerList: { marginBottom: 10 },

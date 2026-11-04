@@ -3,12 +3,13 @@ import { View, Text, StyleSheet, ScrollView, ActivityIndicator, TouchableOpacity
 import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { api } from '../api/client';
+import { eventTimeLabel } from '../utils/matchEventTime';
 
 function eventLine(event) {
   const player = event.player_name ? ` — ${event.player_name}` : '';
   const assist = event.assist_name ? ` (asiste ${event.assist_name})` : '';
   const team = event.team_color ? ` (${event.team_color === 'white' ? 'Blancos' : 'Negros'})` : '';
-  return `${event.minute}'${player}${assist}${team}`;
+  return `${eventTimeLabel(event)}${player}${assist}${team}`;
 }
 
 function buildShareText(match, data) {
@@ -126,7 +127,7 @@ function Section({ title, events, emptyLabel }) {
         events.map((e) => (
           <View key={e.id} style={styles.eventRow}>
             <View style={styles.eventMinuteBox}>
-              <Text style={styles.eventMinuteText}>{e.minute}'</Text>
+              <Text style={styles.eventMinuteText}>{eventTimeLabel(e)}</Text>
             </View>
             <Text style={styles.eventText}>
               {e.player_name || 'Jugador sin especificar'}
@@ -158,7 +159,7 @@ const styles = StyleSheet.create({
   sectionTitle: { color: '#fff', fontSize: 16, fontWeight: '800', marginBottom: 10 },
   emptyText: { color: '#777', fontSize: 13 },
   eventRow: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: '#111', borderRadius: 12, borderWidth: 1, borderColor: '#222', padding: 11, marginBottom: 8 },
-  eventMinuteBox: { width: 38, height: 30, borderRadius: 8, backgroundColor: '#1a1a1a', alignItems: 'center', justifyContent: 'center' },
+  eventMinuteBox: { minWidth: 38, paddingHorizontal: 8, height: 30, borderRadius: 8, backgroundColor: '#1a1a1a', alignItems: 'center', justifyContent: 'center' },
   eventMinuteText: { color: '#fff', fontWeight: '800', fontSize: 12 },
   eventText: { flex: 1, color: '#ddd', fontSize: 13 },
   copyButton: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: '#ff5a00', borderRadius: 14, paddingVertical: 15, marginTop: 8 },
