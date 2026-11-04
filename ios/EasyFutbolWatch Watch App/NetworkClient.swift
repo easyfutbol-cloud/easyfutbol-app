@@ -79,6 +79,8 @@ final class NetworkClient {
         if let minute = event.minute { body["minute"] = minute }
         if let assistUserId = event.assistUserId { body["assist_user_id"] = assistUserId }
         if let teamColor = event.teamColor { body["team_color"] = teamColor }
+        if event.type != .mvp { body["occurred_at"] = ISO8601DateFormatter().string(from: event.createdAt) }
+        if event.isCandidate == true { body["is_candidate"] = 1 }
 
         _ = try await request("/admin/matches/\(event.matchId)/events", method: "POST", body: body, token: token)
     }

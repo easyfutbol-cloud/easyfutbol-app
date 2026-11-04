@@ -70,7 +70,10 @@ struct PendingEvent: Codable, Identifiable {
     let assistUserId: Int?
     let teamColor: String?
     var status: PendingStatus = .queued
+    /// Hora real del evento: se captura al pulsar GOL o PARADA, no al subirlo.
     var createdAt: Date = Date()
+    /// Opcional para poder leer las colas guardadas por versiones anteriores.
+    var isCandidate: Bool? = nil
 }
 
 enum PendingStatus: String, Codable {

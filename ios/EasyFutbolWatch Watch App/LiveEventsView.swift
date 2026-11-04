@@ -1,20 +1,20 @@
 import SwiftUI
 
 private enum PickerMode: Identifiable {
-    case goalScorer
-    case goalAssist(scorer: TeamPlayer)
-    case goalMinute(scorer: TeamPlayer, assist: TeamPlayer?)
-    case save
-    case saveMinute(player: TeamPlayer)
+    case goalScorer(at: Date)
+    case goalAssist(scorer: TeamPlayer, at: Date)
+    case goalConfirm(scorer: TeamPlayer, assist: TeamPlayer?, at: Date)
+    case save(at: Date)
+    case saveConfirm(player: TeamPlayer, at: Date)
     case mvp
 
     var id: String {
         switch self {
         case .goalScorer: return "goalScorer"
         case .goalAssist: return "goalAssist"
-        case .goalMinute: return "goalMinute"
+        case .goalConfirm: return "goalConfirm"
         case .save: return "save"
-        case .saveMinute: return "saveMinute"
+        case .saveConfirm: return "saveConfirm"
         case .mvp: return "mvp"
         }
     }
@@ -24,20 +24,11 @@ struct LiveEventsView: View {
     @ObservedObject var store = OfflineStore.shared
     @ObservedObject var sync = SyncManager.shared
 
-    @State private var running = false
-    @State private var startedAt: Date?
-    @State private var offsetMinutes = 0
     @State private var pickerMode: PickerMode?
     @State private var showChangeMatchConfirm = false
 
     private var players: [TeamPlayer] {
         store.state.roster.map { TeamPlayer(userId: $0.userId, name: $0.name, color: $0.color) }
-    }
-
-    private func currentMinute(now: Date) -> Int {
-        guard running, let startedAt else { return offsetMinutes }
-        let elapsed = Int(now.timeIntervalSince(startedAt) / 60)
-        return max(0, offsetMinutes + elapsed)
     }
 
     var body: some View {
@@ -48,28 +39,14 @@ struct LiveEventsView: View {
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
 
-                TimelineView(.periodic(from: .now, by: 1)) { context in
-                    VStack(spacing: 6) {
-                        Text("\(currentMinute(now: context.date))'")
-                            .font(.system(size: 34, weight: .bold, design: .rounded))
-                        HStack(spacing: 8) {
-                            Button("-1") { offsetMinutes = max(0, offsetMinutes - 1) }
-                            Button(running ? "Pausar" : "Iniciar") { toggleTimer() }
-                                .tint(.orange)
-                            Button("+1") { offsetMinutes += 1 }
-                        }
-                        .font(.caption2)
-                    }
-                }
-
-                Button(action: { pickerMode = .goalScorer }) {
+                Button(action: { pickerMode = .goalScorer(at: Date()) }) {
                     Label("GOL", systemImage: "soccerball")
                         .frame(maxWidth: .infinity)
                         .font(.headline)
                 }
                 .tint(.orange)
 
-                Button(action: { pickerMode = .save }) {
+                Button(action: { pickerMode = .save(at: Date()) }) {
                     Label("PARADA", systemImage: "hand.raised.fill")
                         .frame(maxWidth: .infinity)
                         .font(.headline)
@@ -92,33 +69,33 @@ struct LiveEventsView: View {
         .sheet(item: $pickerMode) { mode in
             NavigationStack {
                 switch mode {
-                case .goalScorer:
+                case .goalScorer(let at):
                     PlayerPickerView(title: "¿Quién marca?", players: players, showSkip: false, onSkip: nil) { player in
-                        pickerMode = .goalAssist(scorer: player)
+                        pickerMode = .goalAssist(scorer: player, at: at)
                     }
-                case .goalAssist(let scorer):
+                case .goalAssist(let scorer, let at):
                     PlayerPickerView(title: "¿Asistencia?", players: players, showSkip: true, onSkip: {
-                        pickerMode = .goalMinute(scorer: scorer, assist: nil)
+                        pickerMode = .goalConfirm(scorer: scorer, assist: nil, at: at)
                     }) { assist in
-                        pickerMode = .goalMinute(scorer: scorer, assist: assist)
+                        pickerMode = .goalConfirm(scorer: scorer, assist: assist, at: at)
                     }
-                case .goalMinute(let scorer, let assist):
-                    MinutePickerView(title: "¿En qué minuto?", minute: currentMinute(now: Date())) { minute in
-                        logEvent(type: .goal, userId: scorer.userId, assistUserId: assist?.userId, teamColor: scorer.color, minute: minute)
+                case .goalConfirm(let scorer, let assist, let at):
+                    EventConfirmView(occurredAt: at, candidateLabel: "Gol de la semana") { isCandidate in
+                        logEvent(type: .goal, userId: scorer.userId, assistUserId: assist?.userId, teamColor: scorer.color, occurredAt: at, isCandidate: isCandidate)
                         pickerMode = nil
                     }
-                case .save:
+                case .save(let at):
                     PlayerPickerView(title: "¿Quién para?", players: players, showSkip: false, onSkip: nil) { player in
-                        pickerMode = .saveMinute(player: player)
+                        pickerMode = .saveConfirm(player: player, at: at)
                     }
-                case .saveMinute(let player):
-                    MinutePickerView(title: "¿En qué minuto?", minute: currentMinute(now: Date())) { minute in
-                        logEvent(type: .save, userId: player.userId, assistUserId: nil, teamColor: player.color, minute: minute)
+                case .saveConfirm(let player, let at):
+                    EventConfirmView(occurredAt: at, candidateLabel: "Parada de la semana") { isCandidate in
+                        logEvent(type: .save, userId: player.userId, assistUserId: nil, teamColor: player.color, occurredAt: at, isCandidate: isCandidate)
                         pickerMode = nil
                     }
                 case .mvp:
                     PlayerPickerView(title: "MVP", players: players, showSkip: false, onSkip: nil) { player in
-                        logEvent(type: .mvp, userId: player.userId, assistUserId: nil, teamColor: player.color, minute: nil)
+                        logEvent(type: .mvp, userId: player.userId, assistUserId: nil, teamColor: player.color, occurredAt: Date(), isCandidate: false)
                         pickerMode = nil
                     }
                 }
@@ -154,29 +131,17 @@ struct LiveEventsView: View {
         }
     }
 
-    private func toggleTimer() {
-        if running {
-            if let startedAt {
-                offsetMinutes += Int(Date().timeIntervalSince(startedAt) / 60)
-            }
-            running = false
-            startedAt = nil
-        } else {
-            startedAt = Date()
-            running = true
-        }
-    }
-
-    private func logEvent(type: PendingEventType, userId: Int, assistUserId: Int?, teamColor: String?, minute: Int? = nil) {
+    private func logEvent(type: PendingEventType, userId: Int, assistUserId: Int?, teamColor: String?, occurredAt: Date, isCandidate: Bool) {
         guard let matchId = store.state.activeMatchId else { return }
-        let resolvedMinute = minute ?? currentMinute(now: Date())
         let event = PendingEvent(
             matchId: matchId,
             type: type,
-            minute: type == .mvp ? nil : resolvedMinute,
+            minute: nil,
             userId: userId,
             assistUserId: assistUserId,
-            teamColor: teamColor
+            teamColor: teamColor,
+            createdAt: occurredAt,
+            isCandidate: isCandidate
         )
         store.enqueue(event)
         Task { await sync.syncNow() }
