@@ -48,6 +48,7 @@ import { startNotificationCampaignScheduler } from './services/notificationCampa
 import { startRetentionScheduler } from './services/retentionService.js';
 import { startFriendJoinedScheduler } from './services/teammateService.js';
 import retention from './routes/retention.js';
+import featureUsage from './routes/featureUsage.js';
 import friendLeagues from './routes/friendLeagues.js';
 import adminFriendLeagues from './routes/adminFriendLeagues.js';
 import { startFriendLeagueScheduler } from './services/friendLeagueService.js';
@@ -180,6 +181,7 @@ app.use('/', publicProfileLink);
 app.use('/api/player-profile', playerPublicProfile);
 app.use('/api/easypoints', easypoints);
 app.use('/api', retention);
+app.use('/api', featureUsage);
 app.use('/api/friend-leagues', friendLeagues);
 
 // estáticos para avatares
