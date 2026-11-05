@@ -8,8 +8,8 @@ test('formatClockTime da la hora con dos dígitos y null si no hay fecha', () =>
   assert.equal(formatClockTime('fecha rota'), null);
 });
 
-test('eventTimeLabel junta hora y minuto y respeta el minuto manual de los eventos antiguos', () => {
-  assert.equal(eventTimeLabel({ occurred_at: new Date(2026, 10, 2, 21, 37).toISOString(), minute: 12 }), "21:37 · 12'");
+test('eventTimeLabel muestra solo la hora real y respeta el minuto manual de los eventos antiguos', () => {
+  assert.equal(eventTimeLabel({ occurred_at: new Date(2026, 10, 2, 21, 37).toISOString(), minute: 12 }), '21:37');
   assert.equal(eventTimeLabel({ occurred_at: null, minute: 12 }), "12'");
 });
 

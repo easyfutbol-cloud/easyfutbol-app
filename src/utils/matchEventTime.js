@@ -10,11 +10,13 @@ export function formatClockTime(value) {
   return `${pad2(date.getHours())}:${pad2(date.getMinutes())}`;
 }
 
-/** Hora real y minuto (21:37 · 37'); los eventos antiguos solo tienen el minuto puesto a mano. */
+/**
+ * Hora real del evento. El minuto calculado se oculta porque parte de la hora
+ * programada y el partido puede empezar tarde; solo se muestra en los eventos
+ * antiguos, donde se puso a mano.
+ */
 export function eventTimeLabel(event) {
-  const minute = `${event?.minute ?? 0}'`;
-  const time = formatClockTime(event?.occurred_at);
-  return time ? `${time} · ${minute}` : minute;
+  return formatClockTime(event?.occurred_at) || `${event?.minute ?? 0}'`;
 }
 
 /** Minuto del partido según su hora de inicio; null si no se conoce el inicio. */
