@@ -2,14 +2,14 @@
   "expo": {
     "name": "EasyFutbol App",
     "slug": "easyfutbol-app",
-    "version": "2.2.0",
+    "version": "2.2.1",
     "orientation": "portrait",
     "icon": "./assets/Logo.png",
     "userInterfaceStyle": "automatic",
     "scheme": "easyfutbol",
     "ios": {
       "bundleIdentifier": "com.easyfutbol.easyfutbol",
-      "buildNumber": "23",
+      "buildNumber": "24",
       "supportsTablet": true,
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
