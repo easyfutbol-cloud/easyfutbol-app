@@ -35,7 +35,7 @@ router.post('/me/feature-usage', requireAuth, trackLimiter, async (req, res) => 
 });
 
 // Lo que ya queda guardado cuando un jugador usa cada apartado.
-const ACTIONS_SQL = `
+export const ACTIONS_SQL = `
   SELECT 'social' AS feature, 'friend_requests' AS action, requester_id AS user_id FROM friendships WHERE created_at >= ?
   UNION ALL SELECT 'social', 'friend_accepts', addressee_id FROM friendships WHERE status = 'accepted' AND updated_at >= ?
   UNION ALL SELECT 'social', 'match_invites', sender_id FROM match_invitations WHERE created_at >= ?
@@ -51,7 +51,7 @@ const ACTIONS_SQL = `
   UNION ALL SELECT 'weekly_lineup', 'lineup_votes', user_id FROM weekly_lineup_votes WHERE created_at >= ?
   UNION ALL SELECT 'easypoints_shop', 'shop_purchases', user_id FROM easypoints_ledger WHERE source_type = 'purchase' AND created_at >= ?
   UNION ALL SELECT 'match_reviews', 'reviews', user_id FROM match_feedback WHERE dismissed = 0 AND created_at >= ?`;
-const ACTIONS_PARAMS = 13;
+export const ACTIONS_PARAMS = 13;
 
 /** GET /api/admin/feature-usage?days=30 — jugadores que usan cada apartado. Sin cuentas de admin. */
 router.get('/admin/feature-usage', requireAuth, requireAdmin, async (req, res) => {

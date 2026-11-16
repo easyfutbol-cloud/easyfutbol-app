@@ -13,7 +13,7 @@ import {
 } from './kpiMetrics.js';
 
 // Misma regla de sede que el resto de la app: la del partido o, si no la tiene, la ciudad.
-const MATCH_LOCATION_SQL = `COALESCE(m.location_id, CASE
+export const MATCH_LOCATION_SQL = `COALESCE(m.location_id, CASE
   WHEN LOWER(m.city) IN ('avilés','aviles','oviedo','gijón','gijon','asturias') THEN 2
   ELSE 1 END)`;
 
@@ -36,7 +36,7 @@ export function clearKpiCache() {
 
 // ---------- lecturas ----------
 
-async function fetchUsers(db) {
+export async function fetchUsers(db) {
   const [rows] = await db.query('SELECT id, created_at, role, preferred_location FROM users');
   return rows;
 }
@@ -46,7 +46,7 @@ async function fetchUsers(db) {
  * El jugador es la persona a la que se asignó la entrada o, si nadie la
  * reclamó, quien la compró. Se excluyen las cuentas de administrador.
  */
-async function fetchParticipations(db) {
+export async function fetchParticipations(db) {
   const [rows] = await db.query(
     `SELECT COALESCE(i.assigned_user_id, i.user_id) AS player_id,
             i.match_id,
@@ -63,7 +63,7 @@ async function fetchParticipations(db) {
   return rows;
 }
 
-async function fetchMatchesForOccupancy(db) {
+export async function fetchMatchesForOccupancy(db) {
   const [rows] = await db.query(
     `SELECT m.id AS match_id, m.starts_at, m.capacity, ${MATCH_LOCATION_SQL} AS location_id, COUNT(i.id) AS taken
      FROM matches m
@@ -74,7 +74,7 @@ async function fetchMatchesForOccupancy(db) {
   return rows;
 }
 
-async function fetchPassTransactions(db) {
+export async function fetchPassTransactions(db) {
   const [rows] = await db.query(
     `SELECT t.id, t.user_id, t.type, t.amount, t.pack_id, t.payment_reference, t.created_at,
             CASE WHEN t.type = 'purchase' THEN ep.location_id
@@ -87,12 +87,12 @@ async function fetchPassTransactions(db) {
   return rows;
 }
 
-async function fetchPacks(db) {
+export async function fetchPacks(db) {
   const [rows] = await db.query('SELECT id, name, credits, price_cents, location_id FROM easypass_packs');
   return rows;
 }
 
-async function fetchBalances(db) {
+export async function fetchBalances(db) {
   const [rows] = await db.query(
     `SELECT location_id, SUM(balance) AS passes, COUNT(*) AS holders
      FROM user_easypass_balances WHERE balance > 0 GROUP BY location_id`
@@ -100,7 +100,7 @@ async function fetchBalances(db) {
   return rows;
 }
 
-async function fetchRevenueEvents(db) {
+export async function fetchRevenueEvents(db) {
   const [rows] = await db.query(
     `SELECT stripe_ref, kind, status, user_id, location_id, pack_id, credits, plan_code, list_cents,
             plus_discount_cents, promo_discount_cents, paid_cents, refunded_cents, paid_at, created_at
@@ -109,7 +109,7 @@ async function fetchRevenueEvents(db) {
   return rows;
 }
 
-async function fetchSubscriptionSummary(db) {
+export async function fetchSubscriptionSummary(db) {
   const [rows] = await db.query(
     `SELECT sp.code AS plan_code, us.status, COUNT(*) AS count, MAX(sp.price_cents) AS price_cents
      FROM user_subscriptions us
@@ -120,12 +120,12 @@ async function fetchSubscriptionSummary(db) {
   return rows;
 }
 
-async function fetchSubscriptionStarts(db) {
+export async function fetchSubscriptionStarts(db) {
   const [rows] = await db.query('SELECT user_id, started_at FROM user_subscriptions WHERE started_at IS NOT NULL AND stripe_subscription_id IS NOT NULL');
   return rows;
 }
 
-async function fetchReferrals(db) {
+export async function fetchReferrals(db) {
   const [rows] = await db.query('SELECT referred_user_id, created_at FROM user_referrals');
   return rows;
 }

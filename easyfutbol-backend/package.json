@@ -16,7 +16,8 @@
     "migrate:verify": "node src/scripts/runMigrations.js --verify-files",
     "achievements:backfill": "node src/scripts/backfillAchievements.js",
     "kpis:sync-revenue": "node src/scripts/syncRevenue.js",
-    "plus:gift": "node src/scripts/grantPlusGift.js"
+    "plus:gift": "node src/scripts/grantPlusGift.js",
+    "investor:pack": "node src/scripts/investorPack.js"
   },
   "dependencies": {
     "bcrypt": "^6.0.0",
