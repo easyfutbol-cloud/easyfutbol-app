@@ -3,7 +3,7 @@
 // Solo datos agregados: ningún nombre, email ni id de jugador sale del servidor.
 //
 //   npm run investor:pack
-//   npm run investor:pack -- --field-cost=60      # coste del campo por partido (€), para el margen
+//   npm run investor:pack -- --field-cost-valladolid=30.88 --field-cost-asturias=53.50   # alquiler por partido (€)
 //   npm run investor:pack -- --out=/tmp/pack      # carpeta de salida
 import 'dotenv/config';
 import fs from 'node:fs';
@@ -25,8 +25,12 @@ import { ACTIONS_PARAMS, ACTIONS_SQL } from '../routes/featureUsage.js';
 import { ACTION_LABELS, FEATURES } from '../services/featureUsageRules.js';
 
 const arg = (name) => process.argv.find((a) => a.startsWith(`--${name}=`))?.split('=').slice(1).join('=');
-const fieldCostRaw = arg('field-cost');
-const fieldCost = fieldCostRaw ? Number(String(fieldCostRaw).replace(',', '.')) : null;
+const parseEur = (v) => (v === undefined || v === '' ? null : Number(String(v).replace(',', '.')));
+// Alquiler del campo por partido, dado por el fundador (noviembre 2026). Se puede cambiar con los flags.
+const FIELD_COST = {
+  1: parseEur(arg('field-cost-valladolid') ?? '30.88'),
+  2: parseEur(arg('field-cost-asturias') ?? '53.50'),
+};
 const now = new Date();
 const outDir = path.resolve(arg('out') || `investor-pack-${madridDayKey(now)}`);
 const SEDES = [[null, 'global'], [1, 'valladolid'], [2, 'asturias']];
@@ -63,6 +67,19 @@ const firstUser = users
   .reduce((min, u) => (!min || new Date(u.created_at) < min ? new Date(u.created_at) : min), null);
 const seriesStart = [firstMatch, firstUser].filter(Boolean).reduce((a, b) => (b < a ? b : a), now);
 const months = monthsSince(seriesStart, now);
+
+// Global: coste medio ponderado por los partidos de cada sede en los últimos 90 días.
+const since90 = now.getTime() - 90 * 24 * 60 * 60 * 1000;
+const recentBySede = { 1: 0, 2: 0 };
+for (const m of matches) {
+  const t = new Date(m.starts_at).getTime();
+  if (t > since90 && t <= now.getTime() && recentBySede[Number(m.location_id)] !== undefined) recentBySede[Number(m.location_id)] += 1;
+}
+const recentTotal = recentBySede[1] + recentBySede[2];
+const globalFieldCost = recentTotal && FIELD_COST[1] !== null && FIELD_COST[2] !== null
+  ? Math.round(((FIELD_COST[1] * recentBySede[1] + FIELD_COST[2] * recentBySede[2]) / recentTotal) * 100) / 100
+  : null;
+const fieldCostFor = (loc) => (loc ? FIELD_COST[loc] : globalFieldCost);
 
 // Precio de lista por partido y desglose por ciudad (para Oviedo / Avilés).
 const matchList = await safe('partidos con precio', () => q(
@@ -153,7 +170,7 @@ for (const [loc, slug] of SEDES) {
   const listPrice = listPrices.length ? listPrices.reduce((s, v) => s + v, 0) / listPrices.length : null;
   const economics = computeMatchEconomics({
     fillRate: fill, effectivePassCents: money.effective_price?.last_90d?.paid_per_pass_cents ?? money.effective_price?.all_time?.paid_per_pass_cents ?? null,
-    listPricePerSeatEur: listPrice, fieldCostEur: fieldCost,
+    listPricePerSeatEur: listPrice, fieldCostEur: fieldCostFor(loc),
   });
 
   summary[slug] = { traction, activation, fill, money, acq, funnel, buyers, economics, monthly, listPrice };
@@ -376,7 +393,9 @@ ${SEDES.map(([, s]) => sedeLine(s)).join('\n')}
 - Plazas ocupadas × precio de lista del partido: ${num(Math.round(listAll * 100) / 100)} € (referencia, no es caja)
 - Precio efectivo por EasyPass: ${num(eur(ep.last_90d?.paid_per_pass_cents ?? null))} € (90 d), ${num(eur(ep.all_time?.paid_per_pass_cents ?? null))} € (histórico)
 - Cobertura del libro de ingresos: ${num(dq.purchases_in_ledger)} de ${num(dq.purchases_with_stripe_ref)} compras con referencia de Stripe; ${num(dq.purchases_without_stripe_ref)} compras sin referencia (no se pueden leer); última sincronización ${dq.last_ledger_entry_at || 'n/d'}
-- Ingreso por partido (90 d, global): ${num(summary.global.economics.revenue_per_match_eur)} € (${summary.global.economics.revenue_per_seat_source}); margen: ${fieldCost === null ? '**no lo sé** (vuelve a ejecutar con --field-cost=<€ por partido>)' : `${num(summary.global.economics.margin_per_match_eur)} €`}
+- Alquiler del campo por partido: Valladolid ${num(FIELD_COST[1])} €, Asturias ${num(FIELD_COST[2])} €; global ponderado por partidos de los últimos 90 días (${recentBySede[1]} en Valladolid, ${recentBySede[2]} en Asturias): ${num(globalFieldCost)} €
+${SEDES.map(([, slug]) => { const e = summary[slug].economics; return `- Ingreso por partido (90 d, ${slug}): ${num(e.revenue_per_match_eur)} € → margen tras campo ${num(e.margin_per_match_eur)} € (${pct(e.margin_rate)})`; }).join('\n')}
+- Origen del ingreso por plaza: ${summary.global.economics.revenue_per_seat_source}. El margen es solo tras el campo: no incluye costes fijos, comisiones de Stripe ni IVA.
 - Gasto en marketing registrado: ${spendRows.length ? `${spendRows.length} entradas (08b)` : '**no hay ninguno registrado → CAC = no lo sé**'}
 
 ## Lo que la base de datos NO sabe (hay que aportarlo a mano)
