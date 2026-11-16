@@ -3,7 +3,8 @@
 // Solo datos agregados: ningún nombre, email ni id de jugador sale del servidor.
 //
 //   npm run investor:pack
-//   npm run investor:pack -- --field-cost-valladolid=30.88 --field-cost-asturias=53.50   # alquiler por partido (€)
+//   npm run investor:pack -- --ads-since=2025-06            # publicidad (30 €/mes por defecto) desde ese mes
+//   flags opcionales: --field-cost-valladolid=30.88 --field-cost-asturias=46.03 --fixed-monthly=32 --ads-monthly=30
 //   npm run investor:pack -- --out=/tmp/pack      # carpeta de salida
 import 'dotenv/config';
 import fs from 'node:fs';
@@ -16,7 +17,7 @@ import {
   listMarketingSpend,
 } from '../services/kpiService.js';
 import {
-  computeAcquisition, computeActivation, computeFillRate, computeMonetization, computeTraction, madridDayKey, madridMonthKey,
+  computeAcquisition, computeActivation, computeFillRate, computeMonetization, computeTraction, madridDayKey, madridMonthKey, addMonths,
 } from '../services/kpiMetrics.js';
 import {
   computeMatchEconomics, computePassBuyers, computeRepeatFunnel, computeStageCurve, monthsSince, toCsv,
@@ -29,8 +30,13 @@ const parseEur = (v) => (v === undefined || v === '' ? null : Number(String(v).r
 // Alquiler del campo por partido, dado por el fundador (noviembre 2026). Se puede cambiar con los flags.
 const FIELD_COST = {
   1: parseEur(arg('field-cost-valladolid') ?? '30.88'),
-  2: parseEur(arg('field-cost-asturias') ?? '53.50'),
+  2: parseEur(arg('field-cost-asturias') ?? '46.03'),
 };
+// Costes fijos al mes (servidores 32 €, noviembre 2026). Sin cobros en efectivo: todo pasa por Stripe.
+const FIXED_MONTHLY = parseEur(arg('fixed-monthly') ?? '32');
+// Publicidad: si no está en el panel (marketing_spend), --ads-monthly=30 --ads-since=AAAA-MM la reparte por mes.
+const ADS_MONTHLY = parseEur(arg('ads-monthly') ?? '30');
+const ADS_SINCE = /^\d{4}-(0[1-9]|1[0-2])$/.test(arg('ads-since') || '') ? arg('ads-since') : null;
 const now = new Date();
 const outDir = path.resolve(arg('out') || `investor-pack-${madridDayKey(now)}`);
 const SEDES = [[null, 'global'], [1, 'valladolid'], [2, 'asturias']];
@@ -54,7 +60,7 @@ const write = (file, rows, columns) => fs.writeFileSync(path.join(outDir, file),
 fs.mkdirSync(outDir, { recursive: true });
 
 // ---------- lectura (las mismas consultas que el panel de KPIs) ----------
-const [users, participations, matches, passTransactions, packs, balances, revenueEvents, subscriptions, subscriptionStarts, referrals, spendRows] =
+const [users, participations, matches, passTransactions, packs, balances, revenueEvents, subscriptions, subscriptionStarts, referrals, dbSpendRows] =
   await Promise.all([
     fetchUsers(pool), fetchParticipations(pool), fetchMatchesForOccupancy(pool), fetchPassTransactions(pool),
     fetchPacks(pool), fetchBalances(pool), fetchRevenueEvents(pool), fetchSubscriptionSummary(pool),
@@ -67,6 +73,19 @@ const firstUser = users
   .reduce((min, u) => (!min || new Date(u.created_at) < min ? new Date(u.created_at) : min), null);
 const seriesStart = [firstMatch, firstUser].filter(Boolean).reduce((a, b) => (b < a ? b : a), now);
 const months = monthsSince(seriesStart, now);
+
+// Gasto en publicidad: el del panel manda; si no hay, el de los flags (solo con --ads-since, nunca inventado).
+let spendSource = 'panel de KPIs';
+let spendRows = dbSpendRows;
+if (!dbSpendRows.length && ADS_SINCE && ADS_MONTHLY) {
+  spendSource = `${num(ADS_MONTHLY)} €/mes desde ${ADS_SINCE} (dato del fundador)`;
+  spendRows = [];
+  for (let key = ADS_SINCE; key <= madridMonthKey(now); key = addMonths(key, 1)) {
+    spendRows.push({ month: `${key}-01`, channel: 'redes sociales', location_id: 0, amount_cents: Math.round(ADS_MONTHLY * 100), notes: 'flag --ads-monthly' });
+  }
+} else if (!dbSpendRows.length) {
+  spendSource = null;
+}
 
 // Global: coste medio ponderado por los partidos de cada sede en los últimos 90 días.
 const since90 = now.getTime() - 90 * 24 * 60 * 60 * 1000;
@@ -105,16 +124,24 @@ for (const [loc, slug] of SEDES) {
   const moneyBy = by(money.monthly);
   const acqBy = by(acq.monthly);
   const listBy = new Map();
+  const fieldBy = new Map();
   for (const m of matchList) {
     if (loc && Number(m.location_id) !== loc) continue;
     const key = madridMonthKey(m.starts_at);
     listBy.set(key, (listBy.get(key) || 0) + Number(m.taken || 0) * Number(m.price_eur || 0));
+    // Solo se paga el campo de los partidos que se jugaron (con al menos una entrada).
+    if (Number(m.taken) > 0) fieldBy.set(key, (fieldBy.get(key) || 0) + (FIELD_COST[Number(m.location_id)] ?? 0));
   }
 
   const monthly = traction.monthly.map((t) => {
     const f = fillBy.get(t.month) || {};
     const mo = moneyBy.get(t.month) || {};
     const a = acqBy.get(t.month) || {};
+    const revenue = eur(mo.revenue_cents) ?? 0;
+    const fieldCost = Math.round((fieldBy.get(t.month) || 0) * 100) / 100;
+    const fixed = loc ? null : FIXED_MONTHLY;
+    const spend = eur(a.spend_cents) ?? 0;
+    const round2 = (v) => Math.round(v * 100) / 100;
     return {
       month: t.month,
       partial: t.partial ? 'sí (mes en curso)' : '',
@@ -142,6 +169,11 @@ for (const [loc, slug] of SEDES) {
       spend_eur: eur(a.spend_cents),
       cac_new_player_eur: eur(a.cac_per_new_player_cents),
       cac_new_payer_eur: eur(a.cac_per_new_payer_cents),
+      field_cost_eur: fieldCost,
+      after_fields_eur: round2(revenue - fieldCost),
+      fixed_cost_eur: fixed,
+      // Por sede solo se resta el campo: fijos y publicidad son de toda la empresa.
+      operating_result_eur: loc ? null : round2(revenue - fieldCost - (fixed || 0) - spend),
     };
   });
   write(`01_mensual_${slug}.csv`, monthly, [
@@ -155,6 +187,8 @@ for (const [loc, slug] of SEDES) {
     ['passes_sold', 'EasyPass vendidos'], ['paid_per_pass_eur', 'Precio efectivo por EasyPass (€)'],
     ['list_value_eur', 'Plazas × precio de lista (€)'], ['spend_eur', 'Gasto marketing (€)'],
     ['cac_new_player_eur', 'CAC por jugador nuevo (€)'], ['cac_new_payer_eur', 'CAC por comprador nuevo (€)'],
+    ['field_cost_eur', 'Coste de campos (€)'], ['after_fields_eur', 'Ingresos − campos (€)'],
+    ['fixed_cost_eur', 'Costes fijos (€)'], ['operating_result_eur', 'Resultado operativo (€)'],
   ]);
 
   // cohortes
@@ -396,14 +430,28 @@ ${SEDES.map(([, s]) => sedeLine(s)).join('\n')}
 - Alquiler del campo por partido: Valladolid ${num(FIELD_COST[1])} €, Asturias ${num(FIELD_COST[2])} €; global ponderado por partidos de los últimos 90 días (${recentBySede[1]} en Valladolid, ${recentBySede[2]} en Asturias): ${num(globalFieldCost)} €
 ${SEDES.map(([, slug]) => { const e = summary[slug].economics; return `- Ingreso por partido (90 d, ${slug}): ${num(e.revenue_per_match_eur)} € → margen tras campo ${num(e.margin_per_match_eur)} € (${pct(e.margin_rate)})`; }).join('\n')}
 - Origen del ingreso por plaza: ${summary.global.economics.revenue_per_seat_source}. El margen es solo tras el campo: no incluye costes fijos, comisiones de Stripe ni IVA.
-- Gasto en marketing registrado: ${spendRows.length ? `${spendRows.length} entradas (08b)` : '**no hay ninguno registrado → CAC = no lo sé**'}
+- Publicidad: ${spendSource ? `${spendSource}; CAC en 01_mensual_global` : `**sin fecha de inicio → CAC = no lo sé** (vuelve a ejecutar con --ads-since=AAAA-MM; ${num(ADS_MONTHLY)} €/mes por defecto)`}
+
+## Resultado operativo (global, solo meses completos)
+
+Ingresos Stripe − campos (${num(FIELD_COST[1])} € Valladolid, ${num(FIELD_COST[2])} € Asturias por partido jugado) − costes fijos (${num(FIXED_MONTHLY)} €/mes) − publicidad. Sin sueldos, comisiones de Stripe, IVA ni impuestos.
+
+| Periodo | Ingresos | Campos | Fijos | Publicidad | Resultado |
+|---|---|---|---|---|---|
+${(() => {
+  const full = (summary.global.monthly || []).filter((m) => !m.partial);
+  const row = (label, list) => {
+    const s = (k) => Math.round(list.reduce((t, m) => t + (Number(m[k]) || 0), 0) * 100) / 100;
+    return `| ${label} | ${num(s('revenue_eur'))} € | ${num(s('field_cost_eur'))} € | ${num(s('fixed_cost_eur'))} € | ${num(s('spend_eur'))} € | **${num(s('operating_result_eur'))} €** |`;
+  };
+  return [row('Último mes completo', full.slice(-1)), row('Últimos 3 meses', full.slice(-3)), row(`Toda la serie (${full.length} meses)`, full)].join('\n');
+})()}
 
 ## Lo que la base de datos NO sabe (hay que aportarlo a mano)
 
-- Ingresos anteriores a la app o cobrados fuera de Stripe (efectivo, Bizum, transferencias).
-- Coste del alquiler del campo por partido y costes fijos mensuales (herramientas, grabación, servidor, Apple/Google).
-- Gasto en publicidad por mes y canal (se puede meter en Panel → KPIs → CAC y volver a ejecutar esto).
-- Canal de captación (Instagram, boca a boca...): la app solo distingue "llegó por invitación de otro jugador" (columna Registros por invitación).
+- No hay cobros en efectivo ni fuera de Stripe (dato del fundador): los ingresos de arriba son todos los ingresos.
+- Otros costes no incluidos: sueldos (ninguno), comisiones de Stripe, cuentas de Apple/Google, grabación, seguros, gestoría.
+- Canal de captación: redes y boca a boca según el fundador, sin medir; la app solo distingue "llegó por invitación de otro jugador" (columna Registros por invitación).
 - Aperturas de la app antes de ${trackingSince ? madridDayKey(trackingSince) : 'que empezase la medición'}: las visitas por apartado solo existen desde entonces y solo con la app actualizada.
 
 ## Archivos
